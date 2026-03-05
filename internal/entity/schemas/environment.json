@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Environment",
+  "description": "Deployment target or cloud account",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "Cloud provider (e.g., AWS, GCP, Azure)"
+    },
+    "region": {
+      "type": "string",
+      "description": "Cloud region or data center location"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["staging", "production", "development"],
+      "description": "Environment type"
+    },
+    "cluster": {
+      "type": "string",
+      "description": "Kubernetes cluster name or compute cluster identifier"
+    },
+    "accountId": {
+      "type": "string",
+      "description": "Cloud account or project identifier"
+    },
+    "system": {
+      "type": "string",
+      "description": "Parent system or domain"
+    },
+    "dependsOn": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["kind", "name"]
+      },
+      "description": "Entities this environment depends on"
+    },
+    "providesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs provided by this entity"
+    },
+    "consumesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs consumed by this entity"
+    }
+  },
+  "additionalProperties": false
+}

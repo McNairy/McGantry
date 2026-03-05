@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Documentation",
+  "description": "Link to external documentation or runbook",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["runbook", "wiki", "api-docs", "architecture"],
+      "description": "Documentation type"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the documentation resource"
+    },
+    "associatedEntity": {
+      "type": "string",
+      "description": "Entity reference this documentation is associated with"
+    },
+    "format": {
+      "type": "string",
+      "description": "Document format (e.g., markdown, html, pdf)"
+    },
+    "system": {
+      "type": "string",
+      "description": "Parent system or domain"
+    },
+    "dependsOn": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["kind", "name"]
+      },
+      "description": "Entities this documentation depends on"
+    },
+    "providesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs provided by this entity"
+    },
+    "consumesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs consumed by this entity"
+    }
+  },
+  "required": ["url"],
+  "additionalProperties": false
+}

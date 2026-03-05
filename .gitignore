@@ -1,0 +1,34 @@
+# Build artifacts
+bin/
+gantry
+
+# Frontend
+web/dist/
+web/node_modules/
+
+# Runtime data
+data/
+*.db
+*.sqlite
+*.db-shm
+*.db-wal
+
+# Environment and secrets
+.env
+.env.*
+
+# IDE and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temp
+tmp/
+
+# Local files (PRD, checklist, notes)
+local/
+
+# Claude Code
+.claude/

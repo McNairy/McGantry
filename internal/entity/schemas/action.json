@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Action",
+  "description": "Self-service workflow definition",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["github-action", "argocd-sync", "flux-update", "webhook", "internal"],
+      "description": "Action execution type"
+    },
+    "config": {
+      "type": "object",
+      "description": "Action-specific configuration",
+      "additionalProperties": true
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Input parameter name"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "boolean", "select"],
+            "description": "Input parameter type"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of the input"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this input is required"
+          },
+          "default": {
+            "description": "Default value for the input"
+          },
+          "options": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Available options for select-type inputs"
+          }
+        },
+        "required": ["name", "type"]
+      },
+      "description": "Input parameters for the action"
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "allowedRoles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Roles allowed to execute this action"
+        },
+        "allowedTeams": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Teams allowed to execute this action"
+        },
+        "requireApproval": {
+          "type": "boolean",
+          "description": "Whether execution requires approval"
+        },
+        "approvers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Users or teams that can approve execution"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Access control for this action"
+    }
+  },
+  "additionalProperties": false
+}

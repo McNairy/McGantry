@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Infrastructure",
+  "description": "Database, queue, cache, storage, or other infrastructure",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["database", "queue", "cache", "storage", "bucket"],
+      "description": "Infrastructure type"
+    },
+    "provider": {
+      "type": "string",
+      "description": "Cloud or infrastructure provider (e.g., AWS, GCP, Azure)"
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["experimental", "development", "production", "deprecated"],
+      "description": "Lifecycle stage"
+    },
+    "connectionString": {
+      "type": "string",
+      "description": "Connection string or endpoint for the infrastructure resource"
+    },
+    "system": {
+      "type": "string",
+      "description": "Parent system or domain"
+    },
+    "dependsOn": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["kind", "name"]
+      },
+      "description": "Entities this resource depends on"
+    },
+    "providesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs provided by this entity"
+    },
+    "consumesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs consumed by this entity"
+    }
+  },
+  "additionalProperties": false
+}

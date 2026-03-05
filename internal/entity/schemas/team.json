@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Team",
+  "description": "Engineering team or group",
+  "type": "object",
+  "properties": {
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name of the team member"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Email address of the team member"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role within the team (e.g., lead, engineer, SRE)"
+          }
+        },
+        "required": ["name", "email"]
+      },
+      "description": "Team members"
+    },
+    "slackChannel": {
+      "type": "string",
+      "description": "Slack channel for the team (e.g., #platform-eng)"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Team mailing list or group email"
+    },
+    "oncallSchedule": {
+      "type": "string",
+      "description": "URL or identifier for the on-call schedule"
+    },
+    "manager": {
+      "type": "string",
+      "description": "Name or reference to the team manager"
+    },
+    "system": {
+      "type": "string",
+      "description": "Parent system or domain"
+    },
+    "dependsOn": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["kind", "name"]
+      },
+      "description": "Entities this team depends on"
+    },
+    "providesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs provided by this entity"
+    },
+    "consumesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs consumed by this entity"
+    }
+  },
+  "additionalProperties": false
+}

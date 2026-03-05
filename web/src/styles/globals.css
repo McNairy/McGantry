@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gantry-bg-primary: #ffffff;
+  --gantry-bg-secondary: #f8fafc;
+  --gantry-bg-tertiary: #f1f5f9;
+  --gantry-text-primary: #0f172a;
+  --gantry-text-secondary: #64748b;
+  --gantry-accent: #4c6ef5;
+  --gantry-accent-hover: #4263eb;
+  --gantry-border: #e2e8f0;
+  --gantry-success: #16a34a;
+  --gantry-warning: #f59e0b;
+  --gantry-danger: #dc2626;
+}
+
+.dark {
+  --gantry-bg-primary: #0f172a;
+  --gantry-bg-secondary: #1e293b;
+  --gantry-bg-tertiary: #334155;
+  --gantry-text-primary: #f8fafc;
+  --gantry-text-secondary: #94a3b8;
+  --gantry-accent: #748ffc;
+  --gantry-accent-hover: #5c7cfa;
+  --gantry-border: #334155;
+  --gantry-success: #4ade80;
+  --gantry-warning: #fbbf24;
+  --gantry-danger: #f87171;
+}
+
+body {
+  background-color: var(--gantry-bg-primary);
+  color: var(--gantry-text-primary);
+}
+
+@layer base {
+  * {
+    @apply border-[var(--gantry-border)];
+  }
+}
+
+@layer components {
+  .spinner {
+    @apply inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin;
+  }
+}

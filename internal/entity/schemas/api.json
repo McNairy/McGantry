@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "API",
+  "description": "REST, gRPC, GraphQL, or event-based API definition",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["rest", "grpc", "graphql", "event"],
+      "description": "API type"
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["experimental", "development", "production", "deprecated"],
+      "description": "Lifecycle stage"
+    },
+    "definition": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the API definition document (e.g., OpenAPI spec)"
+    },
+    "owner": {
+      "type": "string",
+      "description": "Team or individual that owns this API"
+    },
+    "system": {
+      "type": "string",
+      "description": "Parent system or domain"
+    },
+    "dependsOn": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["kind", "name"]
+      },
+      "description": "Entities this API depends on"
+    },
+    "providesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs provided by this entity"
+    },
+    "consumesApis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "APIs consumed by this entity"
+    }
+  },
+  "additionalProperties": false
+}

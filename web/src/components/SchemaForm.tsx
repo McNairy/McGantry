@@ -1,0 +1,339 @@
+import { useState, useCallback } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+import type { JsonSchema } from '../lib/types';
+
+interface SchemaFormProps {
+  schema: JsonSchema;
+  initialValues?: Record<string, any>;
+  onSubmit: (data: Record<string, any>) => void;
+  onCancel?: () => void;
+  submitLabel?: string;
+}
+
+function getDefaultValue(schema: JsonSchema): any {
+  if (schema.default !== undefined) return schema.default;
+  switch (schema.type) {
+    case 'string':
+      return '';
+    case 'number':
+    case 'integer':
+      return schema.minimum ?? 0;
+    case 'boolean':
+      return false;
+    case 'array':
+      return [];
+    case 'object':
+      return {};
+    default:
+      return '';
+  }
+}
+
+interface FieldProps {
+  name: string;
+  schema: JsonSchema;
+  value: any;
+  onChange: (value: any) => void;
+  required?: boolean;
+}
+
+function FormField({ name, schema, value, onChange, required }: FieldProps) {
+  const label = schema.title || name;
+  const description = schema.description;
+
+  if (schema.enum) {
+    return (
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+          {label}
+          {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+        </label>
+        {description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+        )}
+        <select
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+        >
+          <option value="">Select...</option>
+          {schema.enum.map((opt: any) => (
+            <option key={String(opt)} value={String(opt)}>
+              {String(opt)}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  if (schema.type === 'boolean') {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onChange(!value)}
+            className={`relative h-6 w-11 rounded-full transition-colors ${
+              value ? 'bg-[var(--gantry-accent)]' : 'bg-[var(--gantry-bg-tertiary)]'
+            }`}
+          >
+            <span
+              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                value ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+          <label className="text-sm font-medium text-[var(--gantry-text-primary)]">
+            {label}
+            {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+          </label>
+        </div>
+        {description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (schema.type === 'number' || schema.type === 'integer') {
+    return (
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+          {label}
+          {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+        </label>
+        {description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+        )}
+        <input
+          type="number"
+          value={value ?? ''}
+          min={schema.minimum}
+          max={schema.maximum}
+          step={schema.type === 'integer' ? 1 : undefined}
+          onChange={(e) =>
+            onChange(e.target.value === '' ? '' : Number(e.target.value))
+          }
+          className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+        />
+      </div>
+    );
+  }
+
+  if (schema.type === 'array') {
+    const items = Array.isArray(value) ? value : [];
+    return (
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+          {label}
+          {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+        </label>
+        {description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+        )}
+        <div className="space-y-2">
+          {items.map((item: any, idx: number) => (
+            <div key={idx} className="flex items-center gap-2">
+              {schema.items?.type === 'object' && schema.items.properties ? (
+                <div className="flex-1 rounded-lg border border-[var(--gantry-border)] p-3">
+                  <ObjectFields
+                    schema={schema.items}
+                    value={item}
+                    onChange={(newItem) => {
+                      const next = [...items];
+                      next[idx] = newItem;
+                      onChange(next);
+                    }}
+                  />
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={String(item)}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[idx] = e.target.value;
+                    onChange(next);
+                  }}
+                  className="flex-1 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = items.filter((_: any, i: number) => i !== idx);
+                  onChange(next);
+                }}
+                className="rounded-lg p-2 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-danger)]"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              const defaultItem = schema.items
+                ? getDefaultValue(schema.items)
+                : '';
+              onChange([...items, defaultItem]);
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--gantry-border)] px-3 py-2 text-sm text-[var(--gantry-text-secondary)] hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-accent)]"
+          >
+            <Plus className="h-4 w-4" />
+            Add item
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (schema.type === 'object' && schema.properties) {
+    return (
+      <fieldset className="space-y-1.5">
+        <legend className="text-sm font-medium text-[var(--gantry-text-primary)]">
+          {label}
+          {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+        </legend>
+        {description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+        )}
+        <div className="rounded-lg border border-[var(--gantry-border)] p-4">
+          <ObjectFields
+            schema={schema}
+            value={value || {}}
+            onChange={onChange}
+          />
+        </div>
+      </fieldset>
+    );
+  }
+
+  // Default: string input (or textarea for long text / format: textarea)
+  const isMultiline =
+    schema.format === 'textarea' || (schema.maxLength && schema.maxLength > 200);
+
+  if (isMultiline) {
+    return (
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+          {label}
+          {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+        </label>
+        {description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+        )}
+        <textarea
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          rows={4}
+          maxLength={schema.maxLength}
+          className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+        {label}
+        {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+      </label>
+      {description && (
+        <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+      )}
+      <input
+        type={schema.format === 'password' ? 'password' : schema.format === 'email' ? 'email' : schema.format === 'uri' ? 'url' : 'text'}
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        minLength={schema.minLength}
+        maxLength={schema.maxLength}
+        className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+      />
+    </div>
+  );
+}
+
+function ObjectFields({
+  schema,
+  value,
+  onChange,
+}: {
+  schema: JsonSchema;
+  value: Record<string, any>;
+  onChange: (value: Record<string, any>) => void;
+}) {
+  const properties = schema.properties || {};
+  const required = schema.required || [];
+
+  return (
+    <div className="space-y-4">
+      {Object.entries(properties).map(([key, propSchema]) => (
+        <FormField
+          key={key}
+          name={key}
+          schema={propSchema}
+          value={value[key] ?? getDefaultValue(propSchema)}
+          onChange={(newVal) => onChange({ ...value, [key]: newVal })}
+          required={required.includes(key)}
+        />
+      ))}
+    </div>
+  );
+}
+
+export default function SchemaForm({
+  schema,
+  initialValues,
+  onSubmit,
+  onCancel,
+  submitLabel = 'Submit',
+}: SchemaFormProps) {
+  const [values, setValues] = useState<Record<string, any>>(() => {
+    if (initialValues) return { ...initialValues };
+    const defaults: Record<string, any> = {};
+    if (schema.properties) {
+      for (const [key, propSchema] of Object.entries(schema.properties)) {
+        defaults[key] = getDefaultValue(propSchema);
+      }
+    }
+    return defaults;
+  });
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      onSubmit(values);
+    },
+    [values, onSubmit],
+  );
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <ObjectFields
+        schema={schema}
+        value={values}
+        onChange={setValues}
+      />
+      <div className="flex items-center justify-end gap-3 border-t border-[var(--gantry-border)] pt-4">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          className="rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--gantry-accent-hover)]"
+        >
+          {submitLabel}
+        </button>
+      </div>
+    </form>
+  );
+}
