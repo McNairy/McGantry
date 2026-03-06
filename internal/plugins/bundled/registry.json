@@ -70,27 +70,59 @@
     "version": "1.0.0",
     "author": "Gantry",
     "category": "integration",
-    "homepage": "https://github.com/gantrydev/plugin-kubernetes",
+    "homepage": "https://github.com/go2engle/gantry/tree/main/internal/plugins/kubernetes",
     "configSchema": {
       "type": "object",
       "properties": {
-        "clusterUrl": {
-          "type": "string",
-          "title": "Cluster URL",
-          "description": "Kubernetes API server URL"
+        "clusters": {
+          "type": "array",
+          "title": "Clusters",
+          "description": "One or more Kubernetes clusters to discover resources from.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Cluster Name",
+                "description": "Display name for this cluster (e.g. prod-us-east)"
+              },
+              "url": {
+                "type": "string",
+                "title": "API Server URL",
+                "description": "Kubernetes API server URL (e.g. https://k8s.example.com:6443)"
+              },
+              "token": {
+                "type": "string",
+                "title": "Service Account Token",
+                "description": "Bearer token for cluster authentication"
+              },
+              "caData": {
+                "type": "string",
+                "title": "CA Certificate",
+                "description": "Base64-encoded cluster CA certificate. Leave empty to skip TLS verification."
+              },
+              "namespaces": {
+                "type": "string",
+                "title": "Namespaces",
+                "description": "Comma-separated list of namespaces to watch. Leave empty to discover all namespaces."
+              }
+            },
+            "required": ["name", "url", "token"]
+          }
         },
-        "token": {
+        "labelSelector": {
           "type": "string",
-          "title": "Service Account Token",
-          "description": "Bearer token for cluster authentication"
+          "title": "Label Selector",
+          "description": "Filter discovered resources by label (e.g. app.kubernetes.io/managed-by=gantry). Applied to all clusters."
         },
-        "caData": {
+        "syncInterval": {
           "type": "string",
-          "title": "CA Certificate",
-          "description": "Base64-encoded cluster CA certificate (optional)"
+          "title": "Sync Interval",
+          "description": "How often to automatically sync (e.g. 5m, 1h). Leave empty to sync manually only.",
+          "default": "5m"
         }
       },
-      "required": ["clusterUrl", "token"]
+      "required": ["clusters"]
     },
     "entityPanels": ["Service", "Infrastructure"]
   },

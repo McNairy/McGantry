@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Package, CheckCircle, Circle, Settings, ExternalLink, Search, Puzzle, RefreshCw } from 'lucide-react';
+import { Package, CheckCircle, Circle, Settings, ExternalLink, Search, Puzzle, RefreshCw, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../lib/api';
 import type { PluginRegistryEntry, PluginConfig, PluginSyncResult } from '../lib/types';
 
@@ -23,6 +23,118 @@ const CATEGORY_COLORS: Record<string, string> = {
   'auth-provider': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
+function isSecret(key: string) {
+  return ['key', 'token', 'secret', 'password', 'privatekey'].some((s) =>
+    key.toLowerCase().includes(s)
+  );
+}
+
+// ArrayObjectField — renders an array of objects as expandable rows with add/remove.
+function ArrayObjectField({
+  fieldKey,
+  schema,
+  value,
+  onChange,
+}: {
+  fieldKey: string;
+  schema: any;
+  value: Record<string, any>[];
+  onChange: (v: Record<string, any>[]) => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
+  const itemSchema = schema.items ?? {};
+  const itemProps: Record<string, any> = itemSchema.properties ?? {};
+  const itemRequired: string[] = itemSchema.required ?? [];
+
+  function addRow() {
+    const next = [...value, {}];
+    onChange(next);
+    setExpanded((s) => new Set(s).add(next.length - 1));
+  }
+
+  function removeRow(i: number) {
+    const next = value.filter((_, idx) => idx !== i);
+    onChange(next);
+    setExpanded((s) => {
+      const n = new Set<number>();
+      s.forEach((v) => { if (v < i) n.add(v); else if (v > i) n.add(v - 1); });
+      return n;
+    });
+  }
+
+  function updateField(i: number, key: string, val: string) {
+    const next = value.map((row, idx) => idx === i ? { ...row, [key]: val } : row);
+    onChange(next);
+  }
+
+  function toggleExpand(i: number) {
+    setExpanded((s) => {
+      const n = new Set(s);
+      n.has(i) ? n.delete(i) : n.add(i);
+      return n;
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      {value.map((row, i) => {
+        const label = row['name'] || row['title'] || `${schema.title ?? fieldKey} ${i + 1}`;
+        const open = expanded.has(i);
+        return (
+          <div key={i} className="rounded-lg border border-[var(--gantry-border)] overflow-hidden">
+            <div
+              className="flex items-center justify-between px-3 py-2 bg-[var(--gantry-hover)] cursor-pointer select-none"
+              onClick={() => toggleExpand(i)}
+            >
+              <span className="text-sm font-medium text-[var(--gantry-text)]">{label}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeRow(i); }}
+                  className="text-[var(--gantry-text-muted)] hover:text-red-500 transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+                {open ? <ChevronUp size={14} className="text-[var(--gantry-text-muted)]" /> : <ChevronDown size={14} className="text-[var(--gantry-text-muted)]" />}
+              </div>
+            </div>
+            {open && (
+              <div className="px-3 py-3 space-y-3">
+                {Object.entries(itemProps).map(([key, propSchema]: [string, any]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-[var(--gantry-text)] mb-0.5">
+                      {propSchema.title ?? key}
+                      {itemRequired.includes(key) && <span className="text-red-500 ml-1">*</span>}
+                    </label>
+                    {propSchema.description && (
+                      <p className="text-xs text-[var(--gantry-text-muted)] mb-1">{propSchema.description}</p>
+                    )}
+                    <input
+                      type={isSecret(key) ? 'password' : 'text'}
+                      className="w-full rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg)] px-2.5 py-1.5 text-xs text-[var(--gantry-text)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+                      value={row[key] ?? ''}
+                      placeholder={propSchema.default ?? ''}
+                      onChange={(e) => updateField(i, key, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={addRow}
+        className="flex items-center gap-1.5 text-xs font-medium text-[var(--gantry-accent)] hover:opacity-80 transition-opacity py-1"
+      >
+        <Plus size={13} />
+        Add {schema.title ? schema.title.replace(/s$/, '') : 'item'}
+      </button>
+    </div>
+  );
+}
+
 // ConfigModal — shown when user clicks Configure on an installed plugin.
 function ConfigModal({
   plugin,
@@ -32,7 +144,7 @@ function ConfigModal({
   onClose: () => void;
 }) {
   const [config, setConfig] = useState<PluginConfig | null>(null);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +152,7 @@ function ConfigModal({
   useEffect(() => {
     api.getPluginConfig(plugin.name).then((c) => {
       setConfig(c);
-      setValues((c.values as Record<string, string>) ?? {});
+      setValues(c.values ?? {});
     }).catch(() => {});
   }, [plugin.name]);
 
@@ -58,7 +170,6 @@ function ConfigModal({
     }
   }
 
-  // Extract field definitions from the JSON Schema.
   const fields = config?.schema?.properties
     ? Object.entries(config.schema.properties as Record<string, any>)
     : [];
@@ -67,8 +178,8 @@ function ConfigModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-[var(--gantry-surface)] rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)]">
+      <div className="bg-[var(--gantry-surface)] rounded-xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)] flex-shrink-0">
           <div className="flex items-center gap-2">
             <Settings size={18} className="text-[var(--gantry-accent)]" />
             <h2 className="font-semibold text-[var(--gantry-text)]">Configure {plugin.title}</h2>
@@ -81,33 +192,45 @@ function ConfigModal({
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
-          {fields.length === 0 && (
+        <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
+          {fields.length === 0 && !config && (
+            <p className="text-sm text-[var(--gantry-text-muted)]">Loading…</p>
+          )}
+          {fields.length === 0 && config && (
             <p className="text-sm text-[var(--gantry-text-muted)]">This plugin has no configuration options.</p>
           )}
-          {fields.map(([key, schema]) => (
+          {fields.map(([key, fieldSchema]) => (
             <div key={key}>
               <label className="block text-sm font-medium text-[var(--gantry-text)] mb-1">
-                {schema.title ?? key}
+                {fieldSchema.title ?? key}
                 {required.includes(key) && <span className="text-red-500 ml-1">*</span>}
               </label>
-              {schema.description && (
-                <p className="text-xs text-[var(--gantry-text-muted)] mb-1">{schema.description}</p>
+              {fieldSchema.description && (
+                <p className="text-xs text-[var(--gantry-text-muted)] mb-2">{fieldSchema.description}</p>
               )}
-              <input
-                type={key.toLowerCase().includes('key') || key.toLowerCase().includes('token') || key.toLowerCase().includes('secret') ? 'password' : 'text'}
-                className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg)] px-3 py-2 text-sm text-[var(--gantry-text)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
-                value={values[key] ?? ''}
-                placeholder={schema.default ?? ''}
-                onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
-              />
+              {fieldSchema.type === 'array' && fieldSchema.items?.type === 'object' ? (
+                <ArrayObjectField
+                  fieldKey={key}
+                  schema={fieldSchema}
+                  value={Array.isArray(values[key]) ? values[key] : []}
+                  onChange={(v) => setValues((prev) => ({ ...prev, [key]: v }))}
+                />
+              ) : (
+                <input
+                  type={isSecret(key) ? 'password' : 'text'}
+                  className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg)] px-3 py-2 text-sm text-[var(--gantry-text)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+                  value={typeof values[key] === 'string' ? values[key] : (values[key] ?? '')}
+                  placeholder={fieldSchema.default ?? ''}
+                  onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+                />
+              )}
             </div>
           ))}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)]">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)] flex-shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text)] hover:bg-[var(--gantry-hover)] transition-colors"
@@ -116,7 +239,7 @@ function ConfigModal({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || fields.length === 0}
+            disabled={saving || (fields.length === 0 && !!config)}
             className="px-4 py-2 text-sm rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {saved ? 'Saved!' : saving ? 'Saving…' : 'Save'}

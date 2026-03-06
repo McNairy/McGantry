@@ -34,12 +34,15 @@ type Plugin struct {
 
 // RegistryEntry is a lightweight summary used in the marketplace browser.
 type RegistryEntry struct {
-	Name        string `json:"name"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Version     string `json:"version"`
-	Author      string `json:"author"`
-	Category    string `json:"category"`
-	IconURL     string `json:"iconUrl,omitempty"`
-	Homepage    string `json:"homepage,omitempty"`
+	Name         string         `json:"name"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	Version      string         `json:"version"`
+	Author       string         `json:"author"`
+	Category     string         `json:"category"`
+	IconURL      string         `json:"iconUrl,omitempty"`
+	Homepage     string         `json:"homepage,omitempty"`
+	ConfigSchema map[string]any `json:"configSchema,omitempty"`
+	EntityPanels []string       `json:"entityPanels,omitempty"`
+	ActionTypes  []string       `json:"actionTypes,omitempty"`
 }

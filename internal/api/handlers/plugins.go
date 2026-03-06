@@ -112,13 +112,16 @@ func (h *Handlers) InstallPlugin(w http.ResponseWriter, r *http.Request) {
 
 	// Build a manifest from the registry entry.
 	manifest := &plugins.Manifest{
-		Name:        entry.Name,
-		Title:       entry.Title,
-		Description: entry.Description,
-		Version:     entry.Version,
-		Author:      entry.Author,
-		Category:    entry.Category,
-		Homepage:    entry.Homepage,
+		Name:         entry.Name,
+		Title:        entry.Title,
+		Description:  entry.Description,
+		Version:      entry.Version,
+		Author:       entry.Author,
+		Category:     entry.Category,
+		Homepage:     entry.Homepage,
+		ConfigSchema: entry.ConfigSchema,
+		EntityPanels: entry.EntityPanels,
+		ActionTypes:  entry.ActionTypes,
 	}
 
 	p := &plugins.Plugin{
@@ -177,8 +180,13 @@ func (h *Handlers) GetPluginConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var schema map[string]any
-	if p.Manifest != nil {
+	if p.Manifest != nil && p.Manifest.ConfigSchema != nil {
 		schema = p.Manifest.ConfigSchema
+	} else {
+		// Fallback for plugins installed before ConfigSchema was persisted.
+		if entry, _ := plugins.FindInRegistry(name); entry != nil {
+			schema = entry.ConfigSchema
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
