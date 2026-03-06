@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { JsonSchema } from '../lib/types';
+import EntityPicker from './EntityPicker';
 
 interface SchemaFormProps {
   schema: JsonSchema;
@@ -123,6 +124,7 @@ function FormField({ name, schema, value, onChange, required }: FieldProps) {
 
   if (schema.type === 'array') {
     const items = Array.isArray(value) ? value : [];
+    const itemEntityRef = schema.items?.['x-entity-ref'];
     return (
       <div className="space-y-1.5">
         <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
@@ -143,6 +145,18 @@ function FormField({ name, schema, value, onChange, required }: FieldProps) {
                     onChange={(newItem) => {
                       const next = [...items];
                       next[idx] = newItem;
+                      onChange(next);
+                    }}
+                  />
+                </div>
+              ) : itemEntityRef ? (
+                <div className="flex-1">
+                  <EntityPicker
+                    entityKind={itemEntityRef}
+                    value={String(item)}
+                    onChange={(v) => {
+                      const next = [...items];
+                      next[idx] = v;
                       onChange(next);
                     }}
                   />
@@ -207,6 +221,26 @@ function FormField({ name, schema, value, onChange, required }: FieldProps) {
           />
         </div>
       </fieldset>
+    );
+  }
+
+  // Entity reference: searchable combobox
+  if (schema['x-entity-ref']) {
+    return (
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+          {label}
+          {required && <span className="ml-0.5 text-[var(--gantry-danger)]">*</span>}
+        </label>
+        {description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)]">{description}</p>
+        )}
+        <EntityPicker
+          entityKind={schema['x-entity-ref']}
+          value={value ?? ''}
+          onChange={onChange}
+        />
+      </div>
     );
   }
 

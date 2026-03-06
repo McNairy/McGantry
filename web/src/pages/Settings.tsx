@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
-import { Sun, Moon, User, Shield, Info, Key, Plus, Trash2, Copy, Check, Lock, Users } from 'lucide-react';
+import { Sun, Moon, User, Shield, Info, Key, Plus, Trash2, Copy, Check, Lock } from 'lucide-react';
 import { api } from '../lib/api';
-import type { APIKey, User as GantryUser } from '../lib/types';
-
-const ROLES = ['viewer', 'developer', 'platform-engineer', 'admin'] as const;
+import type { APIKey } from '../lib/types';
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -26,25 +24,9 @@ export default function Settings() {
   const [pwSuccess, setPwSuccess] = useState(false);
   const [savingPw, setSavingPw] = useState(false);
 
-  // User Management (admin)
-  const [users, setUsers] = useState<GantryUser[]>([]);
-  const [newUsername, setNewUsername] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
-  const [newUserRole, setNewUserRole] = useState<string>('viewer');
-  const [creatingUser, setCreatingUser] = useState(false);
-  const [userError, setUserError] = useState('');
-
-  const isAdmin = user?.role === 'admin';
-
   useEffect(() => {
     api.listAPIKeys().then((keys) => setAPIKeys(keys ?? [])).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (isAdmin) {
-      api.listUsers().then((list) => setUsers(list ?? [])).catch(() => {});
-    }
-  }, [isAdmin]);
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
@@ -92,41 +74,6 @@ export default function Settings() {
       setPwError(e.message);
     } finally {
       setSavingPw(false);
-    }
-  };
-
-  const handleCreateUser = async () => {
-    setUserError('');
-    if (!newUsername.trim() || !newUserPassword.trim()) return;
-    setCreatingUser(true);
-    try {
-      const created = await api.createUser(newUsername.trim(), newUserPassword.trim(), undefined, undefined, newUserRole);
-      setUsers((prev) => [...prev, created]);
-      setNewUsername('');
-      setNewUserPassword('');
-      setNewUserRole('viewer');
-    } catch (e: any) {
-      setUserError(e.message);
-    } finally {
-      setCreatingUser(false);
-    }
-  };
-
-  const handleRoleChange = async (id: string, role: string) => {
-    try {
-      const updated = await api.updateUser(id, { role });
-      setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
-    } catch {
-      // silently ignore — could add toast here
-    }
-  };
-
-  const handleDeleteUser = async (id: string) => {
-    try {
-      await api.deleteUser(id);
-      setUsers((prev) => prev.filter((u) => u.id !== id));
-    } catch {
-      // silently ignore
     }
   };
 
@@ -258,96 +205,6 @@ export default function Settings() {
             {savingPw ? 'Saving…' : 'Update Password'}
           </button>
         </div>
-
-        {/* User Management (admin only) */}
-        {isAdmin && (
-          <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]">
-                <Users className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-[var(--gantry-text-primary)]">User Management</h2>
-                <p className="text-xs text-[var(--gantry-text-secondary)]">Create and manage user accounts</p>
-              </div>
-            </div>
-
-            {/* Create new user */}
-            <div className="mt-4 space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  placeholder="Username"
-                  className="flex-1 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] placeholder-[var(--gantry-text-secondary)] outline-none focus:border-[var(--gantry-accent)]"
-                />
-                <input
-                  type="password"
-                  value={newUserPassword}
-                  onChange={(e) => setNewUserPassword(e.target.value)}
-                  placeholder="Password"
-                  className="flex-1 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] placeholder-[var(--gantry-text-secondary)] outline-none focus:border-[var(--gantry-accent)]"
-                />
-                <select
-                  value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value)}
-                  className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] outline-none focus:border-[var(--gantry-accent)]"
-                >
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <button
-                  onClick={handleCreateUser}
-                  disabled={creatingUser || !newUsername.trim() || !newUserPassword.trim()}
-                  className="flex items-center gap-1.5 rounded-lg bg-[var(--gantry-accent)] px-3 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)] disabled:opacity-50"
-                >
-                  <Plus className="h-4 w-4" /> Add
-                </button>
-              </div>
-              {userError && <p className="text-xs text-red-500">{userError}</p>}
-            </div>
-
-            {/* User list */}
-            {users.length > 0 && (
-              <ul className="mt-4 divide-y divide-[var(--gantry-border)]">
-                {users.map((u) => (
-                  <li key={u.id} className="flex items-center justify-between gap-3 py-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--gantry-bg-tertiary)] text-xs font-semibold text-[var(--gantry-text-primary)]">
-                        {(u.displayName || u.username)[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-[var(--gantry-text-primary)] truncate">
-                          {u.username}
-                          {u.id === user?.id && <span className="ml-1.5 text-xs text-[var(--gantry-text-secondary)]">(you)</span>}
-                        </p>
-                        {u.email && <p className="text-xs text-[var(--gantry-text-secondary)] truncate">{u.email}</p>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <select
-                        value={u.role}
-                        onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                        disabled={u.id === user?.id}
-                        className="rounded border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2 py-1 text-xs text-[var(--gantry-text-primary)] outline-none focus:border-[var(--gantry-accent)] disabled:opacity-50"
-                      >
-                        {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                      <button
-                        onClick={() => handleDeleteUser(u.id)}
-                        disabled={u.id === user?.id}
-                        className="rounded p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-danger)] disabled:pointer-events-none disabled:opacity-30"
-                        title="Delete user"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
 
         {/* API Keys */}
         <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">

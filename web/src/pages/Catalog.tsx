@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import {
   Search, LayoutGrid, List, Plus, X, ArrowLeft,
   Server, Globe, Database, Users, Cloud, FileText,
@@ -47,6 +48,8 @@ const KIND_META: Record<string, { icon: React.ReactNode; description: string; co
 export default function Catalog() {
   const { kind } = useParams<{ kind?: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canWrite = user?.role !== 'viewer';
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -140,7 +143,7 @@ export default function Catalog() {
       properties: {
         _name: { type: 'string', title: 'Name', description: 'Unique identifier' },
         _title: { type: 'string', title: 'Title', description: 'Display name' },
-        _owner: { type: 'string', title: 'Owner', description: 'Team or user that owns this entity' },
+        _owner: { type: 'string', title: 'Owner', description: 'Team or user that owns this entity', 'x-entity-ref': 'Team' },
         _description: { type: 'string', title: 'Description' },
         ...(kindSchema as any).properties,
       },
@@ -159,13 +162,15 @@ export default function Catalog() {
             {kind ? `All ${kind} entities` : 'Browse all entities in the catalog'}
           </p>
         </div>
-        <button
-          onClick={() => openCreate()}
-          className="flex items-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
-        >
-          <Plus className="h-4 w-4" />
-          Create Entity
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => openCreate()}
+            className="flex items-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
+          >
+            <Plus className="h-4 w-4" />
+            Create Entity
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -277,7 +282,7 @@ export default function Catalog() {
             <p className="text-sm text-[var(--gantry-text-secondary)]">
               {hasFilters ? 'No entities match your filters.' : 'No entities yet.'}
             </p>
-            {!hasFilters && (
+            {!hasFilters && canWrite && (
               <button
                 onClick={() => openCreate()}
                 className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] px-4 py-2 text-sm text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"

@@ -17,6 +17,7 @@ import {
   Cloud,
   FileText,
   ClipboardList,
+  UserCog,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import ThemeToggle from './ThemeToggle';
@@ -155,6 +156,23 @@ export default function Sidebar() {
               </li>
             );
           })}
+          {/* Admin-only: Users */}
+          {user?.role === 'admin' && (
+            <li>
+              <Link
+                to="/users"
+                className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive('/users')
+                    ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
+                    : 'text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
+                }`}
+                title={collapsed ? 'Users' : undefined}
+              >
+                <UserCog className="h-5 w-5 shrink-0" />
+                {!collapsed && <span className="truncate">Users</span>}
+              </Link>
+            </li>
+          )}
         </ul>
       </nav>
 

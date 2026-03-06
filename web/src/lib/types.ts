@@ -100,6 +100,8 @@ export interface JsonSchema {
   maximum?: number;
   minLength?: number;
   maxLength?: number;
+  /** Custom extension: entity kind this field references (e.g. "API", "Team"). */
+  'x-entity-ref'?: string;
 }
 
 export const ENTITY_KINDS = [

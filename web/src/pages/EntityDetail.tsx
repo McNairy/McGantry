@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ChevronRight, Pencil, Trash2, X, ExternalLink } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuth } from '../hooks/useAuth';
 import type { Entity, JsonSchema, AuditEntry } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
 
@@ -73,6 +74,8 @@ type Tab = 'overview' | 'yaml' | 'relationships' | 'activity';
 export default function EntityDetail() {
   const { kind, name } = useParams<{ kind: string; name: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canWrite = user?.role !== 'viewer';
   const [entity, setEntity] = useState<Entity | null>(null);
   const [schema, setSchema] = useState<JsonSchema | null>(null);
   const [activity, setActivity] = useState<AuditEntry[]>([]);
@@ -200,20 +203,22 @@ export default function EntityDetail() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setEditing(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
-          >
-            <Pencil className="h-4 w-4" /> Edit
-          </button>
-          <button
-            onClick={() => setShowDelete(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            <Trash2 className="h-4 w-4" /> Delete
-          </button>
-        </div>
+        {canWrite && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setEditing(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+            >
+              <Pencil className="h-4 w-4" /> Edit
+            </button>
+            <button
+              onClick={() => setShowDelete(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

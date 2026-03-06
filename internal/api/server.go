@@ -111,13 +111,13 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Post("/auth/apikeys", h.CreateAPIKey)
 			protected.Delete("/auth/apikeys/{id}", h.RevokeAPIKey)
 
-			// Entity CRUD.
+			// Entity CRUD. Read: any authenticated user. Write: developer+.
 			protected.Get("/entities", h.ListEntities)
 			protected.Get("/entities/{kind}", h.ListEntitiesByKind)
 			protected.Get("/entities/{kind}/{name}", h.GetEntity)
-			protected.Post("/entities", h.CreateEntity)
-			protected.Put("/entities/{kind}/{name}", h.UpdateEntity)
-			protected.Delete("/entities/{kind}/{name}", h.DeleteEntity)
+			protected.With(middleware.RequireRole("developer")).Post("/entities", h.CreateEntity)
+			protected.With(middleware.RequireRole("developer")).Put("/entities/{kind}/{name}", h.UpdateEntity)
+			protected.With(middleware.RequireRole("developer")).Delete("/entities/{kind}/{name}", h.DeleteEntity)
 
 			// Search.
 			protected.Get("/search", h.Search)
@@ -126,9 +126,9 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/schemas", h.ListSchemas)
 			protected.Get("/schemas/{kind}", h.GetSchema)
 
-			// Actions.
+			// Actions. Execute: developer+.
 			protected.Get("/actions", h.ListActions)
-			protected.Post("/actions/{name}/execute", h.ExecuteAction)
+			protected.With(middleware.RequireRole("developer")).Post("/actions/{name}/execute", h.ExecuteAction)
 			protected.Get("/actions/runs", h.ListAllActionRuns)
 			protected.Get("/actions/{name}/runs", h.ListActionRuns)
 			protected.Get("/actions/{name}/runs/{id}", h.GetActionRun)

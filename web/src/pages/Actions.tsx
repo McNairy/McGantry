@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Zap, X, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuth } from '../hooks/useAuth';
 import type { Entity, ActionRun, JsonSchema } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
 
@@ -19,6 +20,8 @@ const statusLabel: Record<string, string> = {
 };
 
 export default function Actions() {
+  const { user } = useAuth();
+  const canWrite = user?.role !== 'viewer';
   const [actions, setActions] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -137,12 +140,16 @@ export default function Actions() {
             {action.metadata.description && (
               <p className="mt-3 text-xs text-[var(--gantry-text-secondary)]">{action.metadata.description}</p>
             )}
-            <button
-              onClick={() => setExecuting(action)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
-            >
-              <Zap className="h-4 w-4" /> Execute
-            </button>
+            {canWrite ? (
+              <button
+                onClick={() => setExecuting(action)}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
+              >
+                <Zap className="h-4 w-4" /> Execute
+              </button>
+            ) : (
+              <p className="mt-4 text-center text-xs text-[var(--gantry-text-secondary)]">Viewer role — execute not permitted</p>
+            )}
           </div>
         ))}
         {actions.length === 0 && (

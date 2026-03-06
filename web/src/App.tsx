@@ -10,6 +10,7 @@ import EntityDetail from './pages/EntityDetail';
 import Actions from './pages/Actions';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
+import UsersPage from './pages/Users';
 
 function AuthenticatedLayout() {
   return (
@@ -25,6 +26,7 @@ function AuthenticatedLayout() {
               <Route path="/catalog/:kind/:name" element={<EntityDetail />} />
               <Route path="/actions" element={<Actions />} />
               <Route path="/audit" element={<AuditLog />} />
+              <Route path="/users" element={<UsersPage />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </ErrorBoundary>
