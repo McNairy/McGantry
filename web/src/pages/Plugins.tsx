@@ -75,43 +75,63 @@ function ArrayObjectField({
     });
   }
 
+  // The "name" key to show inline in the header (first string property named 'name' or 'title').
+  const nameKey = Object.keys(itemProps).find((k) => k === 'name' || k === 'title') ?? null;
+  // Remaining properties shown in the expanded body (everything except nameKey).
+  const bodyProps = Object.entries(itemProps).filter(([k]) => k !== nameKey);
+
   return (
     <div className="space-y-2">
       {value.map((row, i) => {
-        const label = row['name'] || row['title'] || `${schema.title ?? fieldKey} ${i + 1}`;
         const open = expanded.has(i);
+        const namePropSchema = nameKey ? itemProps[nameKey] : null;
         return (
           <div key={i} className="rounded-lg border border-[var(--gantry-border)] overflow-hidden">
-            <div
-              className="flex items-center justify-between px-3 py-2 bg-[var(--gantry-hover)] cursor-pointer select-none"
-              onClick={() => toggleExpand(i)}
-            >
-              <span className="text-sm font-medium text-[var(--gantry-text)]">{label}</span>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-2 bg-[var(--gantry-bg-tertiary)]">
+              {nameKey ? (
+                <input
+                  type="text"
+                  className="flex-1 bg-transparent text-sm font-medium text-[var(--gantry-text-primary)] placeholder:text-[var(--gantry-text-secondary)] outline-none min-w-0"
+                  value={row[nameKey] ?? ''}
+                  placeholder={namePropSchema?.description ? `Cluster name (e.g. prod-us-east)` : `${schema.title ?? fieldKey} ${i + 1}`}
+                  onChange={(e) => updateField(i, nameKey, e.target.value)}
+                />
+              ) : (
+                <span className="flex-1 text-sm font-medium text-[var(--gantry-text-primary)]">
+                  {`${schema.title ?? fieldKey} ${i + 1}`}
+                </span>
+              )}
+              <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); removeRow(i); }}
-                  className="text-[var(--gantry-text-muted)] hover:text-red-500 transition-colors"
+                  onClick={() => toggleExpand(i)}
+                  className="flex items-center gap-1 text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] transition-colors px-1.5 py-0.5 rounded"
+                >
+                  {open ? <><ChevronUp size={13} /> Less</> : <><ChevronDown size={13} /> More</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeRow(i)}
+                  className="text-[var(--gantry-text-secondary)] hover:text-red-500 transition-colors p-0.5"
                 >
                   <Trash2 size={13} />
                 </button>
-                {open ? <ChevronUp size={14} className="text-[var(--gantry-text-muted)]" /> : <ChevronDown size={14} className="text-[var(--gantry-text-muted)]" />}
               </div>
             </div>
             {open && (
-              <div className="px-3 py-3 space-y-3">
-                {Object.entries(itemProps).map(([key, propSchema]: [string, any]) => (
+              <div className="px-3 py-3 space-y-3 border-t border-[var(--gantry-border)]">
+                {bodyProps.map(([key, propSchema]: [string, any]) => (
                   <div key={key}>
-                    <label className="block text-xs font-medium text-[var(--gantry-text)] mb-0.5">
+                    <label className="block text-xs font-medium text-[var(--gantry-text-primary)] mb-0.5">
                       {propSchema.title ?? key}
                       {itemRequired.includes(key) && <span className="text-red-500 ml-1">*</span>}
                     </label>
                     {propSchema.description && (
-                      <p className="text-xs text-[var(--gantry-text-muted)] mb-1">{propSchema.description}</p>
+                      <p className="text-xs text-[var(--gantry-text-secondary)] mb-1">{propSchema.description}</p>
                     )}
                     <input
                       type={isSecret(key) ? 'password' : 'text'}
-                      className="w-full rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg)] px-2.5 py-1.5 text-xs text-[var(--gantry-text)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+                      className="w-full rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2.5 py-1.5 text-xs text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
                       value={row[key] ?? ''}
                       placeholder={propSchema.default ?? ''}
                       onChange={(e) => updateField(i, key, e.target.value)}
@@ -178,35 +198,35 @@ function ConfigModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-[var(--gantry-surface)] rounded-xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)] flex-shrink-0">
+      <div className="bg-[var(--gantry-bg-secondary)] rounded-xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)]">
           <div className="flex items-center gap-2">
             <Settings size={18} className="text-[var(--gantry-accent)]" />
-            <h2 className="font-semibold text-[var(--gantry-text)]">Configure {plugin.title}</h2>
+            <h2 className="font-semibold text-[var(--gantry-text-primary)]">Configure {plugin.title}</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-[var(--gantry-text-muted)] hover:text-[var(--gantry-text)] transition-colors"
+            className="text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] transition-colors"
           >
             ✕
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
+        <div className="px-6 py-5 space-y-5 overflow-y-auto max-h-[60vh]">
           {fields.length === 0 && !config && (
-            <p className="text-sm text-[var(--gantry-text-muted)]">Loading…</p>
+            <p className="text-sm text-[var(--gantry-text-secondary)]">Loading…</p>
           )}
           {fields.length === 0 && config && (
-            <p className="text-sm text-[var(--gantry-text-muted)]">This plugin has no configuration options.</p>
+            <p className="text-sm text-[var(--gantry-text-secondary)]">This plugin has no configuration options.</p>
           )}
           {fields.map(([key, fieldSchema]) => (
             <div key={key}>
-              <label className="block text-sm font-medium text-[var(--gantry-text)] mb-1">
+              <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">
                 {fieldSchema.title ?? key}
                 {required.includes(key) && <span className="text-red-500 ml-1">*</span>}
               </label>
               {fieldSchema.description && (
-                <p className="text-xs text-[var(--gantry-text-muted)] mb-2">{fieldSchema.description}</p>
+                <p className="text-xs text-[var(--gantry-text-secondary)] mb-2">{fieldSchema.description}</p>
               )}
               {fieldSchema.type === 'array' && fieldSchema.items?.type === 'object' ? (
                 <ArrayObjectField
@@ -218,7 +238,7 @@ function ConfigModal({
               ) : (
                 <input
                   type={isSecret(key) ? 'password' : 'text'}
-                  className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg)] px-3 py-2 text-sm text-[var(--gantry-text)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+                  className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
                   value={typeof values[key] === 'string' ? values[key] : (values[key] ?? '')}
                   placeholder={fieldSchema.default ?? ''}
                   onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
@@ -230,10 +250,10 @@ function ConfigModal({
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)] flex-shrink-0">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)]">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text)] hover:bg-[var(--gantry-hover)] transition-colors"
+            className="px-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
           >
             Cancel
           </button>
@@ -268,15 +288,15 @@ function PluginCard({
   const canSync = plugin.installed && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
 
   return (
-    <div className="bg-[var(--gantry-surface)] rounded-xl border border-[var(--gantry-border)] p-5 flex flex-col gap-4 hover:border-[var(--gantry-accent)] transition-colors">
+    <div className="bg-[var(--gantry-bg-secondary)] rounded-xl border border-[var(--gantry-border)] p-5 flex flex-col gap-4 hover:border-[var(--gantry-accent)] transition-colors">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-[var(--gantry-accent)]/10 flex items-center justify-center flex-shrink-0">
             <Puzzle size={20} className="text-[var(--gantry-accent)]" />
           </div>
           <div>
-            <h3 className="font-semibold text-[var(--gantry-text)] text-sm leading-tight">{plugin.title}</h3>
-            <p className="text-xs text-[var(--gantry-text-muted)]">by {plugin.author} · v{plugin.version}</p>
+            <h3 className="font-semibold text-[var(--gantry-text-primary)] text-sm leading-tight">{plugin.title}</h3>
+            <p className="text-xs text-[var(--gantry-text-secondary)]">by {plugin.author} · v{plugin.version}</p>
           </div>
         </div>
         {plugin.installed && (
@@ -287,7 +307,7 @@ function PluginCard({
         )}
       </div>
 
-      <p className="text-sm text-[var(--gantry-text-muted)] line-clamp-2 flex-1">{plugin.description}</p>
+      <p className="text-sm text-[var(--gantry-text-secondary)] line-clamp-2 flex-1">{plugin.description}</p>
 
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}>
@@ -298,7 +318,7 @@ function PluginCard({
             href={plugin.homepage}
             target="_blank"
             rel="noopener noreferrer"
-            className="ml-auto text-xs text-[var(--gantry-text-muted)] hover:text-[var(--gantry-accent)] flex items-center gap-1 transition-colors"
+            className="ml-auto text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-accent)] flex items-center gap-1 transition-colors"
           >
             <ExternalLink size={10} />
             Docs
@@ -330,7 +350,7 @@ function PluginCard({
               onClick={() => onAction(plugin.enabled ? 'disable' : 'enable')}
               className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors flex items-center justify-center gap-1 ${
                 plugin.enabled
-                  ? 'border-[var(--gantry-border)] text-[var(--gantry-text)] hover:bg-[var(--gantry-hover)]'
+                  ? 'border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]'
                   : 'border-[var(--gantry-accent)] text-[var(--gantry-accent)] hover:bg-[var(--gantry-accent)]/10'
               }`}
             >
@@ -345,14 +365,14 @@ function PluginCard({
                 onClick={onSync}
                 disabled={syncing}
                 title="Sync now — discover resources from your cluster"
-                className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text)] hover:bg-[var(--gantry-hover)] transition-colors disabled:opacity-50"
+                className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors disabled:opacity-50"
               >
                 <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
               </button>
             )}
             <button
               onClick={() => onAction('configure')}
-              className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text)] hover:bg-[var(--gantry-hover)] transition-colors"
+              className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
             >
               <Settings size={12} />
             </button>
@@ -443,13 +463,13 @@ export default function Plugins() {
       {/* Header */}
       <div className="px-8 pt-8 pb-4">
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-2xl font-bold text-[var(--gantry-text)]">Plugins</h1>
-          <div className="flex items-center gap-4 text-sm text-[var(--gantry-text-muted)]">
+          <h1 className="text-2xl font-bold text-[var(--gantry-text-primary)]">Plugins</h1>
+          <div className="flex items-center gap-4 text-sm text-[var(--gantry-text-secondary)]">
             <span>{installedCount} installed</span>
             <span>{enabledCount} enabled</span>
           </div>
         </div>
-        <p className="text-sm text-[var(--gantry-text-muted)]">
+        <p className="text-sm text-[var(--gantry-text-secondary)]">
           Browse and manage plugins to extend Gantry with integrations, widgets, and more.
         </p>
       </div>
@@ -464,7 +484,7 @@ export default function Plugins() {
               className={`pb-3 text-sm font-medium border-b-2 transition-colors ${
                 tab === t
                   ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
-                  : 'border-transparent text-[var(--gantry-text-muted)] hover:text-[var(--gantry-text)]'
+                  : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
               }`}
             >
               {t === 'browse' ? 'Browse' : `Installed${installedCount > 0 ? ` (${installedCount})` : ''}`}
@@ -476,13 +496,13 @@ export default function Plugins() {
       {/* Filters */}
       <div className="px-8 py-4 flex items-center gap-3 flex-wrap">
         <div className="relative flex-shrink-0">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--gantry-text-muted)]" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--gantry-text-secondary)]" />
           <input
             type="text"
             placeholder="Search plugins…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 pr-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-surface)] text-[var(--gantry-text)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)] w-52"
+            className="pl-8 pr-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)] w-52"
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -493,7 +513,7 @@ export default function Plugins() {
               className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
                 category === cat.id
                   ? 'bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)]'
-                  : 'bg-[var(--gantry-surface)] border border-[var(--gantry-border)] text-[var(--gantry-text-muted)] hover:text-[var(--gantry-text)]'
+                  : 'bg-[var(--gantry-bg-secondary)] border border-[var(--gantry-border)] text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
               }`}
             >
               {cat.label}
@@ -505,7 +525,7 @@ export default function Plugins() {
       {/* Content */}
       <div className="flex-1 px-8 pb-8">
         {loading ? (
-          <div className="flex items-center justify-center py-24 text-[var(--gantry-text-muted)]">
+          <div className="flex items-center justify-center py-24 text-[var(--gantry-text-secondary)]">
             <Package size={24} className="animate-pulse mr-3" />
             Loading plugins…
           </div>
@@ -514,7 +534,7 @@ export default function Plugins() {
             <p className="text-sm text-red-500">{error}</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3 text-[var(--gantry-text-muted)]">
+          <div className="flex flex-col items-center justify-center py-24 gap-3 text-[var(--gantry-text-secondary)]">
             <Package size={32} />
             <p className="text-sm">No plugins found.</p>
           </div>
