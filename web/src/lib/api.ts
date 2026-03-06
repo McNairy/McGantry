@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -100,4 +100,15 @@ export const api = {
 
   getEntityGraph: (kind: string, name: string) =>
     request<GraphData>('GET', `/graph/${kind}/${name}`),
+
+  // Plugin marketplace
+  listPlugins: () => request<PluginRegistryEntry[]>('GET', '/plugins'),
+  getPlugin: (name: string) => request<PluginDetail>('GET', `/plugins/${name}`),
+  installPlugin: (name: string) => request<PluginDetail>('POST', `/plugins/${name}/install`, {}),
+  uninstallPlugin: (name: string) => request<void>('DELETE', `/plugins/${name}`),
+  enablePlugin: (name: string, enabled: boolean) =>
+    request<void>('PUT', `/plugins/${name}/enable`, { enabled }),
+  getPluginConfig: (name: string) => request<PluginConfig>('GET', `/plugins/${name}/config`),
+  updatePluginConfig: (name: string, values: Record<string, any>) =>
+    request<void>('PUT', `/plugins/${name}/config`, values),
 };

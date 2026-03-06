@@ -138,6 +138,15 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 
 			// Audit log.
 			protected.Get("/audit", h.ListAuditEntries)
+
+			// Plugin marketplace. Write endpoints require developer+.
+			protected.Get("/plugins", h.ListPlugins)
+			protected.Get("/plugins/{name}", h.GetPlugin)
+			protected.With(middleware.RequireRole("developer")).Post("/plugins/{name}/install", h.InstallPlugin)
+			protected.With(middleware.RequireRole("developer")).Delete("/plugins/{name}", h.UninstallPlugin)
+			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/enable", h.EnablePlugin)
+			protected.Get("/plugins/{name}/config", h.GetPluginConfig)
+			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/config", h.UpdatePluginConfig)
 		})
 
 		// WebSocket (public -- auth is handled inside the WS handshake).

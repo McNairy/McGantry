@@ -11,6 +11,7 @@ import Actions from './pages/Actions';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
 import UsersPage from './pages/Users';
+import Plugins from './pages/Plugins';
 
 function AuthenticatedLayout() {
   return (
@@ -27,6 +28,7 @@ function AuthenticatedLayout() {
               <Route path="/actions" element={<Actions />} />
               <Route path="/audit" element={<AuditLog />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/plugins" element={<Plugins />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </ErrorBoundary>

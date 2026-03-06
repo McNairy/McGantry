@@ -123,6 +123,46 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
+export interface PluginRegistryEntry {
+  name: string;
+  title: string;
+  description: string;
+  version: string;
+  author: string;
+  category: 'integration' | 'widget' | 'entity-kind' | 'action-type' | 'auth-provider';
+  iconUrl?: string;
+  homepage?: string;
+  installed: boolean;
+  enabled: boolean;
+  installedAt?: string;
+}
+
+export interface PluginDetail {
+  id: string;
+  name: string;
+  version: string;
+  enabled: boolean;
+  config?: Record<string, any>;
+  manifest?: {
+    name: string;
+    title: string;
+    description: string;
+    version: string;
+    author: string;
+    category: string;
+    configSchema?: Record<string, any>;
+    entityPanels?: string[];
+    actionTypes?: string[];
+  };
+  installedAt: string;
+  updatedAt: string;
+}
+
+export interface PluginConfig {
+  schema?: Record<string, any>;
+  values?: Record<string, any>;
+}
+
 export const ENTITY_KINDS = [
   { name: 'Service', plural: 'services', icon: 'Server' },
   { name: 'API', plural: 'apis', icon: 'Globe' },

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plugin",
+  "description": "A Gantry plugin that extends the platform with additional capabilities.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique plugin identifier (e.g. github, pagerduty)"
+    },
+    "version": {
+      "type": "string",
+      "description": "Installed plugin version"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether the plugin is currently enabled",
+      "default": false
+    },
+    "category": {
+      "type": "string",
+      "description": "Plugin category",
+      "enum": ["integration", "widget", "entity-kind", "action-type", "auth-provider"]
+    },
+    "config": {
+      "type": "object",
+      "description": "Plugin configuration key-value pairs",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["name", "version"]
+}

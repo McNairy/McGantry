@@ -1,0 +1,255 @@
+[
+  {
+    "name": "github",
+    "title": "GitHub",
+    "description": "GitHub OAuth login, workflow dispatch actions, and repository info panels on Services.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "integration",
+    "homepage": "https://github.com/gantrydev/plugin-github",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "appId": {
+          "type": "string",
+          "title": "GitHub App ID",
+          "description": "Your GitHub App's numeric ID"
+        },
+        "privateKey": {
+          "type": "string",
+          "title": "Private Key",
+          "description": "PEM-encoded private key for your GitHub App"
+        },
+        "webhookSecret": {
+          "type": "string",
+          "title": "Webhook Secret",
+          "description": "Secret used to verify GitHub webhook payloads"
+        },
+        "orgName": {
+          "type": "string",
+          "title": "Organization",
+          "description": "GitHub organization name (optional)"
+        }
+      },
+      "required": ["appId", "privateKey"]
+    },
+    "entityPanels": ["Service"],
+    "actionTypes": ["github-workflow-dispatch"]
+  },
+  {
+    "name": "pagerduty",
+    "title": "PagerDuty",
+    "description": "On-call schedule panels for Services and Teams, plus incident management widgets.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "integration",
+    "homepage": "https://github.com/gantrydev/plugin-pagerduty",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "title": "API Key",
+          "description": "PagerDuty REST API key"
+        },
+        "serviceIdAnnotation": {
+          "type": "string",
+          "title": "Service ID Annotation",
+          "description": "Entity annotation key that holds the PagerDuty service ID",
+          "default": "pagerduty.com/service-id"
+        }
+      },
+      "required": ["apiKey"]
+    },
+    "entityPanels": ["Service", "Team"]
+  },
+  {
+    "name": "kubernetes",
+    "title": "Kubernetes",
+    "description": "Auto-discovers services, deployments, and namespaces from your clusters and syncs them to the catalog. Adds resource status panels.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "integration",
+    "homepage": "https://github.com/gantrydev/plugin-kubernetes",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "clusterUrl": {
+          "type": "string",
+          "title": "Cluster URL",
+          "description": "Kubernetes API server URL"
+        },
+        "token": {
+          "type": "string",
+          "title": "Service Account Token",
+          "description": "Bearer token for cluster authentication"
+        },
+        "caData": {
+          "type": "string",
+          "title": "CA Certificate",
+          "description": "Base64-encoded cluster CA certificate (optional)"
+        }
+      },
+      "required": ["clusterUrl", "token"]
+    },
+    "entityPanels": ["Service", "Infrastructure"]
+  },
+  {
+    "name": "slack",
+    "title": "Slack",
+    "description": "Send notifications on action runs, approvals, and sync errors to Slack channels.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "integration",
+    "homepage": "https://github.com/gantrydev/plugin-slack",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "botToken": {
+          "type": "string",
+          "title": "Bot Token",
+          "description": "Slack bot OAuth token (xoxb-...)"
+        },
+        "defaultChannel": {
+          "type": "string",
+          "title": "Default Channel",
+          "description": "Default Slack channel for notifications (e.g. #platform-alerts)"
+        }
+      },
+      "required": ["botToken"]
+    }
+  },
+  {
+    "name": "datadog",
+    "title": "Datadog",
+    "description": "Embed SLO status, error rates, and service metrics panels on Service entities.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "widget",
+    "homepage": "https://github.com/gantrydev/plugin-datadog",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "title": "API Key",
+          "description": "Datadog API key"
+        },
+        "appKey": {
+          "type": "string",
+          "title": "Application Key",
+          "description": "Datadog application key"
+        },
+        "site": {
+          "type": "string",
+          "title": "Site",
+          "description": "Datadog site (e.g. datadoghq.com, datadoghq.eu)",
+          "default": "datadoghq.com"
+        }
+      },
+      "required": ["apiKey", "appKey"]
+    },
+    "entityPanels": ["Service"]
+  },
+  {
+    "name": "grafana",
+    "title": "Grafana",
+    "description": "Embed Grafana dashboard panels directly on Service and Infrastructure entity pages.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "widget",
+    "homepage": "https://github.com/gantrydev/plugin-grafana",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "grafanaUrl": {
+          "type": "string",
+          "title": "Grafana URL",
+          "description": "Base URL of your Grafana instance"
+        },
+        "apiKey": {
+          "type": "string",
+          "title": "API Key",
+          "description": "Grafana service account token"
+        }
+      },
+      "required": ["grafanaUrl", "apiKey"]
+    },
+    "entityPanels": ["Service", "Infrastructure"]
+  },
+  {
+    "name": "argocd",
+    "title": "ArgoCD",
+    "description": "Trigger ArgoCD sync actions and display application sync status on Service entities.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "action-type",
+    "homepage": "https://github.com/gantrydev/plugin-argocd",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "argocdUrl": {
+          "type": "string",
+          "title": "ArgoCD URL",
+          "description": "Base URL of your ArgoCD instance"
+        },
+        "token": {
+          "type": "string",
+          "title": "API Token",
+          "description": "ArgoCD API token"
+        }
+      },
+      "required": ["argocdUrl", "token"]
+    },
+    "entityPanels": ["Service"],
+    "actionTypes": ["argocd-sync"]
+  },
+  {
+    "name": "flux",
+    "title": "Flux CD",
+    "description": "Trigger Flux GitOps reconciliation actions from the Gantry UI.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "action-type",
+    "homepage": "https://github.com/gantrydev/plugin-flux",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "apiEndpoint": {
+          "type": "string",
+          "title": "Flux API Endpoint",
+          "description": "Flux notification API webhook URL"
+        }
+      },
+      "required": ["apiEndpoint"]
+    },
+    "actionTypes": ["flux-reconcile"]
+  },
+  {
+    "name": "terraform-cloud",
+    "title": "Terraform Cloud",
+    "description": "Trigger Terraform plan and apply runs and view workspace status on Infrastructure entities.",
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "action-type",
+    "homepage": "https://github.com/gantrydev/plugin-terraform-cloud",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "title": "API Token",
+          "description": "Terraform Cloud API token"
+        },
+        "organization": {
+          "type": "string",
+          "title": "Organization",
+          "description": "Terraform Cloud organization name"
+        }
+      },
+      "required": ["token", "organization"]
+    },
+    "entityPanels": ["Infrastructure"],
+    "actionTypes": ["terraform-plan", "terraform-apply"]
+  }
+]

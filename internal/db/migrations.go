@@ -103,6 +103,20 @@ func allMigrations(dbType string) []string {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_api_keys_user_id  ON api_keys(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash)`,
+
+		// ------------------------------------------------------------------
+		// Table: plugins
+		// ------------------------------------------------------------------
+		`CREATE TABLE IF NOT EXISTS plugins (
+			id           TEXT PRIMARY KEY,
+			name         TEXT UNIQUE NOT NULL,
+			version      TEXT NOT NULL,
+			enabled      INTEGER NOT NULL DEFAULT 0,
+			config       TEXT,
+			manifest     TEXT NOT NULL,
+			installed_at TIMESTAMP NOT NULL,
+			updated_at   TIMESTAMP NOT NULL
+		)`,
 	}
 
 	// Default admin user — dialect-aware upsert.

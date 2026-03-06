@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gantrydev/gantry/internal/entity"
+	"github.com/gantrydev/gantry/internal/plugins"
 )
 
 // ---------------------------------------------------------------------------
@@ -1082,4 +1083,139 @@ func searchString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Plugin queries
+// ---------------------------------------------------------------------------
+
+// ListPlugins returns all installed plugins.
+func (d *DB) ListPlugins(ctx context.Context) ([]plugins.Plugin, error) {
+	rows, err := d.queryRows(ctx, `
+		SELECT id, name, version, enabled, config, manifest, installed_at, updated_at
+		FROM plugins ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []plugins.Plugin
+	for rows.Next() {
+		p, err := scanPlugin(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, p)
+	}
+	return result, rows.Err()
+}
+
+// GetPlugin returns a single plugin by name.
+func (d *DB) GetPlugin(ctx context.Context, name string) (*plugins.Plugin, error) {
+	row := d.queryRow(ctx, `
+		SELECT id, name, version, enabled, config, manifest, installed_at, updated_at
+		FROM plugins WHERE name = ?`, name)
+	p, err := scanPlugin(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// UpsertPlugin inserts or updates a plugin record.
+func (d *DB) UpsertPlugin(ctx context.Context, p *plugins.Plugin) error {
+	configJSON, err := json.Marshal(p.Config)
+	if err != nil {
+		return err
+	}
+	manifestJSON, err := json.Marshal(p.Manifest)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if p.InstalledAt == "" {
+		p.InstalledAt = now
+	}
+	p.UpdatedAt = now
+
+	_, err = d.exec(ctx, `
+		INSERT INTO plugins (id, name, version, enabled, config, manifest, installed_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			version      = excluded.version,
+			enabled      = excluded.enabled,
+			config       = excluded.config,
+			manifest     = excluded.manifest,
+			updated_at   = excluded.updated_at`,
+		p.ID, p.Name, p.Version,
+		boolToInt(p.Enabled),
+		string(configJSON),
+		string(manifestJSON),
+		p.InstalledAt, p.UpdatedAt,
+	)
+	return err
+}
+
+// DeletePlugin removes a plugin by name.
+func (d *DB) DeletePlugin(ctx context.Context, name string) error {
+	_, err := d.exec(ctx, `DELETE FROM plugins WHERE name = ?`, name)
+	return err
+}
+
+// UpdatePluginEnabled sets the enabled flag for a plugin.
+func (d *DB) UpdatePluginEnabled(ctx context.Context, name string, enabled bool) error {
+	_, err := d.exec(ctx,
+		`UPDATE plugins SET enabled = ?, updated_at = ? WHERE name = ?`,
+		boolToInt(enabled), time.Now().UTC().Format(time.RFC3339), name)
+	return err
+}
+
+// UpdatePluginConfig saves the config JSON for a plugin.
+func (d *DB) UpdatePluginConfig(ctx context.Context, name string, config map[string]any) error {
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	_, err = d.exec(ctx,
+		`UPDATE plugins SET config = ?, updated_at = ? WHERE name = ?`,
+		string(configJSON), time.Now().UTC().Format(time.RFC3339), name)
+	return err
+}
+
+type pluginScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanPlugin(s pluginScanner) (plugins.Plugin, error) {
+	var p plugins.Plugin
+	var enabledInt int
+	var configStr, manifestStr sql.NullString
+
+	err := s.Scan(&p.ID, &p.Name, &p.Version, &enabledInt,
+		&configStr, &manifestStr, &p.InstalledAt, &p.UpdatedAt)
+	if err != nil {
+		return p, err
+	}
+	p.Enabled = enabledInt != 0
+
+	if configStr.Valid && configStr.String != "" && configStr.String != "null" {
+		_ = json.Unmarshal([]byte(configStr.String), &p.Config)
+	}
+	if manifestStr.Valid && manifestStr.String != "" {
+		var m plugins.Manifest
+		if err := json.Unmarshal([]byte(manifestStr.String), &m); err == nil {
+			p.Manifest = &m
+		}
+	}
+	return p, nil
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
