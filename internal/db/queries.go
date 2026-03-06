@@ -532,6 +532,22 @@ func (d *DB) GetEntityGraph(ctx context.Context, kind, namespace, name string) (
 		}
 	}
 
+	// Forward: deployedIn — [{kind, name}, ...]
+	if raw, ok := spec["deployedIn"]; ok {
+		if envs, ok := raw.([]any); ok {
+			for _, env := range envs {
+				if m, ok := env.(map[string]any); ok {
+					envKind, _ := m["kind"].(string)
+					envName, _ := m["name"].(string)
+					if envKind != "" && envName != "" {
+						addNode(envKind, envName)
+						edges = append(edges, GraphEdge{From: rootID, To: envKind + "/" + envName, Relation: "deployedIn"})
+					}
+				}
+			}
+		}
+	}
+
 	// Forward: providesApis — [apiName, ...]
 	if raw, ok := spec["providesApis"]; ok {
 		if apis, ok := raw.([]any); ok {
@@ -590,11 +606,30 @@ func (d *DB) GetEntityGraph(ctx context.Context, kind, namespace, name string) (
 				}
 			}
 		}
+		if raw, ok := e.Spec["deployedIn"]; ok {
+			if envs, ok := raw.([]any); ok {
+				for _, env := range envs {
+					if m, ok := env.(map[string]any); ok {
+						envKind, _ := m["kind"].(string)
+						envName, _ := m["name"].(string)
+						if envKind == kind && envName == name {
+							if _, exists := nodes[eID]; !exists {
+								nodes[eID] = GraphNode{ID: eID, Kind: e.Kind, Name: e.Metadata.Name, Title: e.Metadata.Title}
+							}
+							edges = append(edges, GraphEdge{From: eID, To: rootID, Relation: "deployedIn"})
+						}
+					}
+				}
+			}
+		}
 	}
 
 	nodeSlice := make([]GraphNode, 0, len(nodes))
 	for _, n := range nodes {
 		nodeSlice = append(nodeSlice, n)
+	}
+	if edges == nil {
+		edges = []GraphEdge{}
 	}
 	return &GraphData{Nodes: nodeSlice, Edges: edges}, nil
 }

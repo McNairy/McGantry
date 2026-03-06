@@ -20,29 +20,71 @@ export default function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  // Refs so document-level keydown handler always sees current state
+  const resultsRef = useRef<SearchResult[]>([]);
+  const selectedIndexRef = useRef(0);
+  resultsRef.current = results;
+  selectedIndexRef.current = selectedIndex;
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setOpen((prev) => !prev);
+        return;
       }
     }
+    function handleOpenSearch() {
+      setOpen(true);
+    }
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('gantry:open-search', handleOpenSearch);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('gantry:open-search', handleOpenSearch);
+    };
   }, []);
 
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
+    if (!open) {
       setQuery('');
       setResults([]);
       setSelectedIndex(0);
+      return;
     }
-  }, [open]);
+    setTimeout(() => inputRef.current?.focus(), 50);
+
+    function handleNavKeyDown(e: KeyboardEvent) {
+      const len = resultsRef.current.length;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.min(prev + 1, len - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const result = resultsRef.current[selectedIndexRef.current];
+        if (result) {
+          setOpen(false);
+          navigate(`/catalog/${result.kind}/${result.name}`);
+        }
+      } else if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('keydown', handleNavKeyDown);
+    return () => document.removeEventListener('keydown', handleNavKeyDown);
+  }, [open, navigate]);
+
+  useEffect(() => {
+    if (!listRef.current) return;
+    const selected = listRef.current.querySelector('[data-selected="true"]');
+    selected?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex]);
 
   const doSearch = useCallback((q: string) => {
     if (!q.trim()) {
@@ -72,21 +114,6 @@ export default function CommandPalette() {
     navigate(`/catalog/${result.kind}/${result.name}`);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex((prev) => Math.max(prev - 1, 0));
-    } else if (e.key === 'Enter' && results[selectedIndex]) {
-      e.preventDefault();
-      selectResult(results[selectedIndex]);
-    } else if (e.key === 'Escape') {
-      setOpen(false);
-    }
-  };
-
   const grouped = results.reduce<Record<string, SearchResult[]>>((acc, r) => {
     if (!acc[r.kind]) acc[r.kind] = [];
     acc[r.kind].push(r);
@@ -109,7 +136,6 @@ export default function CommandPalette() {
             type="text"
             value={query}
             onChange={(e) => handleInputChange(e.target.value)}
-            onKeyDown={handleKeyDown}
             placeholder="Search entities..."
             className="flex-1 bg-transparent text-sm text-[var(--gantry-text-primary)] outline-none placeholder:text-[var(--gantry-text-secondary)]"
           />
@@ -119,7 +145,7 @@ export default function CommandPalette() {
         </div>
 
         {/* Results */}
-        <div className="max-h-80 overflow-y-auto p-2">
+        <div ref={listRef} className="max-h-80 overflow-y-auto p-2">
           {loading && (
             <div className="flex items-center justify-center py-8">
               <div className="spinner text-[var(--gantry-accent)]" />
@@ -155,9 +181,10 @@ export default function CommandPalette() {
                     return (
                       <button
                         key={`${result.kind}-${result.name}`}
+                        data-selected={idx === selectedIndex ? 'true' : 'false'}
                         className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                           idx === selectedIndex
-                            ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
+                            ? 'bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)]'
                             : 'text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]'
                         }`}
                         onClick={() => selectResult(result)}
@@ -165,7 +192,7 @@ export default function CommandPalette() {
                       >
                         <span className="font-medium">{result.name}</span>
                         {result.title && result.title !== result.name && (
-                          <span className="truncate text-[var(--gantry-text-secondary)]">
+                          <span className={`truncate ${idx === selectedIndex ? 'opacity-70' : 'text-[var(--gantry-text-secondary)]'}`}>
                             {result.title}
                           </span>
                         )}

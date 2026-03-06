@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -113,4 +113,7 @@ export const api = {
     request<void>('PUT', `/plugins/${name}/config`, values),
 
   syncPlugin: (name: string) => request<PluginSyncResult>('POST', `/plugins/${name}/sync`, {}),
+
+  getKubernetesWorkload: (appName: string, namespaces: string[]) =>
+    request<K8sWorkloadInfo>('GET', `/plugins/kubernetes/workload/${encodeURIComponent(appName)}?namespaces=${namespaces.join(',')}`),
 };

@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // Result represents a single search hit from the FTS5 index.
@@ -37,15 +38,24 @@ func (s *Service) Search(ctx context.Context, query string) ([]*Result, error) {
 		return nil, nil
 	}
 
+	// Sanitize: FTS5 treats '-', '+', '"', '*', '(', ')' as operators.
+	// The tokenizer also splits on '-' and '_', so "dxc-portal" is indexed
+	// as tokens "dxc" and "portal". Replace those separators with spaces so
+	// the query mirrors how the text was indexed, then add '*' for prefix
+	// matching on the last token. e.g. "dxc-port" → "dxc port*".
+	ftsQuery := sanitizeFTS5(query)
+	if ftsQuery == "" {
+		return nil, nil
+	}
+
 	// Join FTS results back to entities table to get namespace (not in FTS index).
-	// Append * for prefix matching so partial words match.
 	const stmt = `SELECT e.kind, e.name, e.namespace, e.title, fts.rank
 		FROM entities_fts fts
 		JOIN entities e ON e.rowid = fts.rowid
 		WHERE entities_fts MATCH ?
 		ORDER BY fts.rank`
 
-	rows, err := s.db.QueryContext(ctx, stmt, query+"*")
+	rows, err := s.db.QueryContext(ctx, stmt, ftsQuery)
 	if err != nil {
 		return nil, fmt.Errorf("search: query %q: %w", query, err)
 	}
@@ -66,6 +76,29 @@ func (s *Service) Search(ctx context.Context, query string) ([]*Result, error) {
 	}
 
 	return results, nil
+}
+
+// sanitizeFTS5 converts a raw user query into a safe FTS5 MATCH expression.
+// It replaces characters that are both FTS5 operators and common name
+// separators (-, _, +, etc.) with spaces so they align with how the FTS5
+// unicode61 tokenizer indexed the text. The last token gets a '*' suffix for
+// prefix matching, enabling search-as-you-type behaviour.
+func sanitizeFTS5(q string) string {
+	var b strings.Builder
+	for _, r := range q {
+		switch r {
+		case '-', '_', '+', '"', '(', ')', '*', '\\':
+			b.WriteByte(' ')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	parts := strings.Fields(b.String())
+	if len(parts) == 0 {
+		return ""
+	}
+	parts[len(parts)-1] += "*"
+	return strings.Join(parts, " ")
 }
 
 // Reindex rebuilds the FTS5 index from the underlying entities table.

@@ -172,6 +172,40 @@ export interface PluginSyncResult {
   errors?: string[];
 }
 
+export interface K8sContainerInfo {
+  name: string;
+  image: string;
+  ready: boolean;
+  restarts: number;
+  state: 'running' | 'waiting' | 'terminated' | 'unknown';
+  reason?: string;
+}
+
+export interface K8sPodInfo {
+  name: string;
+  namespace: string;
+  phase: string;
+  ready: boolean;
+  totalRestarts: number;
+  nodeName?: string;
+  startTime?: string;
+  containers: K8sContainerInfo[];
+}
+
+export interface K8sDeploymentInfo {
+  name: string;
+  namespace: string;
+  desiredReplicas: number;
+  readyReplicas: number;
+  availableReplicas: number;
+}
+
+export interface K8sWorkloadInfo {
+  appName: string;
+  deployments: K8sDeploymentInfo[];
+  pods: K8sPodInfo[];
+}
+
 export const ENTITY_KINDS = [
   { name: 'Service', plural: 'services', icon: 'Server' },
   { name: 'API', plural: 'apis', icon: 'Globe' },

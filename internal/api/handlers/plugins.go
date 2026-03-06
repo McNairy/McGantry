@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go2engle/gantry/internal/plugins"
@@ -231,53 +232,182 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 
 	switch name {
 	case "kubernetes":
-		config := normalizeK8sConfig(p.Config)
-		result, err := k8s.Sync(r.Context(), config, h.DB)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+		clusters := allClusterConfigs(p.Config)
+		if len(clusters) == 0 {
+			writeError(w, http.StatusBadRequest, "no clusters configured")
 			return
 		}
-		for _, e := range result.Errors {
+		combined := &k8s.SyncResult{}
+		for _, cfg := range clusters {
+			result, err := k8s.Sync(r.Context(), cfg, h.DB)
+			if err != nil {
+				combined.Errors = append(combined.Errors, err.Error())
+				continue
+			}
+			combined.Namespaces += result.Namespaces
+			combined.Deployments += result.Deployments
+			combined.Services += result.Services
+			combined.Created += result.Created
+			combined.Updated += result.Updated
+			combined.Errors = append(combined.Errors, result.Errors...)
+		}
+		for _, e := range combined.Errors {
 			log.Printf("[kubernetes-sync] error: %s", e)
 		}
-		if len(result.Errors) > 0 {
-			log.Printf("[kubernetes-sync] completed with %d error(s), %d created, %d updated",
-				len(result.Errors), result.Created, result.Updated)
-		}
-		writeJSON(w, http.StatusOK, result)
+		writeJSON(w, http.StatusOK, combined)
 	default:
 		writeError(w, http.StatusNotImplemented, "sync not supported for plugin: "+name)
 	}
 }
 
-// normalizeK8sConfig converts saved plugin config to the flat key format
-// expected by k8s.NewClient (clusterUrl, token, caData, namespace).
-// It handles both the flat format and the legacy "clusters" array format.
-func normalizeK8sConfig(raw map[string]any) map[string]any {
-	out := make(map[string]any, len(raw))
-	for k, v := range raw {
-		out[k] = v
+// allClusterConfigs extracts every cluster from the plugin config and returns
+// each as a flat map with the keys expected by k8s.NewClient:
+// clusterUrl, token, caData (optional), namespace (optional).
+// It handles both the clusters-array format and the legacy flat format.
+func allClusterConfigs(raw map[string]any) []map[string]any {
+	if raw == nil {
+		return nil
 	}
-	// If using legacy clusters-array format, promote the first entry to flat keys.
 	if clusters, ok := raw["clusters"]; ok {
 		if arr, ok := clusters.([]any); ok && len(arr) > 0 {
-			if first, ok := arr[0].(map[string]any); ok {
-				if u, ok := first["url"].(string); ok && u != "" {
-					out["clusterUrl"] = u
+			var out []map[string]any
+			for _, item := range arr {
+				c, ok := item.(map[string]any)
+				if !ok {
+					continue
 				}
-				if t, ok := first["token"].(string); ok && t != "" {
-					out["token"] = t
+				cfg := map[string]any{}
+				if u, _ := c["url"].(string); u != "" {
+					cfg["clusterUrl"] = u
 				}
-				if ca, ok := first["caData"].(string); ok && ca != "" {
-					out["caData"] = ca
+				if t, _ := c["token"].(string); t != "" {
+					cfg["token"] = t
 				}
-				if ns, ok := first["namespaces"].(string); ok && ns != "" {
-					out["namespace"] = ns
+				if ca, _ := c["caData"].(string); ca != "" {
+					cfg["caData"] = ca
 				}
+				if ns, _ := c["namespaces"].(string); ns != "" {
+					cfg["namespace"] = ns
+				}
+				if name, _ := c["name"].(string); name != "" {
+					cfg["clusterName"] = name
+				}
+				if cfg["clusterUrl"] != nil && cfg["token"] != nil {
+					out = append(out, cfg)
+				}
+			}
+			return out
+		}
+	}
+	// Flat format (legacy): treat the whole config as a single cluster.
+	cfg := map[string]any{}
+	if u, _ := raw["clusterUrl"].(string); u != "" {
+		cfg["clusterUrl"] = u
+	}
+	if t, _ := raw["token"].(string); t != "" {
+		cfg["token"] = t
+	}
+	if ca, _ := raw["caData"].(string); ca != "" {
+		cfg["caData"] = ca
+	}
+	if ns, _ := raw["namespace"].(string); ns != "" {
+		cfg["namespace"] = ns
+	}
+	if cfg["clusterUrl"] != nil && cfg["token"] != nil {
+		return []map[string]any{cfg}
+	}
+	return nil
+}
+
+// normalizeK8sConfig is kept for callers that still need a single-cluster flat config.
+// It returns the first cluster config or the flat config as-is.
+func normalizeK8sConfig(raw map[string]any) map[string]any {
+	cfgs := allClusterConfigs(raw)
+	if len(cfgs) > 0 {
+		return cfgs[0]
+	}
+	return raw
+}
+
+// GetKubernetesWorkload returns deployment and pod info for an app across its namespaces.
+func (h *Handlers) GetKubernetesWorkload(w http.ResponseWriter, r *http.Request) {
+	appName := chi.URLParam(r, "appName")
+
+	var namespaces []string
+	if ns := r.URL.Query().Get("namespaces"); ns != "" {
+		for _, n := range strings.Split(ns, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				namespaces = append(namespaces, n)
 			}
 		}
 	}
-	return out
+
+	p, err := h.DB.GetPlugin(r.Context(), "kubernetes")
+	if err != nil || p == nil {
+		writeError(w, http.StatusNotFound, "kubernetes plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "kubernetes plugin is not enabled")
+		return
+	}
+
+	clusters := allClusterConfigs(p.Config)
+	if len(clusters) == 0 {
+		writeError(w, http.StatusBadRequest, "no clusters configured")
+		return
+	}
+
+	combined := &k8s.WorkloadInfo{AppName: appName, Deployments: []k8s.DeploymentInfo{}, Pods: []k8s.PodInfo{}}
+	for _, cfg := range clusters {
+		clusterNS := namespaces
+		if len(clusterNS) == 0 {
+			if ns, _ := cfg["namespace"].(string); ns != "" {
+				for _, n := range strings.Split(ns, ",") {
+					if n = strings.TrimSpace(n); n != "" {
+						clusterNS = append(clusterNS, n)
+					}
+				}
+			}
+		}
+		client, err := k8s.NewClient(cfg)
+		if err != nil {
+			continue
+		}
+		info, err := client.GetWorkload(appName, clusterNS)
+		if err != nil {
+			continue
+		}
+		combined.Deployments = append(combined.Deployments, info.Deployments...)
+		combined.Pods = append(combined.Pods, info.Pods...)
+	}
+	writeJSON(w, http.StatusOK, combined)
+}
+
+// StreamKubernetesPodLogs streams logs from a pod container as plain text.
+func (h *Handlers) StreamKubernetesPodLogs(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	pod := chi.URLParam(r, "pod")
+	container := chi.URLParam(r, "container")
+
+	p, err := h.DB.GetPlugin(r.Context(), "kubernetes")
+	if err != nil || p == nil {
+		writeError(w, http.StatusNotFound, "kubernetes plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "kubernetes plugin is not enabled")
+		return
+	}
+
+	config := normalizeK8sConfig(p.Config)
+	client, err := k8s.NewClient(config)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	client.StreamLogs(w, namespace, pod, container, 200)
 }
 
 // newShortID generates a short random ID for plugin records.

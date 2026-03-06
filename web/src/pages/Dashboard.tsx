@@ -119,13 +119,25 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Welcome Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--gantry-text-primary)]">
-          Welcome to Gantry{user?.displayName ? `, ${user.displayName}` : ''}
-        </h1>
-        <p className="mt-1 text-sm text-[var(--gantry-text-secondary)]">
-          Your internal developer platform overview
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--gantry-text-primary)]">
+            Welcome to Gantry{user?.displayName ? `, ${user.displayName}` : ''}
+          </h1>
+          <p className="mt-1 text-sm text-[var(--gantry-text-secondary)]">
+            Your internal developer platform overview
+          </p>
+        </div>
+        <button
+          onClick={() => document.dispatchEvent(new Event('gantry:open-search'))}
+          className="flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm text-[var(--gantry-text-secondary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-text-primary)] sm:w-64"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-left">Search entities...</span>
+          <kbd className="hidden rounded border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-1.5 py-0.5 text-xs sm:inline-block">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       {error && (

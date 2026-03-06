@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import type { Entity, JsonSchema, AuditEntry, GraphData } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
 import EntityGraph from '../components/EntityGraph';
+import KubernetesTab from '../components/KubernetesTab';
 
 const ACTION_COLORS: Record<string, string> = {
   'entity.created': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
@@ -70,7 +71,7 @@ function entityToYaml(entity: Entity): string {
     .join('\n');
 }
 
-type Tab = 'overview' | 'yaml' | 'relationships' | 'activity';
+type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes';
 
 export default function EntityDetail() {
   const { kind, name } = useParams<{ kind: string; name: string }>();
@@ -230,26 +231,33 @@ export default function EntityDetail() {
       </div>
 
       {/* Tabs */}
-      <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
-        {(['overview', 'relationships', 'yaml', 'activity'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`border-b-2 px-4 py-2 text-sm font-medium capitalize transition-colors ${
-              tab === t
-                ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
-                : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
-            }`}
-          >
-            {t === 'relationships' ? 'Dependencies' : t}
-            {t === 'activity' && activity.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs">
-                {activity.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {(() => {
+        const isK8sEntity = !!(entity.metadata.annotations?.['kubernetes.io/kind']);
+        const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
+        if (isK8sEntity && entity.kind === 'Service') tabs.splice(1, 0, 'kubernetes');
+        return (
+          <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
+            {tabs.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`border-b-2 px-4 py-2 text-sm font-medium capitalize transition-colors ${
+                  tab === t
+                    ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
+                    : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
+                }`}
+              >
+                {t === 'relationships' ? 'Dependencies' : t === 'kubernetes' ? 'Kubernetes' : t}
+                {t === 'activity' && activity.length > 0 && (
+                  <span className="ml-1.5 rounded-full bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs">
+                    {activity.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Tab Content */}
       <div className="mt-6">
@@ -374,6 +382,10 @@ export default function EntityDetail() {
               </table>
             )}
           </div>
+        )}
+
+        {tab === 'kubernetes' && (
+          <KubernetesTab entity={entity} />
         )}
 
         {tab === 'relationships' && (

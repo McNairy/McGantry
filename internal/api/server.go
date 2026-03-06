@@ -141,6 +141,9 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 
 			// Plugin marketplace. Write endpoints require developer+.
 			protected.Get("/plugins", h.ListPlugins)
+			// Kubernetes-specific plugin endpoints (before generic {name} routes).
+			protected.Get("/plugins/kubernetes/workload/{appName}", h.GetKubernetesWorkload)
+			protected.Get("/plugins/kubernetes/pods/{namespace}/{pod}/containers/{container}/logs", h.StreamKubernetesPodLogs)
 			protected.Get("/plugins/{name}", h.GetPlugin)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/{name}/install", h.InstallPlugin)
 			protected.With(middleware.RequireRole("developer")).Delete("/plugins/{name}", h.UninstallPlugin)
