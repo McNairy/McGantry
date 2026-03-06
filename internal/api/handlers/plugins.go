@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -235,6 +236,13 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		for _, e := range result.Errors {
+			log.Printf("[kubernetes-sync] error: %s", e)
+		}
+		if len(result.Errors) > 0 {
+			log.Printf("[kubernetes-sync] completed with %d error(s), %d created, %d updated",
+				len(result.Errors), result.Created, result.Updated)
 		}
 		writeJSON(w, http.StatusOK, result)
 	default:

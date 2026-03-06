@@ -328,11 +328,15 @@ function PluginCard({
 
       {/* Sync result summary */}
       {syncResult && (
-        <div className="text-xs rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-3 py-2 text-green-700 dark:text-green-400">
-          Synced: {syncResult.created} created, {syncResult.updated} updated
-          {(syncResult.errors?.length ?? 0) > 0 && (
-            <span className="ml-2 text-amber-600 dark:text-amber-400">· {syncResult.errors!.length} error(s)</span>
-          )}
+        <div className={`text-xs rounded-lg border px-3 py-2 space-y-1 ${
+          (syncResult.errors?.length ?? 0) > 0
+            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
+            : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
+        }`}>
+          <div>Synced: {syncResult.created} created, {syncResult.updated} updated{(syncResult.errors?.length ?? 0) > 0 && ` · ${syncResult.errors!.length} error(s)`}</div>
+          {syncResult.errors?.map((e, i) => (
+            <div key={i} className="text-red-600 dark:text-red-400 font-mono break-all">{e}</div>
+          ))}
         </div>
       )}
 

@@ -111,6 +111,7 @@ func namespaceToEnvironment(ns Namespace) *entity.Entity {
 	annotations := make(map[string]string)
 	annotations["kubernetes.io/kind"] = "Namespace"
 	annotations["kubernetes.io/uid"] = ns.Metadata.UID
+	annotations["kubernetes.io/phase"] = ns.Status.Phase
 	for k, v := range ns.Metadata.Annotations {
 		annotations["kubernetes.io/"+k] = v
 	}
@@ -128,10 +129,7 @@ func namespaceToEnvironment(ns Namespace) *entity.Entity {
 			Annotations: annotations,
 			Tags:        append(tags, "kubernetes"),
 		},
-		Spec: map[string]any{
-			"type":   "kubernetes-namespace",
-			"phase":  ns.Status.Phase,
-		},
+		Spec: map[string]any{},
 	}
 }
 
@@ -140,6 +138,8 @@ func deploymentToService(dep Deployment) *entity.Entity {
 	annotations["kubernetes.io/kind"] = "Deployment"
 	annotations["kubernetes.io/namespace"] = dep.Metadata.Namespace
 	annotations["kubernetes.io/uid"] = dep.Metadata.UID
+	annotations["kubernetes.io/replicas"] = fmt.Sprintf("%d", dep.Spec.Replicas)
+	annotations["kubernetes.io/readyReplicas"] = fmt.Sprintf("%d", dep.Status.ReadyReplicas)
 	for k, v := range dep.Metadata.Annotations {
 		// Avoid copying managed-fields and last-applied-configuration bloat.
 		if strings.HasPrefix(k, "kubectl.kubernetes.io") {
@@ -162,9 +162,7 @@ func deploymentToService(dep Deployment) *entity.Entity {
 			Tags:        append(tags, "kubernetes"),
 		},
 		Spec: map[string]any{
-			"type":          "backend",
-			"replicas":      dep.Spec.Replicas,
-			"readyReplicas": dep.Status.ReadyReplicas,
+			"type": "backend",
 		},
 	}
 }
@@ -174,6 +172,8 @@ func kserviceToInfrastructure(svc KService) *entity.Entity {
 	annotations["kubernetes.io/kind"] = "Service"
 	annotations["kubernetes.io/namespace"] = svc.Metadata.Namespace
 	annotations["kubernetes.io/uid"] = svc.Metadata.UID
+	annotations["kubernetes.io/serviceType"] = svc.Spec.Type
+	annotations["kubernetes.io/clusterIP"] = svc.Spec.ClusterIP
 	for k, v := range svc.Metadata.Labels {
 		annotations["kubernetes.io/label/"+k] = v
 	}
@@ -189,10 +189,7 @@ func kserviceToInfrastructure(svc KService) *entity.Entity {
 			Annotations: annotations,
 			Tags:        []string{"kubernetes", "k8s-service"},
 		},
-		Spec: map[string]any{
-			"type":      svc.Spec.Type,
-			"clusterIP": svc.Spec.ClusterIP,
-		},
+		Spec: map[string]any{},
 	}
 }
 
