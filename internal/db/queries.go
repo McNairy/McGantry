@@ -456,6 +456,149 @@ func (d *DB) SearchEntities(ctx context.Context, query string) ([]*entity.Entity
 }
 
 // ---------------------------------------------------------------------------
+// Graph queries
+// ---------------------------------------------------------------------------
+
+// GraphNode represents a single entity node in a relationship graph.
+type GraphNode struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Name   string `json:"name"`
+	Title  string `json:"title,omitempty"`
+	IsRoot bool   `json:"isRoot"`
+}
+
+// GraphEdge represents a directed relationship between two graph nodes.
+type GraphEdge struct {
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Relation string `json:"relation"` // "dependsOn", "providesApi", "consumesApi", "ownedBy"
+}
+
+// GraphData is the complete relationship graph for a given root entity.
+type GraphData struct {
+	Nodes []GraphNode `json:"nodes"`
+	Edges []GraphEdge `json:"edges"`
+}
+
+// GetEntityGraph builds a relationship graph centered on the given entity.
+// It includes direct forward relationships from the entity's spec and reverse
+// dependencies found by scanning all entities.
+func (d *DB) GetEntityGraph(ctx context.Context, kind, namespace, name string) (*GraphData, error) {
+	root, err := d.GetEntity(ctx, kind, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+
+	rootID := kind + "/" + name
+	nodes := map[string]GraphNode{
+		rootID: {ID: rootID, Kind: root.Kind, Name: root.Metadata.Name, Title: root.Metadata.Title, IsRoot: true},
+	}
+	var edges []GraphEdge
+
+	// addNode fetches an entity and adds it to the nodes map (as a stub if not found).
+	addNode := func(nodeKind, nodeName string) {
+		id := nodeKind + "/" + nodeName
+		if _, exists := nodes[id]; exists {
+			return
+		}
+		e, err := d.GetEntity(ctx, nodeKind, namespace, nodeName)
+		if err != nil {
+			nodes[id] = GraphNode{ID: id, Kind: nodeKind, Name: nodeName}
+			return
+		}
+		nodes[id] = GraphNode{ID: id, Kind: e.Kind, Name: e.Metadata.Name, Title: e.Metadata.Title}
+	}
+
+	spec := root.Spec
+	if spec == nil {
+		spec = map[string]any{}
+	}
+
+	// Forward: dependsOn — [{kind, name}, ...]
+	if raw, ok := spec["dependsOn"]; ok {
+		if deps, ok := raw.([]any); ok {
+			for _, d := range deps {
+				if m, ok := d.(map[string]any); ok {
+					depKind, _ := m["kind"].(string)
+					depName, _ := m["name"].(string)
+					if depKind != "" && depName != "" {
+						addNode(depKind, depName)
+						edges = append(edges, GraphEdge{From: rootID, To: depKind + "/" + depName, Relation: "dependsOn"})
+					}
+				}
+			}
+		}
+	}
+
+	// Forward: providesApis — [apiName, ...]
+	if raw, ok := spec["providesApis"]; ok {
+		if apis, ok := raw.([]any); ok {
+			for _, a := range apis {
+				apiName, _ := a.(string)
+				if apiName != "" {
+					addNode("API", apiName)
+					edges = append(edges, GraphEdge{From: rootID, To: "API/" + apiName, Relation: "providesApi"})
+				}
+			}
+		}
+	}
+
+	// Forward: consumesApis — [apiName, ...]
+	if raw, ok := spec["consumesApis"]; ok {
+		if apis, ok := raw.([]any); ok {
+			for _, a := range apis {
+				apiName, _ := a.(string)
+				if apiName != "" {
+					addNode("API", apiName)
+					edges = append(edges, GraphEdge{From: rootID, To: "API/" + apiName, Relation: "consumesApi"})
+				}
+			}
+		}
+	}
+
+	// Forward: owner (metadata) → Team
+	if root.Metadata.Owner != "" {
+		addNode("Team", root.Metadata.Owner)
+		edges = append(edges, GraphEdge{From: rootID, To: "Team/" + root.Metadata.Owner, Relation: "ownedBy"})
+	}
+
+	// Reverse: scan all entities to find those that reference root in their dependsOn.
+	all, err := d.ListEntities(ctx, "", "")
+	if err != nil {
+		return nil, fmt.Errorf("listing entities for graph: %w", err)
+	}
+	for _, e := range all {
+		eID := e.Kind + "/" + e.Metadata.Name
+		if eID == rootID || e.Spec == nil {
+			continue
+		}
+		if raw, ok := e.Spec["dependsOn"]; ok {
+			if deps, ok := raw.([]any); ok {
+				for _, d := range deps {
+					if m, ok := d.(map[string]any); ok {
+						depKind, _ := m["kind"].(string)
+						depName, _ := m["name"].(string)
+						if depKind == kind && depName == name {
+							if _, exists := nodes[eID]; !exists {
+								nodes[eID] = GraphNode{ID: eID, Kind: e.Kind, Name: e.Metadata.Name, Title: e.Metadata.Title}
+							}
+							edges = append(edges, GraphEdge{From: eID, To: rootID, Relation: "dependsOn"})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	nodeSlice := make([]GraphNode, 0, len(nodes))
+	for _, n := range nodes {
+		nodeSlice = append(nodeSlice, n)
+	}
+	return &GraphData{Nodes: nodeSlice, Edges: edges}, nil
+}
+
+// ---------------------------------------------------------------------------
 // User queries
 // ---------------------------------------------------------------------------
 

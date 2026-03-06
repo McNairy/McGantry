@@ -104,6 +104,25 @@ export interface JsonSchema {
   'x-entity-ref'?: string;
 }
 
+export interface GraphNode {
+  id: string;
+  kind: string;
+  name: string;
+  title?: string;
+  isRoot: boolean;
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  relation: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
 export const ENTITY_KINDS = [
   { name: 'Service', plural: 'services', icon: 'Server' },
   { name: 'API', plural: 'apis', icon: 'Globe' },

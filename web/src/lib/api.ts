@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -97,4 +97,7 @@ export const api = {
 
   revokeAPIKey: (id: string) =>
     request<void>('DELETE', `/auth/apikeys/${id}`),
+
+  getEntityGraph: (kind: string, name: string) =>
+    request<GraphData>('GET', `/graph/${kind}/${name}`),
 };

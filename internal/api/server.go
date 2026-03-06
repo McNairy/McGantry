@@ -122,6 +122,9 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// Search.
 			protected.Get("/search", h.Search)
 
+			// Relationship graph.
+			protected.Get("/graph/{kind}/{name}", h.GetEntityGraph)
+
 			// Schemas.
 			protected.Get("/schemas", h.ListSchemas)
 			protected.Get("/schemas/{kind}", h.GetSchema)

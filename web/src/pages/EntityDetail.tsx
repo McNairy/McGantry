@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ChevronRight, Pencil, Trash2, X, ExternalLink } from 'lucide-react';
+import { ChevronRight, Pencil, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
-import type { Entity, JsonSchema, AuditEntry } from '../lib/types';
+import type { Entity, JsonSchema, AuditEntry, GraphData } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
+import EntityGraph from '../components/EntityGraph';
 
 const ACTION_COLORS: Record<string, string> = {
   'entity.created': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
@@ -84,6 +85,8 @@ export default function EntityDetail() {
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
 
   useEffect(() => {
     if (!kind || !name) return;
@@ -104,6 +107,15 @@ export default function EntityDetail() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [kind, name]);
+
+  useEffect(() => {
+    if (tab !== 'relationships' || !kind || !name || graphData) return;
+    setGraphLoading(true);
+    api.getEntityGraph(kind, name)
+      .then(setGraphData)
+      .catch(() => {}) // Graph errors are non-fatal; graph stays null
+      .finally(() => setGraphLoading(false));
+  }, [tab, kind, name, graphData]);
 
   const handleUpdate = async (spec: Record<string, any>) => {
     if (!entity || !kind || !name) return;
@@ -145,10 +157,6 @@ export default function EntityDetail() {
     );
   }
 
-  const deps = (entity.spec?.dependsOn as Array<{ kind: string; name: string }>) || [];
-  const providesApis = (entity.spec?.providesApis as string[]) || [];
-  const consumesApis = (entity.spec?.consumesApis as string[]) || [];
-  const hasRelationships = deps.length > 0 || providesApis.length > 0 || consumesApis.length > 0;
 
   return (
     <div>
@@ -223,7 +231,7 @@ export default function EntityDetail() {
 
       {/* Tabs */}
       <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
-        {(['overview', 'yaml', ...(hasRelationships ? ['relationships'] : []), 'activity'] as Tab[]).map((t) => (
+        {(['overview', 'relationships', 'yaml', 'activity'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -233,7 +241,7 @@ export default function EntityDetail() {
                 : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
             }`}
           >
-            {t}
+            {t === 'relationships' ? 'Dependencies' : t}
             {t === 'activity' && activity.length > 0 && (
               <span className="ml-1.5 rounded-full bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs">
                 {activity.length}
@@ -369,54 +377,17 @@ export default function EntityDetail() {
         )}
 
         {tab === 'relationships' && (
-          <div className="space-y-6">
-            {deps.length > 0 && (
-              <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
-                <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Depends On</h3>
-                <ul className="mt-3 space-y-2">
-                  {deps.map((dep, i) => (
-                    <li key={i}>
-                      <Link
-                        to={`/catalog/${dep.kind}/${dep.name}`}
-                        className="flex items-center gap-2 text-sm text-[var(--gantry-accent)] hover:underline"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        {dep.kind}/{dep.name}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {providesApis.length > 0 && (
-              <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
-                <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Provides APIs</h3>
-                <ul className="mt-3 space-y-2">
-                  {providesApis.map((a) => (
-                    <li key={a}>
-                      <Link to={`/catalog/API/${a}`} className="flex items-center gap-2 text-sm text-[var(--gantry-accent)] hover:underline">
-                        <ExternalLink className="h-3.5 w-3.5" />{a}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {consumesApis.length > 0 && (
-              <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
-                <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Consumes APIs</h3>
-                <ul className="mt-3 space-y-2">
-                  {consumesApis.map((a) => (
-                    <li key={a}>
-                      <Link to={`/catalog/API/${a}`} className="flex items-center gap-2 text-sm text-[var(--gantry-accent)] hover:underline">
-                        <ExternalLink className="h-3.5 w-3.5" />{a}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+          graphLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--gantry-accent)] border-t-transparent" />
+            </div>
+          ) : graphData && kind && name ? (
+            <EntityGraph data={graphData} rootKind={kind} rootName={name} />
+          ) : (
+            <p className="py-8 text-center text-sm text-[var(--gantry-text-secondary)]">
+              Could not load dependency graph.
+            </p>
+          )
         )}
       </div>
 
