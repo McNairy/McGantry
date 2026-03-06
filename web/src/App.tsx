@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
@@ -51,7 +52,18 @@ function LoadingScreen() {
 }
 
 export default function App() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, loginWithToken } = useAuth();
+
+  // Handle GitHub OAuth callback: server redirects to /?github_token=<jwt>
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const githubToken = params.get('github_token');
+    if (githubToken) {
+      // Clean the token from the URL before doing anything else.
+      window.history.replaceState({}, '', window.location.pathname);
+      loginWithToken(githubToken);
+    }
+  }, [loginWithToken]);
 
   if (loading) return <LoadingScreen />;
   if (!isAuthenticated) return <Login />;

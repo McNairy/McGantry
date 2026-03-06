@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertCircle, Github } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { api } from '../lib/api';
 import ThemeToggle from '../components/ThemeToggle';
 
 export default function Login() {
@@ -9,6 +10,13 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+
+  useEffect(() => {
+    api.getGitHubSSOConfig()
+      .then((cfg) => setSsoEnabled(cfg.ssoEnabled))
+      .catch(() => {}); // SSO check is non-critical
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +53,24 @@ export default function Login() {
 
         {/* Login Card */}
         <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6 shadow-sm">
+          {/* GitHub SSO button */}
+          {ssoEnabled && (
+            <>
+              <a
+                href="/api/v1/auth/github"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--gantry-border)] px-4 py-2.5 text-sm font-medium text-[var(--gantry-text-primary)] transition-colors hover:bg-[var(--gantry-bg-secondary)]"
+              >
+                <Github className="h-4 w-4" />
+                Sign in with GitHub
+              </a>
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-[var(--gantry-border)]" />
+                <span className="text-xs text-[var(--gantry-text-secondary)]">or</span>
+                <div className="h-px flex-1 bg-[var(--gantry-border)]" />
+              </div>
+            </>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-[var(--gantry-danger)] dark:bg-red-900/20">

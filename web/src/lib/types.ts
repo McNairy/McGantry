@@ -165,11 +165,15 @@ export interface PluginConfig {
 }
 
 export interface PluginSyncResult {
-  namespaces: number;
-  deployments: number;
-  services: number;
-  created: number;
-  updated: number;
+  // Kubernetes sync fields
+  namespaces?: number;
+  deployments?: number;
+  services?: number;
+  created?: number;
+  updated?: number;
+  // GitHub enrichment fields
+  scanned?: number;
+  enriched?: number;
   errors?: string[];
 }
 
@@ -206,6 +210,57 @@ export interface K8sWorkloadInfo {
   appName: string;
   deployments: K8sDeploymentInfo[];
   pods: K8sPodInfo[];
+}
+
+export interface GitHubCommit {
+  sha: string;
+  commit: {
+    message: string;
+    author: { name: string; email: string; date: string };
+  };
+  html_url: string;
+}
+
+export interface GitHubPullRequest {
+  number: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  html_url: string;
+  user: { login: string };
+  created_at: string;
+  labels: { name: string; color: string }[];
+}
+
+export interface GitHubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  description: string;
+  private: boolean;
+  html_url: string;
+  language: string;
+  default_branch: string;
+  stargazers_count: number;
+  forks_count: number;
+  open_issues_count: number;
+  topics: string[];
+  pushed_at: string;
+  created_at: string;
+  archived: boolean;
+  visibility: string;
+}
+
+export interface GitHubRepoInfo {
+  repo: GitHubRepo;
+  commits: GitHubCommit[];
+  pullRequests: GitHubPullRequest[];
+}
+
+export interface EntityLink {
+  title: string;
+  url: string;
+  icon?: 'dashboard' | 'docs' | 'runbook' | 'github' | 'slack' | 'alert' | 'monitor' | 'ci' | 'other';
 }
 
 export const ENTITY_KINDS = [

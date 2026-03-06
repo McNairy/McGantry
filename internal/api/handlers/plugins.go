@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go2engle/gantry/internal/plugins"
+	ghplugin "github.com/go2engle/gantry/internal/plugins/github"
 	k8s "github.com/go2engle/gantry/internal/plugins/kubernetes"
 )
 
@@ -255,6 +256,16 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[kubernetes-sync] error: %s", e)
 		}
 		writeJSON(w, http.StatusOK, combined)
+	case "github":
+		result, err := ghplugin.Sync(r.Context(), p.Config, h.DB)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "github sync failed: "+err.Error())
+			return
+		}
+		for _, e := range result.Errors {
+			log.Printf("[github-sync] error: %s", e)
+		}
+		writeJSON(w, http.StatusOK, result)
 	default:
 		writeError(w, http.StatusNotImplemented, "sync not supported for plugin: "+name)
 	}

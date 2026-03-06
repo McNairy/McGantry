@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Package, CheckCircle, Circle, Settings, ExternalLink, Search, Puzzle, RefreshCw, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Package, CheckCircle, Circle, Settings, ExternalLink, Search, Puzzle,
+  RefreshCw, Plus, Trash2, ChevronDown, ChevronUp, X,
+} from 'lucide-react';
 import { api } from '../lib/api';
 import type { PluginRegistryEntry, PluginConfig, PluginSyncResult } from '../lib/types';
 
 // Plugins that expose a server-side sync operation.
-const SYNCABLE_PLUGINS = new Set(['kubernetes']);
+const SYNCABLE_PLUGINS = new Set(['kubernetes', 'github']);
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -23,13 +26,211 @@ const CATEGORY_COLORS: Record<string, string> = {
   'auth-provider': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
-function isSecret(key: string) {
+function isSecret(key: string): boolean {
   return ['key', 'token', 'secret', 'password', 'privatekey'].some((s) =>
     key.toLowerCase().includes(s)
   );
 }
 
-// ArrayObjectField — renders an array of objects as expandable rows with add/remove.
+function isLongText(key: string): boolean {
+  return ['privatekey', 'pem', 'certificate', 'cadata'].some((s) =>
+    key.toLowerCase().includes(s)
+  );
+}
+
+// ── Per-plugin section definitions ─────────────────────────────────────────
+// Fields listed here are rendered in grouped sections instead of a flat list.
+// renderBanner (optional) renders an info callout above the fields.
+const PLUGIN_SECTIONS: Record<string, Array<{
+  title: string;
+  description?: string;
+  fields: string[];
+  renderBanner?: () => React.ReactNode;
+}>> = {
+  github: [
+    {
+      title: 'Authentication',
+      description: 'Choose how Gantry connects to the GitHub API. Use a Personal Access Token for personal accounts or GitHub App for organization-wide access.',
+      fields: ['authMode', 'personalAccessToken', 'appId', 'privateKey', 'installationId'],
+    },
+    {
+      title: 'GitHub SSO',
+      description: 'Let users sign in to Gantry with their GitHub account via OAuth. Requires a GitHub OAuth App.',
+      fields: ['ssoEnabled', 'oauthClientId', 'oauthClientSecret', 'defaultRole'],
+      renderBanner: () => {
+        const origin = window.location.origin;
+        return (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20 px-4 py-3 space-y-3">
+            <div className="flex items-start gap-2">
+              <span className="text-blue-500 text-base leading-none mt-0.5">ℹ</span>
+              <div>
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-300">GitHub OAuth App required</p>
+                <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                  Create an OAuth App at{' '}
+                  <a
+                    href="https://github.com/settings/applications/new"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline font-medium"
+                  >
+                    github.com/settings/applications/new
+                  </a>{' '}
+                  and set these values:
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 pl-6">
+              <div>
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-0.5">Homepage URL</p>
+                <code className="block text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200 font-mono px-2.5 py-1.5 rounded">
+                  {origin}
+                </code>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-0.5">Authorization callback URL</p>
+                <code className="block text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200 font-mono px-2.5 py-1.5 rounded">
+                  {origin}/api/v1/auth/github/callback
+                </code>
+              </div>
+            </div>
+          </div>
+        );
+      },
+    },
+  ],
+};
+
+// Conditional field visibility: a field is hidden unless its function returns true.
+type VisibilityFn = (values: Record<string, any>) => boolean;
+const FIELD_VISIBILITY: Record<string, Record<string, VisibilityFn>> = {
+  github: {
+    personalAccessToken: (v) => !v.authMode || v.authMode === 'pat',
+    appId:              (v) => v.authMode === 'app',
+    privateKey:         (v) => v.authMode === 'app',
+    installationId:     (v) => v.authMode === 'app',
+    oauthClientId:      (v) => !!v.ssoEnabled,
+    oauthClientSecret:  (v) => !!v.ssoEnabled,
+    defaultRole:        (v) => !!v.ssoEnabled,
+  },
+};
+
+// ── ConfigField ──────────────────────────────────────────────────────────────
+// Renders a single config field with the correct input widget for its type.
+function ConfigField({
+  fieldKey,
+  fieldSchema,
+  value,
+  required,
+  onChange,
+}: {
+  fieldKey: string;
+  fieldSchema: any;
+  value: any;
+  required: boolean;
+  onChange: (v: any) => void;
+}) {
+  const isBool = fieldSchema.type === 'boolean';
+  const isEnum = Array.isArray(fieldSchema.enum);
+  const isArr  = fieldSchema.type === 'array' && fieldSchema.items?.type === 'object';
+  const isLong = isLongText(fieldKey);
+
+  if (isArr) {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">
+          {fieldSchema.title ?? fieldKey}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        {fieldSchema.description && (
+          <p className="text-xs text-[var(--gantry-text-secondary)] mb-2">{fieldSchema.description}</p>
+        )}
+        <ArrayObjectField
+          fieldKey={fieldKey}
+          schema={fieldSchema}
+          value={Array.isArray(value) ? value : []}
+          onChange={onChange}
+        />
+      </div>
+    );
+  }
+
+  // Boolean → toggle switch
+  if (isBool) {
+    return (
+      <div className="flex items-start justify-between gap-6 py-1">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-[var(--gantry-text-primary)]">
+            {fieldSchema.title ?? fieldKey}
+          </p>
+          {fieldSchema.description && (
+            <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">{fieldSchema.description}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!value}
+          onClick={() => onChange(!value)}
+          className={`relative flex-shrink-0 mt-0.5 inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)] focus:ring-offset-2 ${
+            value ? 'bg-[var(--gantry-accent)]' : 'bg-[var(--gantry-border)]'
+          }`}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
+              value ? 'translate-x-[19px]' : 'translate-x-[3px]'
+            }`}
+          />
+        </button>
+      </div>
+    );
+  }
+
+  // Enum → select dropdown; long text → textarea; secret → password; default → text
+  return (
+    <div>
+      <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">
+        {fieldSchema.title ?? fieldKey}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </label>
+      {fieldSchema.description && (
+        <p className="text-xs text-[var(--gantry-text-secondary)] mb-2">{fieldSchema.description}</p>
+      )}
+      {isEnum ? (
+        <select
+          className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+          value={value ?? fieldSchema.default ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {!value && !fieldSchema.default && (
+            <option value="" disabled>Select…</option>
+          )}
+          {fieldSchema.enum.map((opt: string) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      ) : isLong ? (
+        <textarea
+          rows={6}
+          className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)] resize-y"
+          value={typeof value === 'string' ? value : ''}
+          placeholder={fieldSchema.description ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <input
+          type={isSecret(fieldKey) ? 'password' : 'text'}
+          className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+          value={typeof value === 'string' ? value : (value ?? '')}
+          placeholder={typeof fieldSchema.default === 'string' ? fieldSchema.default : ''}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── ArrayObjectField ─────────────────────────────────────────────────────────
+// Renders an array of objects as expandable rows with add/remove.
 function ArrayObjectField({
   fieldKey,
   schema,
@@ -53,8 +254,7 @@ function ArrayObjectField({
   }
 
   function removeRow(i: number) {
-    const next = value.filter((_, idx) => idx !== i);
-    onChange(next);
+    onChange(value.filter((_, idx) => idx !== i));
     setExpanded((s) => {
       const n = new Set<number>();
       s.forEach((v) => { if (v < i) n.add(v); else if (v > i) n.add(v - 1); });
@@ -62,9 +262,8 @@ function ArrayObjectField({
     });
   }
 
-  function updateField(i: number, key: string, val: string) {
-    const next = value.map((row, idx) => idx === i ? { ...row, [key]: val } : row);
-    onChange(next);
+  function updateField(i: number, key: string, val: any) {
+    onChange(value.map((row, idx) => idx === i ? { ...row, [key]: val } : row));
   }
 
   function toggleExpand(i: number) {
@@ -75,9 +274,7 @@ function ArrayObjectField({
     });
   }
 
-  // The "name" key to show inline in the header (first string property named 'name' or 'title').
   const nameKey = Object.keys(itemProps).find((k) => k === 'name' || k === 'title') ?? null;
-  // Remaining properties shown in the expanded body (everything except nameKey).
   const bodyProps = Object.entries(itemProps).filter(([k]) => k !== nameKey);
 
   return (
@@ -93,7 +290,7 @@ function ArrayObjectField({
                   type="text"
                   className="flex-1 bg-transparent text-sm font-medium text-[var(--gantry-text-primary)] placeholder:text-[var(--gantry-text-secondary)] outline-none min-w-0"
                   value={row[nameKey] ?? ''}
-                  placeholder={namePropSchema?.description ? `Cluster name (e.g. prod-us-east)` : `${schema.title ?? fieldKey} ${i + 1}`}
+                  placeholder={namePropSchema?.description ? 'e.g. prod-us-east' : `${schema.title ?? fieldKey} ${i + 1}`}
                   onChange={(e) => updateField(i, nameKey, e.target.value)}
                 />
               ) : (
@@ -129,13 +326,32 @@ function ArrayObjectField({
                     {propSchema.description && (
                       <p className="text-xs text-[var(--gantry-text-secondary)] mb-1">{propSchema.description}</p>
                     )}
-                    <input
-                      type={isSecret(key) ? 'password' : 'text'}
-                      className="w-full rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2.5 py-1.5 text-xs text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
-                      value={row[key] ?? ''}
-                      placeholder={propSchema.default ?? ''}
-                      onChange={(e) => updateField(i, key, e.target.value)}
-                    />
+                    {Array.isArray(propSchema.enum) ? (
+                      <select
+                        className="w-full rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2.5 py-1.5 text-xs text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+                        value={row[key] ?? propSchema.default ?? ''}
+                        onChange={(e) => updateField(i, key, e.target.value)}
+                      >
+                        {propSchema.enum.map((opt: string) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : isLongText(key) ? (
+                      <textarea
+                        rows={4}
+                        className="w-full rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2.5 py-1.5 text-xs text-[var(--gantry-text-primary)] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)] resize-y"
+                        value={row[key] ?? ''}
+                        onChange={(e) => updateField(i, key, e.target.value)}
+                      />
+                    ) : (
+                      <input
+                        type={isSecret(key) ? 'password' : 'text'}
+                        className="w-full rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2.5 py-1.5 text-xs text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
+                        value={row[key] ?? ''}
+                        placeholder={propSchema.default ?? ''}
+                        onChange={(e) => updateField(i, key, e.target.value)}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -155,7 +371,7 @@ function ArrayObjectField({
   );
 }
 
-// ConfigModal — shown when user clicks Configure on an installed plugin.
+// ── ConfigModal ───────────────────────────────────────────────────────────────
 function ConfigModal({
   plugin,
   onClose,
@@ -190,67 +406,131 @@ function ConfigModal({
     }
   }
 
-  const fields = config?.schema?.properties
-    ? Object.entries(config.schema.properties as Record<string, any>)
-    : [];
-
+  const allFields: Record<string, any> = config?.schema?.properties ?? {};
   const required: string[] = config?.schema?.required ?? [];
+  const sections = PLUGIN_SECTIONS[plugin.name];
+  const visibility = FIELD_VISIBILITY[plugin.name] ?? {};
+
+  const sectionedKeys = sections ? new Set(sections.flatMap((s) => s.fields)) : null;
+  const ungroupedKeys = sections
+    ? Object.keys(allFields).filter((k) => !sectionedKeys!.has(k))
+    : Object.keys(allFields);
+
+  function isVisible(key: string): boolean {
+    const fn = visibility[key];
+    return !fn || fn(values);
+  }
+
+  function renderField(key: string) {
+    const fieldSchema = allFields[key];
+    if (!fieldSchema || !isVisible(key)) return null;
+    return (
+      <ConfigField
+        key={key}
+        fieldKey={key}
+        fieldSchema={fieldSchema}
+        value={values[key]}
+        required={required.includes(key)}
+        onChange={(v) => setValues((prev) => ({ ...prev, [key]: v }))}
+      />
+    );
+  }
+
+  const hasFields = Object.keys(allFields).length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-[var(--gantry-bg-secondary)] rounded-xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)]">
-          <div className="flex items-center gap-2">
-            <Settings size={18} className="text-[var(--gantry-accent)]" />
-            <h2 className="font-semibold text-[var(--gantry-text-primary)]">Configure {plugin.title}</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div
+        className="bg-[var(--gantry-bg-secondary)] rounded-xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden"
+        style={{ maxHeight: '90vh' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)] flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-[var(--gantry-accent)]/10 flex items-center justify-center flex-shrink-0">
+              <Settings size={17} className="text-[var(--gantry-accent)]" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-[var(--gantry-text-primary)] leading-tight">
+                Configure {plugin.title}
+              </h2>
+              <p className="text-xs text-[var(--gantry-text-secondary)]">v{plugin.version} · {plugin.author}</p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] transition-colors"
+            className="p-1.5 rounded-lg text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-5 overflow-y-auto max-h-[60vh]">
-          {fields.length === 0 && !config && (
-            <p className="text-sm text-[var(--gantry-text-secondary)]">Loading…</p>
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-6">
+          {!config && (
+            <div className="flex items-center justify-center py-16 text-[var(--gantry-text-secondary)] text-sm">
+              Loading…
+            </div>
           )}
-          {fields.length === 0 && config && (
-            <p className="text-sm text-[var(--gantry-text-secondary)]">This plugin has no configuration options.</p>
+          {config && !hasFields && (
+            <p className="text-sm text-[var(--gantry-text-secondary)]">
+              This plugin has no configuration options.
+            </p>
           )}
-          {fields.map(([key, fieldSchema]) => (
-            <div key={key}>
-              <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">
-                {fieldSchema.title ?? key}
-                {required.includes(key) && <span className="text-red-500 ml-1">*</span>}
-              </label>
-              {fieldSchema.description && (
-                <p className="text-xs text-[var(--gantry-text-secondary)] mb-2">{fieldSchema.description}</p>
-              )}
-              {fieldSchema.type === 'array' && fieldSchema.items?.type === 'object' ? (
-                <ArrayObjectField
-                  fieldKey={key}
-                  schema={fieldSchema}
-                  value={Array.isArray(values[key]) ? values[key] : []}
-                  onChange={(v) => setValues((prev) => ({ ...prev, [key]: v }))}
-                />
+          {config && hasFields && (
+            <div className="space-y-6">
+              {sections ? (
+                <>
+                  {sections.map((section) => {
+                    const anyVisible = section.fields.some((k) => allFields[k] && isVisible(k));
+                    if (!anyVisible) return null;
+                    return (
+                      <div
+                        key={section.title}
+                        className="rounded-lg border border-[var(--gantry-border)] overflow-hidden"
+                      >
+                        <div className="px-5 py-3.5 bg-[var(--gantry-bg-tertiary)] border-b border-[var(--gantry-border)]">
+                          <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">
+                            {section.title}
+                          </h3>
+                          {section.description && (
+                            <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
+                              {section.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="px-5 py-4 space-y-4 bg-[var(--gantry-bg-primary)]">
+                          {section.renderBanner?.()}
+                          {section.fields.map((key) => renderField(key))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {ungroupedKeys.length > 0 && (
+                    <div className="rounded-lg border border-[var(--gantry-border)] overflow-hidden">
+                      <div className="px-5 py-3.5 bg-[var(--gantry-bg-tertiary)] border-b border-[var(--gantry-border)]">
+                        <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Other</h3>
+                      </div>
+                      <div className="px-5 py-4 space-y-4 bg-[var(--gantry-bg-primary)]">
+                        {ungroupedKeys.map((key) => renderField(key))}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <input
-                  type={isSecret(key) ? 'password' : 'text'}
-                  className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)]"
-                  value={typeof values[key] === 'string' ? values[key] : (values[key] ?? '')}
-                  placeholder={fieldSchema.default ?? ''}
-                  onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
-                />
+                <div className="space-y-4">
+                  {ungroupedKeys.map((key) => renderField(key))}
+                </div>
               )}
             </div>
-          ))}
-
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          )}
+          {error && (
+            <p className="mt-4 text-sm text-[var(--gantry-danger)]">{error}</p>
+          )}
         </div>
 
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)]">
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)] flex-shrink-0 bg-[var(--gantry-bg-secondary)]">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
@@ -259,10 +539,10 @@ function ConfigModal({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || (fields.length === 0 && !!config)}
+            disabled={saving || (!!config && !hasFields)}
             className="px-4 py-2 text-sm rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {saved ? 'Saved!' : saving ? 'Saving…' : 'Save'}
+            {saved ? 'Saved!' : saving ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -270,7 +550,7 @@ function ConfigModal({
   );
 }
 
-// PluginCard — single card in the grid.
+// ── PluginCard ────────────────────────────────────────────────────────────────
 function PluginCard({
   plugin,
   syncing,
@@ -333,7 +613,12 @@ function PluginCard({
             ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
             : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
         }`}>
-          <div>Synced: {syncResult.created} created, {syncResult.updated} updated{(syncResult.errors?.length ?? 0) > 0 && ` · ${syncResult.errors!.length} error(s)`}</div>
+          <div>
+            {syncResult.enriched != null
+              ? `Enriched ${syncResult.enriched} of ${syncResult.scanned ?? 0} entities`
+              : `Synced: ${syncResult.created ?? 0} created, ${syncResult.updated ?? 0} updated`}
+            {(syncResult.errors?.length ?? 0) > 0 && ` · ${syncResult.errors!.length} error(s)`}
+          </div>
           {syncResult.errors?.map((e, i) => (
             <div key={i} className="text-red-600 dark:text-red-400 font-mono break-all">{e}</div>
           ))}
@@ -368,7 +653,7 @@ function PluginCard({
               <button
                 onClick={onSync}
                 disabled={syncing}
-                title="Sync now — discover resources from your cluster"
+                title="Sync now"
                 className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors disabled:opacity-50"
               >
                 <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
@@ -387,9 +672,7 @@ function PluginCard({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main Plugins page
-// ---------------------------------------------------------------------------
+// ── Main Plugins page ─────────────────────────────────────────────────────────
 export default function Plugins() {
   const [plugins, setPlugins] = useState<PluginRegistryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -413,23 +696,16 @@ export default function Plugins() {
       setConfigPlugin(plugin);
       return;
     }
-
     try {
       if (action === 'install') {
         await api.installPlugin(plugin.name);
-        setPlugins((prev) =>
-          prev.map((p) => (p.name === plugin.name ? { ...p, installed: true } : p))
-        );
+        setPlugins((prev) => prev.map((p) => p.name === plugin.name ? { ...p, installed: true } : p));
       } else if (action === 'enable') {
         await api.enablePlugin(plugin.name, true);
-        setPlugins((prev) =>
-          prev.map((p) => (p.name === plugin.name ? { ...p, enabled: true } : p))
-        );
+        setPlugins((prev) => prev.map((p) => p.name === plugin.name ? { ...p, enabled: true } : p));
       } else if (action === 'disable') {
         await api.enablePlugin(plugin.name, false);
-        setPlugins((prev) =>
-          prev.map((p) => (p.name === plugin.name ? { ...p, enabled: false } : p))
-        );
+        setPlugins((prev) => prev.map((p) => p.name === plugin.name ? { ...p, enabled: false } : p));
       }
     } catch (e: any) {
       setError(e.message);
@@ -463,7 +739,7 @@ export default function Plugins() {
   const enabledCount = plugins.filter((p) => p.enabled).length;
 
   return (
-    <div className="flex-1 flex flex-col overflow-auto bg-[var(--gantry-bg)]">
+    <div className="flex-1 flex flex-col overflow-auto bg-[var(--gantry-bg-primary)]">
       {/* Header */}
       <div className="px-8 pt-8 pb-4">
         <div className="flex items-center justify-between mb-1">

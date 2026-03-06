@@ -1,0 +1,84 @@
+// Package github provides GitHub integration for Gantry: repository info,
+// org sync, and optional GitHub OAuth SSO.
+package github
+
+// Repository represents a GitHub repository from the REST API.
+type Repository struct {
+	ID              int64    `json:"id"`
+	Name            string   `json:"name"`
+	FullName        string   `json:"full_name"`
+	Description     string   `json:"description"`
+	Private         bool     `json:"private"`
+	HTMLURL         string   `json:"html_url"`
+	Language        string   `json:"language"`
+	DefaultBranch   string   `json:"default_branch"`
+	StargazersCount int      `json:"stargazers_count"`
+	ForksCount      int      `json:"forks_count"`
+	OpenIssuesCount int      `json:"open_issues_count"`
+	Topics          []string `json:"topics"`
+	PushedAt        string   `json:"pushed_at"`
+	CreatedAt       string   `json:"created_at"`
+	UpdatedAt       string   `json:"updated_at"`
+	Archived        bool     `json:"archived"`
+	Visibility      string   `json:"visibility"`
+}
+
+// Commit represents a single GitHub commit summary.
+type Commit struct {
+	SHA     string        `json:"sha"`
+	Commit  CommitDetails `json:"commit"`
+	HTMLURL string        `json:"html_url"`
+}
+
+// CommitDetails holds the inner commit data.
+type CommitDetails struct {
+	Message string       `json:"message"`
+	Author  CommitAuthor `json:"author"`
+}
+
+// CommitAuthor holds commit author info.
+type CommitAuthor struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Date  string `json:"date"`
+}
+
+// PullRequest represents a GitHub pull request summary.
+type PullRequest struct {
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
+	State   string `json:"state"`
+	Draft   bool   `json:"draft"`
+	HTMLURL string `json:"html_url"`
+	User    struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	CreatedAt string `json:"created_at"`
+	Labels    []struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	} `json:"labels"`
+}
+
+// GitHubUser represents a GitHub user returned by the /user endpoint.
+type GitHubUser struct {
+	ID        int    `json:"id"`
+	Login     string `json:"login"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// RepoInfo is the enriched repository response returned by the Gantry GitHub plugin API.
+type RepoInfo struct {
+	Repo        *Repository   `json:"repo"`
+	Commits     []Commit      `json:"commits"`
+	PullRequests []PullRequest `json:"pullRequests"`
+}
+
+// SyncResult summarizes what happened during a GitHub entity enrichment sync.
+type SyncResult struct {
+	Scanned  int      `json:"scanned"`
+	Enriched int      `json:"enriched"`
+	Errors   []string `json:"errors,omitempty"`
+}

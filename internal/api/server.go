@@ -89,8 +89,12 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 	// API v1 routes.
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(middleware.RateLimit)
-		// Public auth endpoint.
+		// Public auth endpoints.
 		api.Post("/auth/login", h.Login)
+		// GitHub SSO — public; used by login page and OAuth redirect flow.
+		api.Get("/auth/github/config", h.GetGitHubSSOConfig)
+		api.Get("/auth/github", h.GitHubOAuthBegin)
+		api.Get("/auth/github/callback", h.GitHubOAuthCallback)
 
 		// Authenticated routes.
 		api.Group(func(protected chi.Router) {
@@ -144,6 +148,8 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// Kubernetes-specific plugin endpoints (before generic {name} routes).
 			protected.Get("/plugins/kubernetes/workload/{appName}", h.GetKubernetesWorkload)
 			protected.Get("/plugins/kubernetes/pods/{namespace}/{pod}/containers/{container}/logs", h.StreamKubernetesPodLogs)
+			// GitHub-specific plugin endpoints.
+			protected.Get("/plugins/github/repo", h.GetGitHubRepo)
 			protected.Get("/plugins/{name}", h.GetPlugin)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/{name}/install", h.InstallPlugin)
 			protected.With(middleware.RequireRole("developer")).Delete("/plugins/{name}", h.UninstallPlugin)

@@ -2,38 +2,66 @@
   {
     "name": "github",
     "title": "GitHub",
-    "description": "GitHub OAuth login, workflow dispatch actions, and repository info panels on Services.",
-    "version": "1.0.0",
+    "description": "Repository info panels on entities with a repoUrl, GitHub Actions workflow dispatch, and optional GitHub OAuth SSO.",
+    "version": "1.1.0",
     "author": "Gantry",
     "category": "integration",
-    "homepage": "https://github.com/gantrydev/plugin-github",
+    "homepage": "https://github.com/go2engle/gantry/tree/main/internal/plugins/github",
     "configSchema": {
       "type": "object",
       "properties": {
+        "authMode": {
+          "type": "string",
+          "title": "Authentication Mode",
+          "description": "How Gantry authenticates with the GitHub API.",
+          "enum": ["pat", "app"],
+          "default": "pat"
+        },
+        "personalAccessToken": {
+          "type": "string",
+          "title": "Personal Access Token",
+          "description": "GitHub PAT with repo and read:org scopes. Required when authMode=pat."
+        },
         "appId": {
           "type": "string",
           "title": "GitHub App ID",
-          "description": "Your GitHub App's numeric ID"
+          "description": "Numeric App ID from your GitHub App settings. Required when authMode=app."
         },
         "privateKey": {
           "type": "string",
-          "title": "Private Key",
-          "description": "PEM-encoded private key for your GitHub App"
+          "title": "Private Key (PEM)",
+          "description": "PEM-encoded RSA private key for your GitHub App. Required when authMode=app."
         },
-        "webhookSecret": {
+        "installationId": {
           "type": "string",
-          "title": "Webhook Secret",
-          "description": "Secret used to verify GitHub webhook payloads"
+          "title": "Installation ID",
+          "description": "GitHub App installation ID for your organization. Required when authMode=app."
         },
-        "orgName": {
+        "ssoEnabled": {
+          "type": "boolean",
+          "title": "Enable GitHub SSO",
+          "description": "Allow users to sign in to Gantry with their GitHub account via OAuth."
+        },
+        "oauthClientId": {
           "type": "string",
-          "title": "Organization",
-          "description": "GitHub organization name (optional)"
+          "title": "OAuth App Client ID",
+          "description": "Client ID from your GitHub OAuth App. Required when ssoEnabled=true."
+        },
+        "oauthClientSecret": {
+          "type": "string",
+          "title": "OAuth App Client Secret",
+          "description": "Client secret from your GitHub OAuth App. Required when ssoEnabled=true."
+        },
+        "defaultRole": {
+          "type": "string",
+          "title": "Default SSO User Role",
+          "description": "Role assigned to new users who sign in via GitHub SSO.",
+          "enum": ["viewer", "developer", "admin"],
+          "default": "viewer"
         }
-      },
-      "required": ["appId", "privateKey"]
+      }
     },
-    "entityPanels": ["Service"],
+    "entityPanels": ["Service", "API", "Infrastructure"],
     "actionTypes": ["github-workflow-dispatch"]
   },
   {

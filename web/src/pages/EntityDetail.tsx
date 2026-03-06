@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { ChevronRight, Pencil, Trash2, X } from 'lucide-react';
+import { ChevronRight, Pencil, Trash2, X, ExternalLink, LayoutDashboard, BookOpen, FileText, Github, MessageSquare, Bell, Activity, Cpu, CircleHelp } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
-import type { Entity, JsonSchema, AuditEntry, GraphData } from '../lib/types';
+import type { Entity, JsonSchema, AuditEntry, GraphData, EntityLink } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
 import EntityGraph from '../components/EntityGraph';
 import KubernetesTab from '../components/KubernetesTab';
+import GitHubTab from '../components/GitHubTab';
 
 const ACTION_COLORS: Record<string, string> = {
   'entity.created': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
@@ -71,7 +72,19 @@ function entityToYaml(entity: Entity): string {
     .join('\n');
 }
 
-type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes';
+const LINK_ICONS: Record<string, React.ReactNode> = {
+  dashboard: <LayoutDashboard className="h-3.5 w-3.5" />,
+  docs:      <BookOpen className="h-3.5 w-3.5" />,
+  runbook:   <FileText className="h-3.5 w-3.5" />,
+  github:    <Github className="h-3.5 w-3.5" />,
+  slack:     <MessageSquare className="h-3.5 w-3.5" />,
+  alert:     <Bell className="h-3.5 w-3.5" />,
+  monitor:   <Activity className="h-3.5 w-3.5" />,
+  ci:        <Cpu className="h-3.5 w-3.5" />,
+  other:     <CircleHelp className="h-3.5 w-3.5" />,
+};
+
+type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes' | 'github';
 
 export default function EntityDetail() {
   const { kind, name } = useParams<{ kind: string; name: string }>();
@@ -235,8 +248,13 @@ export default function EntityDetail() {
       {/* Tabs */}
       {(() => {
         const isK8sEntity = !!(entity.metadata.annotations?.['kubernetes.io/kind']);
+        const hasGitHub = !!(
+          (entity.spec?.repoUrl as string | undefined)?.includes('github.com') ||
+          entity.metadata.annotations?.['github.com/repo']
+        );
         const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
         if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure')) tabs.splice(1, 0, 'kubernetes');
+        if (hasGitHub) tabs.splice(1, 0, 'github');
         return (
           <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
             {tabs.map((t) => (
@@ -249,7 +267,7 @@ export default function EntityDetail() {
                     : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
                 }`}
               >
-                {t === 'relationships' ? 'Dependencies' : t === 'kubernetes' ? 'Kubernetes' : t}
+                {t === 'relationships' ? 'Dependencies' : t === 'kubernetes' ? 'Kubernetes' : t === 'github' ? 'GitHub' : t}
                 {t === 'activity' && activity.length > 0 && (
                   <span className="ml-1.5 rounded-full bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs">
                     {activity.length}
@@ -272,16 +290,44 @@ export default function EntityDetail() {
                 {entity.spec && Object.keys(entity.spec).length > 0 ? (
                   <dl className="mt-4 space-y-3">
                     {Object.entries(entity.spec).map(([key, value]) => {
+                      // Skip repoUrl here — it's shown in the Links sidebar card.
+                      if (key === 'repoUrl') return null;
+
+                      // Render links array as clickable links.
+                      const isLinkArray =
+                        key === 'links' &&
+                        Array.isArray(value) &&
+                        (value as any[]).every((v) => v && typeof v === 'object' && 'url' in v && 'title' in v);
+
                       // Render arrays of entity references ({kind, name}) as chips instead of raw JSON.
                       const isRefArray =
                         Array.isArray(value) &&
                         value.length > 0 &&
                         (value as any[]).every((v) => v && typeof v === 'object' && 'kind' in v && 'name' in v);
+
                       return (
                         <div key={key}>
                           <dt className="text-xs font-medium text-[var(--gantry-text-secondary)]">{key}</dt>
                           <dd className="mt-1.5 text-sm text-[var(--gantry-text-primary)]">
-                            {isRefArray ? (
+                            {isLinkArray ? (
+                              <ul className="space-y-1">
+                                {(value as EntityLink[]).map((link, i) => (
+                                  <li key={i}>
+                                    <a
+                                      href={link.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1.5 text-sm text-[var(--gantry-accent)] hover:underline"
+                                    >
+                                      <span className="shrink-0 text-[var(--gantry-text-secondary)]">
+                                        {LINK_ICONS[link.icon ?? 'other'] ?? <ExternalLink className="h-3.5 w-3.5" />}
+                                      </span>
+                                      {link.title}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : isRefArray ? (
                               <div className="flex flex-wrap gap-1.5">
                                 {(value as { kind: string; name: string }[]).map((ref) => (
                                   <span
@@ -426,10 +472,51 @@ export default function EntityDetail() {
                 );
               })()}
 
-              {/* User-defined annotations (kubernetes.io/* filtered out) */}
+              {/* Links card — shown when entity has spec.links or spec.repoUrl */}
+              {(() => {
+                const links = (entity.spec?.links as EntityLink[] | undefined) ?? [];
+                const repoUrl = entity.spec?.repoUrl as string | undefined;
+                if (links.length === 0 && !repoUrl) return null;
+
+                const allLinks: EntityLink[] = [];
+                if (repoUrl) {
+                  const isGitHub = repoUrl.includes('github.com');
+                  allLinks.push({ title: isGitHub ? 'GitHub Repository' : 'Repository', url: repoUrl, icon: isGitHub ? 'github' : 'other' });
+                }
+                allLinks.push(...links);
+
+                return (
+                  <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
+                    <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Links</h3>
+                    <ul className="mt-3 space-y-2">
+                      {allLinks.map((link, i) => (
+                        <li key={i}>
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm text-[var(--gantry-accent)] hover:underline"
+                          >
+                            <span className="shrink-0 text-[var(--gantry-text-secondary)]">
+                              {LINK_ICONS[link.icon ?? 'other'] ?? <ExternalLink className="h-3.5 w-3.5" />}
+                            </span>
+                            <span className="truncate">{link.title}</span>
+                            <ExternalLink className="ml-auto h-3 w-3 shrink-0 text-[var(--gantry-text-secondary)]" />
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* User-defined annotations (kubernetes.io/* and github.com/* filtered out) */}
               {(() => {
                 const userAnnotations = Object.entries(entity.metadata.annotations ?? {}).filter(
-                  ([k]) => !k.startsWith('kubernetes.io/') && !k.startsWith('deployment.kubernetes.io/')
+                  ([k]) =>
+                    !k.startsWith('kubernetes.io/') &&
+                    !k.startsWith('deployment.kubernetes.io/') &&
+                    !k.startsWith('github.com/')
                 );
                 if (userAnnotations.length === 0) return null;
                 return (
@@ -499,6 +586,10 @@ export default function EntityDetail() {
 
         {tab === 'kubernetes' && (
           <KubernetesTab entity={entity} />
+        )}
+
+        {tab === 'github' && (
+          <GitHubTab entity={entity} />
         )}
 
         {tab === 'relationships' && (

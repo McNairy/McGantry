@@ -18,6 +18,35 @@
       "type": "string",
       "description": "Parent system or domain"
     },
+    "repoUrl": {
+      "type": "string",
+      "title": "Repository URL",
+      "description": "Source repository URL (GitHub, GitLab, Bitbucket, etc.)"
+    },
+    "techDocsRef": {
+      "type": "string",
+      "title": "TechDocs Reference",
+      "description": "Path or URL to this service's TechDocs (e.g., dir:., url:https://...)"
+    },
+    "links": {
+      "type": "array",
+      "title": "Links",
+      "description": "Useful links for this service (docs, dashboards, runbooks, etc.)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "title": "Title", "description": "Display name for the link" },
+          "url": { "type": "string", "title": "URL", "description": "Full URL" },
+          "icon": {
+            "type": "string",
+            "title": "Icon",
+            "description": "Icon hint for the link type",
+            "enum": ["dashboard", "docs", "runbook", "github", "slack", "alert", "monitor", "ci", "other"]
+          }
+        },
+        "required": ["title", "url"]
+      }
+    },
     "dependsOn": {
       "type": "array",
       "items": {

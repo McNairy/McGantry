@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -116,4 +116,10 @@ export const api = {
 
   getKubernetesWorkload: (appName: string, namespaces: string[]) =>
     request<K8sWorkloadInfo>('GET', `/plugins/kubernetes/workload/${encodeURIComponent(appName)}?namespaces=${namespaces.join(',')}`),
+
+  getGitHubSSOConfig: () =>
+    request<{ ssoEnabled: boolean }>('GET', '/auth/github/config'),
+
+  getGitHubRepo: (url: string) =>
+    request<GitHubRepoInfo>('GET', `/plugins/github/repo?url=${encodeURIComponent(url)}`),
 };
