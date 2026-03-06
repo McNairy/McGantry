@@ -253,20 +253,27 @@
           "title": "ArgoCD URL",
           "description": "Base URL of your ArgoCD instance (e.g. https://argocd.example.com)"
         },
+        "authMode": {
+          "type": "string",
+          "title": "Authentication Mode",
+          "description": "How Gantry authenticates with ArgoCD.",
+          "enum": ["token", "credentials"],
+          "default": "token"
+        },
         "token": {
           "type": "string",
           "title": "API Token",
-          "description": "ArgoCD API token. Generate one via: argocd account generate-token --account <name>. Leave empty to use username/password instead."
+          "description": "ArgoCD API token. Generate one via: argocd account generate-token --account <name>"
         },
         "username": {
           "type": "string",
           "title": "Username",
-          "description": "ArgoCD username. Used instead of API token when token is not set."
+          "description": "ArgoCD username."
         },
         "password": {
           "type": "string",
           "title": "Password",
-          "description": "ArgoCD password. Used instead of API token when token is not set."
+          "description": "ArgoCD password."
         },
         "insecureSkipTLS": {
           "type": "boolean",

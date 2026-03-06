@@ -47,20 +47,23 @@ func NewClient(config map[string]any) (*Client, error) {
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
 	}
 
+	authMode, _ := config["authMode"].(string)
 	token, _ := config["token"].(string)
 
-	if token == "" {
-		// Fall back to username/password session auth.
+	// Use credentials auth when authMode is "credentials" OR when no token is set.
+	if authMode == "credentials" || (token == "" && authMode != "token") {
 		username, _ := config["username"].(string)
 		password, _ := config["password"].(string)
 		if username == "" || password == "" {
-			return nil, fmt.Errorf("argocd plugin: either token or username+password is required")
+			return nil, fmt.Errorf("argocd plugin: username and password are required when using credentials auth")
 		}
 		var err error
 		token, err = createSession(httpClient, argoURL, username, password)
 		if err != nil {
 			return nil, fmt.Errorf("argocd plugin: authentication failed: %w", err)
 		}
+	} else if token == "" {
+		return nil, fmt.Errorf("argocd plugin: token is required when using token auth")
 	}
 
 	return &Client{

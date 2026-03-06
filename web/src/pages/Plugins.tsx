@@ -7,7 +7,7 @@ import { api } from '../lib/api';
 import type { PluginRegistryEntry, PluginConfig, PluginSyncResult } from '../lib/types';
 
 // Plugins that expose a server-side sync operation.
-const SYNCABLE_PLUGINS = new Set(['kubernetes', 'github']);
+const SYNCABLE_PLUGINS = new Set(['kubernetes', 'github', 'argocd']);
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -47,6 +47,23 @@ const PLUGIN_SECTIONS: Record<string, Array<{
   fields: string[];
   renderBanner?: () => React.ReactNode;
 }>> = {
+  argocd: [
+    {
+      title: 'Connection',
+      description: 'Where to find your ArgoCD instance.',
+      fields: ['argocdUrl', 'insecureSkipTLS'],
+    },
+    {
+      title: 'Authentication',
+      description: 'Choose how Gantry connects to the ArgoCD API.',
+      fields: ['authMode', 'token', 'username', 'password'],
+    },
+    {
+      title: 'Discovery',
+      description: 'Control which applications are synced and how often.',
+      fields: ['project', 'syncInterval'],
+    },
+  ],
   github: [
     {
       title: 'Authentication',
@@ -103,6 +120,11 @@ const PLUGIN_SECTIONS: Record<string, Array<{
 // Conditional field visibility: a field is hidden unless its function returns true.
 type VisibilityFn = (values: Record<string, any>) => boolean;
 const FIELD_VISIBILITY: Record<string, Record<string, VisibilityFn>> = {
+  argocd: {
+    token:    (v) => !v.authMode || v.authMode === 'token',
+    username: (v) => v.authMode === 'credentials',
+    password: (v) => v.authMode === 'credentials',
+  },
   github: {
     personalAccessToken: (v) => !v.authMode || v.authMode === 'pat',
     appId:              (v) => v.authMode === 'app',
@@ -616,6 +638,8 @@ function PluginCard({
           <div>
             {syncResult.enriched != null
               ? `Enriched ${syncResult.enriched} of ${syncResult.scanned ?? 0} entities`
+              : syncResult.apps != null
+              ? `${syncResult.apps} app${syncResult.apps !== 1 ? 's' : ''} synced: ${syncResult.created ?? 0} created, ${syncResult.updated ?? 0} updated`
               : `Synced: ${syncResult.created ?? 0} created, ${syncResult.updated ?? 0} updated`}
             {(syncResult.errors?.length ?? 0) > 0 && ` · ${syncResult.errors!.length} error(s)`}
           </div>
