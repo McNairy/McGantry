@@ -44,17 +44,17 @@ export const api = {
   listEntities: (kind?: string) =>
     request<Entity[]>('GET', kind ? `/entities/${kind}` : '/entities'),
 
-  getEntity: (kind: string, name: string) =>
-    request<Entity>('GET', `/entities/${kind}/${name}`),
+  getEntity: (kind: string, name: string, namespace?: string) =>
+    request<Entity>('GET', `/entities/${kind}/${name}${namespace && namespace !== 'default' ? `?namespace=${encodeURIComponent(namespace)}` : ''}`),
 
   createEntity: (entity: Entity) =>
     request<Entity>('POST', '/entities', entity),
 
-  updateEntity: (kind: string, name: string, entity: Entity) =>
-    request<Entity>('PUT', `/entities/${kind}/${name}`, entity),
+  updateEntity: (kind: string, name: string, entity: Entity, namespace?: string) =>
+    request<Entity>('PUT', `/entities/${kind}/${name}${namespace && namespace !== 'default' ? `?namespace=${encodeURIComponent(namespace)}` : ''}`, entity),
 
-  deleteEntity: (kind: string, name: string) =>
-    request<void>('DELETE', `/entities/${kind}/${name}`),
+  deleteEntity: (kind: string, name: string, namespace?: string) =>
+    request<void>('DELETE', `/entities/${kind}/${name}${namespace && namespace !== 'default' ? `?namespace=${encodeURIComponent(namespace)}` : ''}`),
 
   search: (q: string) =>
     request<SearchResult[]>('GET', `/search?q=${encodeURIComponent(q)}`),
@@ -98,8 +98,8 @@ export const api = {
   revokeAPIKey: (id: string) =>
     request<void>('DELETE', `/auth/apikeys/${id}`),
 
-  getEntityGraph: (kind: string, name: string) =>
-    request<GraphData>('GET', `/graph/${kind}/${name}`),
+  getEntityGraph: (kind: string, name: string, namespace?: string) =>
+    request<GraphData>('GET', `/graph/${kind}/${name}${namespace && namespace !== 'default' ? `?namespace=${encodeURIComponent(namespace)}` : ''}`),
 
   // Plugin marketplace
   listPlugins: () => request<PluginRegistryEntry[]>('GET', '/plugins'),

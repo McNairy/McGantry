@@ -113,7 +113,7 @@ export default function EntityTable({ entities }: EntityTableProps) {
               className={`cursor-pointer border-b border-[var(--gantry-border)] transition-colors hover:bg-[var(--gantry-bg-tertiary)] ${
                 i % 2 === 0 ? 'bg-[var(--gantry-bg-primary)]' : 'bg-[var(--gantry-bg-secondary)]'
               }`}
-              onClick={() => navigate(`/catalog/${entity.kind}/${entity.metadata.name}`)}
+              onClick={() => navigate(`/catalog/${entity.kind}/${entity.metadata.name}${entity.metadata.namespace && entity.metadata.namespace !== 'default' ? `?namespace=${encodeURIComponent(entity.metadata.namespace)}` : ''}`)}
             >
               <td className="px-4 py-3">
                 <div>

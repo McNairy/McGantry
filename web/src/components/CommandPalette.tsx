@@ -70,7 +70,7 @@ export default function CommandPalette() {
         const result = resultsRef.current[selectedIndexRef.current];
         if (result) {
           setOpen(false);
-          navigate(`/catalog/${result.kind}/${result.name}`);
+          navigate(`/catalog/${result.kind}/${result.name}${result.namespace && result.namespace !== 'default' ? `?namespace=${encodeURIComponent(result.namespace)}` : ''}`);
         }
       } else if (e.key === 'Escape') {
         setOpen(false);
@@ -111,7 +111,7 @@ export default function CommandPalette() {
 
   const selectResult = (result: SearchResult) => {
     setOpen(false);
-    navigate(`/catalog/${result.kind}/${result.name}`);
+    navigate(`/catalog/${result.kind}/${result.name}${result.namespace && result.namespace !== 'default' ? `?namespace=${encodeURIComponent(result.namespace)}` : ''}`);
   };
 
   const grouped = results.reduce<Record<string, SearchResult[]>>((acc, r) => {

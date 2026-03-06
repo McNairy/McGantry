@@ -378,6 +378,12 @@ func (h *Handlers) GetKubernetesWorkload(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			continue
 		}
+		// Tag each pod with its source cluster so the frontend can route log requests.
+		if cname, _ := cfg["clusterName"].(string); cname != "" {
+			for i := range info.Pods {
+				info.Pods[i].ClusterName = cname
+			}
+		}
 		combined.Deployments = append(combined.Deployments, info.Deployments...)
 		combined.Pods = append(combined.Pods, info.Pods...)
 	}
@@ -385,10 +391,12 @@ func (h *Handlers) GetKubernetesWorkload(w http.ResponseWriter, r *http.Request)
 }
 
 // StreamKubernetesPodLogs streams logs from a pod container as plain text.
+// An optional ?cluster= query param selects the target cluster by name; defaults to the first cluster.
 func (h *Handlers) StreamKubernetesPodLogs(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	pod := chi.URLParam(r, "pod")
 	container := chi.URLParam(r, "container")
+	clusterParam := r.URL.Query().Get("cluster")
 
 	p, err := h.DB.GetPlugin(r.Context(), "kubernetes")
 	if err != nil || p == nil {
@@ -400,7 +408,21 @@ func (h *Handlers) StreamKubernetesPodLogs(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	config := normalizeK8sConfig(p.Config)
+	// Find the cluster config matching the requested cluster name.
+	// Falls back to the first cluster if no name is provided or no match found.
+	var config map[string]any
+	for _, cfg := range allClusterConfigs(p.Config) {
+		name, _ := cfg["clusterName"].(string)
+		if clusterParam == "" || name == clusterParam {
+			config = cfg
+			break
+		}
+	}
+	if config == nil {
+		writeError(w, http.StatusBadRequest, "cluster not found: "+clusterParam)
+		return
+	}
+
 	client, err := k8s.NewClient(config)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

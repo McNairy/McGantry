@@ -462,11 +462,12 @@ func (d *DB) SearchEntities(ctx context.Context, query string) ([]*entity.Entity
 
 // GraphNode represents a single entity node in a relationship graph.
 type GraphNode struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind"`
-	Name   string `json:"name"`
-	Title  string `json:"title,omitempty"`
-	IsRoot bool   `json:"isRoot"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name"`
+	Title     string `json:"title,omitempty"`
+	IsRoot    bool   `json:"isRoot"`
 }
 
 // GraphEdge represents a directed relationship between two graph nodes.
@@ -493,7 +494,7 @@ func (d *DB) GetEntityGraph(ctx context.Context, kind, namespace, name string) (
 
 	rootID := kind + "/" + name
 	nodes := map[string]GraphNode{
-		rootID: {ID: rootID, Kind: root.Kind, Name: root.Metadata.Name, Title: root.Metadata.Title, IsRoot: true},
+		rootID: {ID: rootID, Kind: root.Kind, Namespace: root.Metadata.Namespace, Name: root.Metadata.Name, Title: root.Metadata.Title, IsRoot: true},
 	}
 	var edges []GraphEdge
 
@@ -505,10 +506,10 @@ func (d *DB) GetEntityGraph(ctx context.Context, kind, namespace, name string) (
 		}
 		e, err := d.GetEntity(ctx, nodeKind, namespace, nodeName)
 		if err != nil {
-			nodes[id] = GraphNode{ID: id, Kind: nodeKind, Name: nodeName}
+			nodes[id] = GraphNode{ID: id, Kind: nodeKind, Namespace: namespace, Name: nodeName}
 			return
 		}
-		nodes[id] = GraphNode{ID: id, Kind: e.Kind, Name: e.Metadata.Name, Title: e.Metadata.Title}
+		nodes[id] = GraphNode{ID: id, Kind: e.Kind, Namespace: e.Metadata.Namespace, Name: e.Metadata.Name, Title: e.Metadata.Title}
 	}
 
 	spec := root.Spec
@@ -598,7 +599,7 @@ func (d *DB) GetEntityGraph(ctx context.Context, kind, namespace, name string) (
 						depName, _ := m["name"].(string)
 						if depKind == kind && depName == name {
 							if _, exists := nodes[eID]; !exists {
-								nodes[eID] = GraphNode{ID: eID, Kind: e.Kind, Name: e.Metadata.Name, Title: e.Metadata.Title}
+								nodes[eID] = GraphNode{ID: eID, Kind: e.Kind, Namespace: e.Metadata.Namespace, Name: e.Metadata.Name, Title: e.Metadata.Title}
 							}
 							edges = append(edges, GraphEdge{From: eID, To: rootID, Relation: "dependsOn"})
 						}
@@ -614,7 +615,7 @@ func (d *DB) GetEntityGraph(ctx context.Context, kind, namespace, name string) (
 						envName, _ := m["name"].(string)
 						if envKind == kind && envName == name {
 							if _, exists := nodes[eID]; !exists {
-								nodes[eID] = GraphNode{ID: eID, Kind: e.Kind, Name: e.Metadata.Name, Title: e.Metadata.Title}
+								nodes[eID] = GraphNode{ID: eID, Kind: e.Kind, Namespace: e.Metadata.Namespace, Name: e.Metadata.Name, Title: e.Metadata.Title}
 							}
 							edges = append(edges, GraphEdge{From: eID, To: rootID, Relation: "deployedIn"})
 						}

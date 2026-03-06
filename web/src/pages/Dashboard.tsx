@@ -322,7 +322,7 @@ export default function Dashboard() {
                     return (
                       <Link
                         key={`${entity.kind}-${entity.metadata.name}`}
-                        to={`/catalog/${entity.kind}/${entity.metadata.name}`}
+                        to={`/catalog/${entity.kind}/${entity.metadata.name}${entity.metadata.namespace && entity.metadata.namespace !== 'default' ? `?namespace=${encodeURIComponent(entity.metadata.namespace)}` : ''}`}
                         className="flex items-center gap-4 px-6 py-3 transition-colors hover:bg-[var(--gantry-bg-secondary)]"
                       >
                         <Icon className="h-4 w-4 shrink-0 text-[var(--gantry-text-secondary)]" />
@@ -353,7 +353,7 @@ export default function Dashboard() {
                     return (
                       <Link
                         key={`${entity.kind}-${entity.metadata.name}`}
-                        to={`/catalog/${entity.kind}/${entity.metadata.name}`}
+                        to={`/catalog/${entity.kind}/${entity.metadata.name}${entity.metadata.namespace && entity.metadata.namespace !== 'default' ? `?namespace=${encodeURIComponent(entity.metadata.namespace)}` : ''}`}
                         className="flex items-center gap-4 px-6 py-3 transition-colors hover:bg-[var(--gantry-bg-secondary)]"
                       >
                         <Icon className="h-5 w-5 shrink-0 text-[var(--gantry-text-secondary)]" />

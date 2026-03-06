@@ -386,7 +386,7 @@ export default function EntityGraph({
                 pos={pos}
                 isHovered={hoveredNode === node.id}
                 onMouseDown={nodeMouseDown}
-                onClick={() => navigate(`/catalog/${node.kind}/${node.name}`)}
+                onClick={() => navigate(`/catalog/${node.kind}/${node.name}${node.namespace && node.namespace !== 'default' ? `?namespace=${encodeURIComponent(node.namespace)}` : ''}`)}
                 onMouseEnter={() => setHoveredNode(node.id)}
                 onMouseLeave={() => setHoveredNode(null)}
               />

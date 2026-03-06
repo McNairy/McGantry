@@ -107,6 +107,7 @@ export interface JsonSchema {
 export interface GraphNode {
   id: string;
   kind: string;
+  namespace?: string;
   name: string;
   title?: string;
   isRoot: boolean;
@@ -189,6 +190,7 @@ export interface K8sPodInfo {
   totalRestarts: number;
   nodeName?: string;
   startTime?: string;
+  clusterName?: string;
   containers: K8sContainerInfo[];
 }
 

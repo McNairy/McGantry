@@ -7,6 +7,7 @@ interface LogTarget {
   namespace: string;
   pod: string;
   container: string;
+  cluster?: string;
 }
 
 const PHASE_COLORS: Record<string, string> = {
@@ -50,7 +51,8 @@ function LogViewer({ target, onClose }: { target: LogTarget; onClose: () => void
     setConnected(true);
 
     const token = getToken();
-    const url = `/api/v1/plugins/kubernetes/pods/${target.namespace}/${target.pod}/containers/${target.container}/logs`;
+    const clusterSuffix = target.cluster ? `?cluster=${encodeURIComponent(target.cluster)}` : '';
+    const url = `/api/v1/plugins/kubernetes/pods/${target.namespace}/${target.pod}/containers/${target.container}/logs${clusterSuffix}`;
 
     fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -198,7 +200,7 @@ function PodRow({ pod }: { pod: K8sPodInfo }) {
                       onClick={(e) => {
                         e.stopPropagation();
                         setLogTarget(
-                          logTarget?.container === c.name ? null : { namespace: pod.namespace, pod: pod.name, container: c.name }
+                          logTarget?.container === c.name ? null : { namespace: pod.namespace, pod: pod.name, container: c.name, cluster: pod.clusterName }
                         );
                       }}
                       className="ml-auto flex items-center gap-1 rounded border border-[var(--gantry-border)] px-2 py-0.5 text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]"
@@ -224,18 +226,31 @@ export default function KubernetesTab({ entity }: { entity: Entity }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const namespaces: string[] = ((entity.spec?.deployedIn as any[]) ?? [])
-    .filter((d: any) => d?.kind === 'Environment')
-    .map((d: any) => d.name as string);
+  // For Service entities, use deployedIn environments as namespace hints.
+  // For Infrastructure entities (k8s Services), look up workload via the backing Service from dependsOn.
+  const isInfrastructure = entity.kind === 'Infrastructure';
+  const appName: string = isInfrastructure
+    ? ((entity.spec?.dependsOn as any[])?.[0]?.name ?? entity.metadata.name)
+    : entity.metadata.name;
+
+  // Namespace hints for the K8s workload query.
+  // Service: from spec.deployedIn; Infrastructure: from the kubernetes.io/namespace annotation.
+  const namespaces: string[] = isInfrastructure
+    ? (entity.metadata.annotations?.['kubernetes.io/namespace']
+        ? [entity.metadata.annotations['kubernetes.io/namespace']]
+        : [])
+    : ((entity.spec?.deployedIn as any[]) ?? [])
+        .filter((d: any) => d?.kind === 'Environment')
+        .map((d: any) => d.name as string);
 
   useEffect(() => {
     setLoading(true);
     api
-      .getKubernetesWorkload(entity.metadata.name, namespaces)
+      .getKubernetesWorkload(appName, namespaces)
       .then(setWorkload)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [entity.metadata.name]);
+  }, [appName]);
 
   if (loading) {
     return (

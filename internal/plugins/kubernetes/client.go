@@ -81,7 +81,7 @@ func (c *Client) GetWorkload(appName string, namespaces []string) (*WorkloadInfo
 					Namespace:         dep.Metadata.Namespace,
 					DesiredReplicas:   dep.Spec.Replicas,
 					ReadyReplicas:     dep.Status.ReadyReplicas,
-					AvailableReplicas: dep.Status.ReadyReplicas,
+					AvailableReplicas: dep.Status.AvailableReplicas,
 				})
 			}
 		}

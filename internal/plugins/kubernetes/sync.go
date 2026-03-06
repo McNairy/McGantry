@@ -38,6 +38,12 @@ func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncR
 	// Parse comma-separated namespace filter into a set for O(1) lookup.
 	nsAllowed := parseNamespaceFilter(config["namespace"])
 
+	// Optional cluster display name (set by allClusterConfigs from the "name" field).
+	clusterName, _ := config["clusterName"].(string)
+
+	// Optional label selector applied to deployments and services queries.
+	labelSelector, _ := config["labelSelector"].(string)
+
 	res := &SyncResult{}
 
 	// -----------------------------------------------------------------------
@@ -54,7 +60,7 @@ func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncR
 		if len(nsAllowed) > 0 && !nsAllowed[ns.Metadata.Name] {
 			continue
 		}
-		e := namespaceToEnvironment(ns)
+		e := namespaceToEnvironment(ns, clusterName)
 		if err := upsert(ctx, store, e, res); err != nil {
 			res.Errors = append(res.Errors, fmt.Sprintf("namespace %s: %v", ns.Metadata.Name, err))
 		}
@@ -66,14 +72,17 @@ func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncR
 	// -----------------------------------------------------------------------
 	namespaces := namespacesToSync(nsList.Items, nsAllowed)
 	for _, ns := range namespaces {
-		var depList DeploymentList
 		path := fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments", ns)
+		if labelSelector != "" {
+			path += "?labelSelector=" + labelSelector
+		}
+		var depList DeploymentList
 		if err := client.get(path, &depList); err != nil {
 			res.Errors = append(res.Errors, fmt.Sprintf("deployments in %s: %v", ns, err))
 			continue
 		}
 		for _, dep := range depList.Items {
-			e := deploymentToService(dep)
+			e := deploymentToService(dep, clusterName)
 			if err := upsert(ctx, store, e, res); err != nil {
 				res.Errors = append(res.Errors, fmt.Sprintf("deployment %s/%s: %v", ns, dep.Metadata.Name, err))
 			}
@@ -85,8 +94,11 @@ func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncR
 	// 3. Kubernetes Services → annotate / link the Service entities
 	// -----------------------------------------------------------------------
 	for _, ns := range namespaces {
-		var svcList KServiceList
 		path := fmt.Sprintf("/api/v1/namespaces/%s/services", ns)
+		if labelSelector != "" {
+			path += "?labelSelector=" + labelSelector
+		}
+		var svcList KServiceList
 		if err := client.get(path, &svcList); err != nil {
 			res.Errors = append(res.Errors, fmt.Sprintf("services in %s: %v", ns, err))
 			continue
@@ -96,7 +108,7 @@ func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncR
 			if svc.Metadata.Name == "kubernetes" || svc.Spec.ClusterIP == "None" {
 				continue
 			}
-			e := kserviceToInfrastructure(svc)
+			e := kserviceToInfrastructure(svc, clusterName)
 			if err := upsert(ctx, store, e, res); err != nil {
 				res.Errors = append(res.Errors, fmt.Sprintf("service %s/%s: %v", ns, svc.Metadata.Name, err))
 			}
@@ -111,16 +123,29 @@ func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncR
 // Converters — K8s resource → Gantry entity
 // ---------------------------------------------------------------------------
 
-func namespaceToEnvironment(ns Namespace) *entity.Entity {
+func namespaceToEnvironment(ns Namespace, clusterName string) *entity.Entity {
 	annotations := make(map[string]string)
 	annotations["kubernetes.io/kind"] = "Namespace"
 	annotations["kubernetes.io/uid"] = ns.Metadata.UID
+	annotations["kubernetes.io/namespace"] = ns.Metadata.Name
 	annotations["kubernetes.io/phase"] = ns.Status.Phase
+	if clusterName != "" {
+		annotations["kubernetes.io/clusterName"] = clusterName
+	}
 	for k, v := range ns.Metadata.Annotations {
-		annotations["kubernetes.io/"+k] = v
+		if strings.HasPrefix(k, "kubectl.kubernetes.io") {
+			continue
+		}
+		annotations[k] = v
 	}
 
 	tags := labelsToTags(ns.Metadata.Labels)
+
+	desc := fmt.Sprintf("Kubernetes namespace %q", ns.Metadata.Name)
+	if clusterName != "" {
+		desc += fmt.Sprintf(" on cluster %q", clusterName)
+	}
+	desc += "."
 
 	return &entity.Entity{
 		Kind:       "Environment",
@@ -129,7 +154,7 @@ func namespaceToEnvironment(ns Namespace) *entity.Entity {
 			Name:        ns.Metadata.Name,
 			Namespace:   "default",
 			Title:       ns.Metadata.Name,
-			Description: "Kubernetes namespace discovered by the Gantry Kubernetes plugin.",
+			Description: desc,
 			Annotations: annotations,
 			Tags:        append(tags, "kubernetes"),
 		},
@@ -137,7 +162,7 @@ func namespaceToEnvironment(ns Namespace) *entity.Entity {
 	}
 }
 
-func deploymentToService(dep Deployment) *entity.Entity {
+func deploymentToService(dep Deployment, clusterName string) *entity.Entity {
 	appName := dep.Metadata.Labels["app"]
 	if appName == "" {
 		appName = dep.Metadata.Name
@@ -146,16 +171,17 @@ func deploymentToService(dep Deployment) *entity.Entity {
 	annotations := make(map[string]string)
 	annotations["kubernetes.io/kind"] = "Deployment"
 	annotations["kubernetes.io/uid"] = dep.Metadata.UID
-	annotations["kubernetes.io/replicas"] = fmt.Sprintf("%d", dep.Spec.Replicas)
-	annotations["kubernetes.io/readyReplicas"] = fmt.Sprintf("%d", dep.Status.ReadyReplicas)
-	for k, v := range dep.Metadata.Annotations {
-		if strings.HasPrefix(k, "kubectl.kubernetes.io") {
-			continue
-		}
-		annotations[k] = v
+	if clusterName != "" {
+		annotations["kubernetes.io/clusterName"] = clusterName
 	}
 
 	tags := labelsToTags(dep.Metadata.Labels)
+
+	desc := fmt.Sprintf("Kubernetes Deployment %q", appName)
+	if clusterName != "" {
+		desc += fmt.Sprintf(" on cluster %q", clusterName)
+	}
+	desc += "."
 
 	return &entity.Entity{
 		Kind:       "Service",
@@ -164,7 +190,7 @@ func deploymentToService(dep Deployment) *entity.Entity {
 			Name:        appName,
 			Namespace:   "default",
 			Title:       appName,
-			Description: fmt.Sprintf("Kubernetes application %q discovered by Gantry.", appName),
+			Description: desc,
 			Annotations: annotations,
 			Tags:        append(tags, "kubernetes"),
 		},
@@ -175,16 +201,16 @@ func deploymentToService(dep Deployment) *entity.Entity {
 	}
 }
 
-func kserviceToInfrastructure(svc KService) *entity.Entity {
+func kserviceToInfrastructure(svc KService, clusterName string) *entity.Entity {
 	annotations := make(map[string]string)
 	annotations["kubernetes.io/kind"] = "Service"
 	annotations["kubernetes.io/uid"] = svc.Metadata.UID
+	annotations["kubernetes.io/namespace"] = svc.Metadata.Namespace
 	annotations["kubernetes.io/serviceType"] = svc.Spec.Type
 	annotations["kubernetes.io/clusterIP"] = svc.Spec.ClusterIP
-	for k, v := range svc.Metadata.Labels {
-		annotations["kubernetes.io/label/"+k] = v
+	if clusterName != "" {
+		annotations["kubernetes.io/clusterName"] = clusterName
 	}
-
 	// Prefer spec.selector.app (the selector the Service uses to route to pods)
 	// over metadata labels, since not all Services carry their own app label.
 	appName := svc.Spec.Selector["app"]
@@ -196,6 +222,12 @@ func kserviceToInfrastructure(svc KService) *entity.Entity {
 		spec["dependsOn"] = []any{map[string]any{"kind": "Service", "name": appName}}
 	}
 
+	desc := fmt.Sprintf("Kubernetes %s Service %q in namespace %q", svc.Spec.Type, svc.Metadata.Name, svc.Metadata.Namespace)
+	if clusterName != "" {
+		desc += fmt.Sprintf(" on cluster %q", clusterName)
+	}
+	desc += "."
+
 	return &entity.Entity{
 		Kind:       "Infrastructure",
 		APIVersion: "gantry.io/v1",
@@ -203,7 +235,7 @@ func kserviceToInfrastructure(svc KService) *entity.Entity {
 			Name:        svc.Metadata.Name + "-svc",
 			Namespace:   "default",
 			Title:       svc.Metadata.Name,
-			Description: fmt.Sprintf("Kubernetes Service (%s) for %q.", svc.Spec.Type, svc.Metadata.Name),
+			Description: desc,
 			Annotations: annotations,
 			Tags:        []string{"kubernetes", "k8s-service"},
 		},
@@ -337,9 +369,35 @@ func mergeAnnotations(existing, incoming map[string]string) map[string]string {
 		return incoming
 	}
 	for k, v := range incoming {
+		// Accumulate cluster names rather than overwriting.
+		if k == "kubernetes.io/clusterName" {
+			existing = mergeClusterName(existing, v)
+			continue
+		}
 		existing[k] = v
 	}
 	return existing
+}
+
+// mergeClusterName adds a cluster name to the accumulated kubernetes.io/clusters
+// annotation (comma-separated) and keeps kubernetes.io/clusterName in sync.
+func mergeClusterName(annotations map[string]string, newCluster string) map[string]string {
+	existing := annotations["kubernetes.io/clusters"]
+	seen := make(map[string]bool)
+	var parts []string
+	for _, c := range strings.Split(existing, ",") {
+		c = strings.TrimSpace(c)
+		if c != "" && !seen[c] {
+			seen[c] = true
+			parts = append(parts, c)
+		}
+	}
+	if !seen[newCluster] {
+		parts = append(parts, newCluster)
+	}
+	annotations["kubernetes.io/clusters"] = strings.Join(parts, ", ")
+	annotations["kubernetes.io/clusterName"] = parts[0] // keep for legacy compat
+	return annotations
 }
 
 func mergeTags(existing, incoming []string) []string {

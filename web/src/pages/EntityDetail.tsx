@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ChevronRight, Pencil, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
@@ -75,6 +75,8 @@ type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes';
 
 export default function EntityDetail() {
   const { kind, name } = useParams<{ kind: string; name: string }>();
+  const [searchParams] = useSearchParams();
+  const namespace = searchParams.get('namespace') ?? 'default';
   const navigate = useNavigate();
   const { user } = useAuth();
   const canWrite = user?.role !== 'viewer';
@@ -93,7 +95,7 @@ export default function EntityDetail() {
     if (!kind || !name) return;
     setLoading(true);
     Promise.all([
-      api.getEntity(kind, name),
+      api.getEntity(kind, name, namespace),
       api.getSchema(kind).catch(() => null),
       api.listAuditEntries(100, 0).catch(() => [] as AuditEntry[]),
     ])
@@ -107,12 +109,12 @@ export default function EntityDetail() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [kind, name]);
+  }, [kind, name, namespace]);
 
   useEffect(() => {
     if (tab !== 'relationships' || !kind || !name || graphData) return;
     setGraphLoading(true);
-    api.getEntityGraph(kind, name)
+    api.getEntityGraph(kind, name, namespace)
       .then(setGraphData)
       .catch(() => {}) // Graph errors are non-fatal; graph stays null
       .finally(() => setGraphLoading(false));
@@ -124,7 +126,7 @@ export default function EntityDetail() {
       const updated = await api.updateEntity(kind, name, {
         ...entity,
         spec,
-      });
+      }, namespace);
       setEntity(updated);
       setEditing(false);
     } catch (e: any) {
@@ -135,7 +137,7 @@ export default function EntityDetail() {
   const handleDelete = async () => {
     if (!kind || !name) return;
     try {
-      await api.deleteEntity(kind, name);
+      await api.deleteEntity(kind, name, namespace);
       navigate('/catalog');
     } catch (e: any) {
       setError(e.message);
@@ -234,7 +236,7 @@ export default function EntityDetail() {
       {(() => {
         const isK8sEntity = !!(entity.metadata.annotations?.['kubernetes.io/kind']);
         const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
-        if (isK8sEntity && entity.kind === 'Service') tabs.splice(1, 0, 'kubernetes');
+        if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure')) tabs.splice(1, 0, 'kubernetes');
         return (
           <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
             {tabs.map((t) => (
@@ -269,20 +271,39 @@ export default function EntityDetail() {
                 <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Spec</h3>
                 {entity.spec && Object.keys(entity.spec).length > 0 ? (
                   <dl className="mt-4 space-y-3">
-                    {Object.entries(entity.spec).map(([key, value]) => (
-                      <div key={key}>
-                        <dt className="text-xs font-medium text-[var(--gantry-text-secondary)]">{key}</dt>
-                        <dd className="mt-0.5 text-sm text-[var(--gantry-text-primary)]">
-                          {typeof value === 'object' ? (
-                            <pre className="mt-1 overflow-auto rounded-md bg-[var(--gantry-bg-tertiary)] p-2 text-xs">
-                              {JSON.stringify(value, null, 2)}
-                            </pre>
-                          ) : (
-                            String(value)
-                          )}
-                        </dd>
-                      </div>
-                    ))}
+                    {Object.entries(entity.spec).map(([key, value]) => {
+                      // Render arrays of entity references ({kind, name}) as chips instead of raw JSON.
+                      const isRefArray =
+                        Array.isArray(value) &&
+                        value.length > 0 &&
+                        (value as any[]).every((v) => v && typeof v === 'object' && 'kind' in v && 'name' in v);
+                      return (
+                        <div key={key}>
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)]">{key}</dt>
+                          <dd className="mt-1.5 text-sm text-[var(--gantry-text-primary)]">
+                            {isRefArray ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {(value as { kind: string; name: string }[]).map((ref) => (
+                                  <span
+                                    key={`${ref.kind}/${ref.name}`}
+                                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-tertiary)] px-2 py-0.5 text-xs"
+                                  >
+                                    <span className="text-[var(--gantry-text-secondary)]">{ref.kind}</span>
+                                    <span className="text-[var(--gantry-text-primary)] font-medium">{ref.name}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : typeof value === 'object' ? (
+                              <pre className="mt-1 overflow-auto rounded-md bg-[var(--gantry-bg-tertiary)] p-2 text-xs">
+                                {JSON.stringify(value, null, 2)}
+                              </pre>
+                            ) : (
+                              String(value)
+                            )}
+                          </dd>
+                        </div>
+                      );
+                    })}
                   </dl>
                 ) : (
                   <p className="mt-4 text-sm text-[var(--gantry-text-secondary)]">No spec fields defined.</p>
@@ -290,14 +311,16 @@ export default function EntityDetail() {
               </div>
             </div>
             {/* Metadata sidebar */}
-            <div>
+            <div className="space-y-4">
               <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
                 <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Metadata</h3>
                 <dl className="mt-4 space-y-3">
-                  <div>
-                    <dt className="text-xs font-medium text-[var(--gantry-text-secondary)]">Namespace</dt>
-                    <dd className="mt-0.5 text-sm text-[var(--gantry-text-primary)]">{entity.metadata.namespace || 'default'}</dd>
-                  </div>
+                  {entity.metadata.namespace && entity.metadata.namespace !== 'default' && (
+                    <div>
+                      <dt className="text-xs font-medium text-[var(--gantry-text-secondary)]">Namespace</dt>
+                      <dd className="mt-0.5 text-sm text-[var(--gantry-text-primary)]">{entity.metadata.namespace}</dd>
+                    </div>
+                  )}
                   <div>
                     <dt className="text-xs font-medium text-[var(--gantry-text-secondary)]">API Version</dt>
                     <dd className="mt-0.5 text-sm text-[var(--gantry-text-primary)]">{entity.apiVersion}</dd>
@@ -319,20 +342,110 @@ export default function EntityDetail() {
                     </div>
                   )}
                 </dl>
-                {entity.metadata.annotations && Object.keys(entity.metadata.annotations).length > 0 && (
-                  <>
-                    <h3 className="mt-6 text-sm font-semibold text-[var(--gantry-text-primary)]">Annotations</h3>
-                    <dl className="mt-2 space-y-2">
-                      {Object.entries(entity.metadata.annotations).map(([k, v]) => (
+              </div>
+
+              {/* Kubernetes source info — shown only for k8s-synced entities */}
+              {(() => {
+                const anno = entity.metadata.annotations ?? {};
+                const k8sKind = anno['kubernetes.io/kind'];
+                if (!k8sKind) return null;
+
+                // Clusters: comma-separated from kubernetes.io/clusters, or single clusterName.
+                const clustersRaw = anno['kubernetes.io/clusters'] || anno['kubernetes.io/clusterName'];
+                const clusters = clustersRaw ? clustersRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+
+                // Namespaces: from spec.deployedIn (accumulated across all syncs).
+                const deployedIn: { kind: string; name: string }[] =
+                  Array.isArray(entity.spec?.deployedIn)
+                    ? (entity.spec.deployedIn as any[]).filter(
+                        (d: any) => d && typeof d === 'object' && d.kind === 'Environment'
+                      )
+                    : [];
+
+                return (
+                  <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
+                    <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Kubernetes</h3>
+                    <dl className="mt-3 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Resource</dt>
+                        <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{k8sKind}</dd>
+                      </div>
+                      {clusters.length > 0 && (
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">
+                            {clusters.length === 1 ? 'Cluster' : 'Clusters'}
+                          </dt>
+                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">
+                            {clusters.join(', ')}
+                          </dd>
+                        </div>
+                      )}
+                      {deployedIn.length > 0 && (
+                        <div>
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)]">
+                            {deployedIn.length === 1 ? 'Namespace' : 'Namespaces'}
+                          </dt>
+                          <dd className="mt-1.5 flex flex-wrap gap-1">
+                            {deployedIn.map((d) => (
+                              <span
+                                key={d.name}
+                                className="rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-1.5 py-0.5 text-xs font-mono text-[var(--gantry-text-primary)]"
+                              >
+                                {d.name}
+                              </span>
+                            ))}
+                          </dd>
+                        </div>
+                      )}
+                      {anno['kubernetes.io/namespace'] && deployedIn.length === 0 && (
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Namespace</dt>
+                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{anno['kubernetes.io/namespace']}</dd>
+                        </div>
+                      )}
+                      {anno['kubernetes.io/serviceType'] && (
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Service Type</dt>
+                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{anno['kubernetes.io/serviceType']}</dd>
+                        </div>
+                      )}
+                      {anno['kubernetes.io/clusterIP'] && (
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Cluster IP</dt>
+                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{anno['kubernetes.io/clusterIP']}</dd>
+                        </div>
+                      )}
+                      {anno['kubernetes.io/phase'] && (
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Phase</dt>
+                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{anno['kubernetes.io/phase']}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+                );
+              })()}
+
+              {/* User-defined annotations (kubernetes.io/* filtered out) */}
+              {(() => {
+                const userAnnotations = Object.entries(entity.metadata.annotations ?? {}).filter(
+                  ([k]) => !k.startsWith('kubernetes.io/') && !k.startsWith('deployment.kubernetes.io/')
+                );
+                if (userAnnotations.length === 0) return null;
+                return (
+                  <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
+                    <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Annotations</h3>
+                    <dl className="mt-3 space-y-2">
+                      {userAnnotations.map(([k, v]) => (
                         <div key={k}>
                           <dt className="truncate text-xs font-medium text-[var(--gantry-text-secondary)]">{k}</dt>
                           <dd className="mt-0.5 truncate text-xs text-[var(--gantry-text-primary)]">{v}</dd>
                         </div>
                       ))}
                     </dl>
-                  </>
-                )}
-              </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

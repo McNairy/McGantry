@@ -38,8 +38,9 @@ type DeploymentSpec struct {
 }
 
 type DeploymentStatus struct {
-	Replicas      int32 `json:"replicas"`
-	ReadyReplicas int32 `json:"readyReplicas"`
+	Replicas          int32 `json:"replicas"`
+	ReadyReplicas     int32 `json:"readyReplicas"`
+	AvailableReplicas int32 `json:"availableReplicas"`
 }
 
 type DeploymentList struct {
@@ -62,8 +63,6 @@ type KServiceSpec struct {
 type KServiceList struct {
 	Items []KService `json:"items"`
 }
-
-// DeploymentStatus — extended with AvailableReplicas.
 
 // PodList
 
@@ -141,6 +140,7 @@ type PodInfo struct {
 	TotalRestarts int32           `json:"totalRestarts"`
 	NodeName      string          `json:"nodeName,omitempty"`
 	StartTime     string          `json:"startTime,omitempty"`
+	ClusterName   string          `json:"clusterName,omitempty"`
 	Containers    []ContainerInfo `json:"containers"`
 }
 
