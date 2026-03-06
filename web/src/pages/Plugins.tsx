@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Package, CheckCircle, Circle, Settings, ExternalLink, Search, Puzzle } from 'lucide-react';
+import { Package, CheckCircle, Circle, Settings, ExternalLink, Search, Puzzle, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
-import type { PluginRegistryEntry, PluginConfig } from '../lib/types';
+import type { PluginRegistryEntry, PluginConfig, PluginSyncResult } from '../lib/types';
+
+// Plugins that expose a server-side sync operation.
+const SYNCABLE_PLUGINS = new Set(['kubernetes']);
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -114,7 +117,7 @@ function ConfigModal({
           <button
             onClick={handleSave}
             disabled={saving || fields.length === 0}
-            className="px-4 py-2 text-sm rounded-lg bg-[var(--gantry-accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {saved ? 'Saved!' : saving ? 'Saving…' : 'Save'}
           </button>
@@ -127,12 +130,19 @@ function ConfigModal({
 // PluginCard — single card in the grid.
 function PluginCard({
   plugin,
+  syncing,
+  syncResult,
   onAction,
+  onSync,
 }: {
   plugin: PluginRegistryEntry;
+  syncing: boolean;
+  syncResult: PluginSyncResult | null;
   onAction: (action: 'install' | 'enable' | 'disable' | 'configure') => void;
+  onSync: () => void;
 }) {
   const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
+  const canSync = plugin.installed && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
 
   return (
     <div className="bg-[var(--gantry-surface)] rounded-xl border border-[var(--gantry-border)] p-5 flex flex-col gap-4 hover:border-[var(--gantry-accent)] transition-colors">
@@ -149,7 +159,7 @@ function PluginCard({
         {plugin.installed && (
           <span className="flex-shrink-0 flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
             <CheckCircle size={10} />
-            Installed
+            {plugin.enabled ? 'Active' : 'Installed'}
           </span>
         )}
       </div>
@@ -173,11 +183,21 @@ function PluginCard({
         )}
       </div>
 
+      {/* Sync result summary */}
+      {syncResult && (
+        <div className="text-xs rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-3 py-2 text-green-700 dark:text-green-400">
+          Synced: {syncResult.created} created, {syncResult.updated} updated
+          {(syncResult.errors?.length ?? 0) > 0 && (
+            <span className="ml-2 text-amber-600 dark:text-amber-400">· {syncResult.errors!.length} error(s)</span>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 pt-1 border-t border-[var(--gantry-border)]">
         {!plugin.installed ? (
           <button
             onClick={() => onAction('install')}
-            className="flex-1 py-1.5 text-xs font-medium rounded-lg bg-[var(--gantry-accent)] text-white hover:opacity-90 transition-opacity"
+            className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity"
           >
             Install
           </button>
@@ -197,6 +217,16 @@ function PluginCard({
                 <><CheckCircle size={10} /> Enable</>
               )}
             </button>
+            {canSync && (
+              <button
+                onClick={onSync}
+                disabled={syncing}
+                title="Sync now — discover resources from your cluster"
+                className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text)] hover:bg-[var(--gantry-hover)] transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+              </button>
+            )}
             <button
               onClick={() => onAction('configure')}
               className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text)] hover:bg-[var(--gantry-hover)] transition-colors"
@@ -221,6 +251,8 @@ export default function Plugins() {
   const [category, setCategory] = useState('all');
   const [tab, setTab] = useState<'browse' | 'installed'>('browse');
   const [configPlugin, setConfigPlugin] = useState<PluginRegistryEntry | null>(null);
+  const [syncingPlugins, setSyncingPlugins] = useState<Set<string>>(new Set());
+  const [syncResults, setSyncResults] = useState<Record<string, PluginSyncResult>>({});
 
   useEffect(() => {
     api.listPlugins()
@@ -254,6 +286,19 @@ export default function Plugins() {
       }
     } catch (e: any) {
       setError(e.message);
+    }
+  }
+
+  async function handleSync(pluginName: string) {
+    setSyncingPlugins((s) => new Set(s).add(pluginName));
+    setSyncResults((r) => { const n = { ...r }; delete n[pluginName]; return n; });
+    try {
+      const result = await api.syncPlugin(pluginName);
+      setSyncResults((r) => ({ ...r, [pluginName]: result }));
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSyncingPlugins((s) => { const n = new Set(s); n.delete(pluginName); return n; });
     }
   }
 
@@ -324,7 +369,7 @@ export default function Plugins() {
               onClick={() => setCategory(cat.id)}
               className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
                 category === cat.id
-                  ? 'bg-[var(--gantry-accent)] text-white'
+                  ? 'bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)]'
                   : 'bg-[var(--gantry-surface)] border border-[var(--gantry-border)] text-[var(--gantry-text-muted)] hover:text-[var(--gantry-text)]'
               }`}
             >
@@ -356,7 +401,10 @@ export default function Plugins() {
               <PluginCard
                 key={plugin.name}
                 plugin={plugin}
+                syncing={syncingPlugins.has(plugin.name)}
+                syncResult={syncResults[plugin.name] ?? null}
                 onAction={(action) => handleAction(plugin, action)}
+                onSync={() => handleSync(plugin.name)}
               />
             ))}
           </div>

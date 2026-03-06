@@ -13,9 +13,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gantrydev/gantry/internal/db"
-	"github.com/gantrydev/gantry/internal/entity"
-	"github.com/gantrydev/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/entity"
+	"github.com/go2engle/gantry/internal/events"
 )
 
 // Manager holds shared HTTP client and event bus, and dispatches action runs

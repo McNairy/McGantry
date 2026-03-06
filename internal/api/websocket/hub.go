@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gantrydev/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/events"
 	ws "github.com/gorilla/websocket"
 )
 

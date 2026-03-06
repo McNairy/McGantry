@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/gantrydev/gantry/internal/auth"
-	"github.com/gantrydev/gantry/internal/db"
-	"github.com/gantrydev/gantry/internal/dispatcher"
-	"github.com/gantrydev/gantry/internal/entity"
-	"github.com/gantrydev/gantry/internal/events"
-	"github.com/gantrydev/gantry/internal/search"
+	"github.com/go2engle/gantry/internal/auth"
+	"github.com/go2engle/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/dispatcher"
+	"github.com/go2engle/gantry/internal/entity"
+	"github.com/go2engle/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/search"
 )
 
 // Handlers groups all dependencies needed by API handler functions.

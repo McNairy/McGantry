@@ -9,7 +9,7 @@ import (
 	"time"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/gantrydev/gantry/internal/metrics"
+	"github.com/go2engle/gantry/internal/metrics"
 )
 
 // responseWriter wraps http.ResponseWriter to capture the status code.

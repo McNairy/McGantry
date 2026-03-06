@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -111,4 +111,6 @@ export const api = {
   getPluginConfig: (name: string) => request<PluginConfig>('GET', `/plugins/${name}/config`),
   updatePluginConfig: (name: string, values: Record<string, any>) =>
     request<void>('PUT', `/plugins/${name}/config`, values),
+
+  syncPlugin: (name: string) => request<PluginSyncResult>('POST', `/plugins/${name}/sync`, {}),
 };

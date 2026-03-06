@@ -7,7 +7,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/gantrydev/gantry/internal/plugins"
+	"github.com/go2engle/gantry/internal/plugins"
+	k8s "github.com/go2engle/gantry/internal/plugins/kubernetes"
 )
 
 // ListPlugins returns all plugins: registry entries merged with installed state.
@@ -199,6 +200,42 @@ func (h *Handlers) UpdatePluginConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// SyncPlugin triggers a plugin-specific sync operation (e.g. Kubernetes discovery).
+// Currently only the "kubernetes" plugin is supported.
+func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	p, err := h.DB.GetPlugin(r.Context(), name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if p == nil {
+		writeError(w, http.StatusNotFound, "plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "plugin is not enabled")
+		return
+	}
+
+	switch name {
+	case "kubernetes":
+		config := make(map[string]any)
+		for k, v := range p.Config {
+			config[k] = v
+		}
+		result, err := k8s.Sync(r.Context(), config, h.DB)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	default:
+		writeError(w, http.StatusNotImplemented, "sync not supported for plugin: "+name)
+	}
 }
 
 // newShortID generates a short random ID for plugin records.

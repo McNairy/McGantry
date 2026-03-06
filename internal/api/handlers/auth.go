@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/gantrydev/gantry/internal/api/middleware"
-	"github.com/gantrydev/gantry/internal/auth"
-	"github.com/gantrydev/gantry/internal/db"
-	"github.com/gantrydev/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/api/middleware"
+	"github.com/go2engle/gantry/internal/auth"
+	"github.com/go2engle/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/events"
 )
 
 // loginRequest represents the JSON body of a login request.

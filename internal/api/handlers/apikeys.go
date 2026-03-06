@@ -6,10 +6,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/gantrydev/gantry/internal/api/middleware"
-	"github.com/gantrydev/gantry/internal/auth"
-	"github.com/gantrydev/gantry/internal/db"
-	"github.com/gantrydev/gantry/internal/entity"
+	"github.com/go2engle/gantry/internal/api/middleware"
+	"github.com/go2engle/gantry/internal/auth"
+	"github.com/go2engle/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/entity"
 )
 
 type createAPIKeyRequest struct {

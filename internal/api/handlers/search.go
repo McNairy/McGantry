@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/gantrydev/gantry/internal/search"
+	"github.com/go2engle/gantry/internal/search"
 )
 
 // Search handles GET /search?q=. It performs a full-text search using the

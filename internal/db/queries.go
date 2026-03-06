@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gantrydev/gantry/internal/entity"
-	"github.com/gantrydev/gantry/internal/plugins"
+	"github.com/go2engle/gantry/internal/entity"
+	"github.com/go2engle/gantry/internal/plugins"
 )
 
 // ---------------------------------------------------------------------------

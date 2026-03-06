@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gantrydev/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/db"
 )
 
 // ListAuditEntries handles GET /audit?limit=50&offset=0.

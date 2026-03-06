@@ -11,17 +11,17 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/gantrydev/gantry/internal/api/handlers"
-	"github.com/gantrydev/gantry/internal/api/middleware"
-	"github.com/gantrydev/gantry/internal/api/websocket"
-	"github.com/gantrydev/gantry/internal/auth"
-	"github.com/gantrydev/gantry/internal/config"
-	"github.com/gantrydev/gantry/internal/db"
-	"github.com/gantrydev/gantry/internal/dispatcher"
-	"github.com/gantrydev/gantry/internal/entity"
-	"github.com/gantrydev/gantry/internal/events"
-	"github.com/gantrydev/gantry/internal/metrics"
-	"github.com/gantrydev/gantry/internal/search"
+	"github.com/go2engle/gantry/internal/api/handlers"
+	"github.com/go2engle/gantry/internal/api/middleware"
+	"github.com/go2engle/gantry/internal/api/websocket"
+	"github.com/go2engle/gantry/internal/auth"
+	"github.com/go2engle/gantry/internal/config"
+	"github.com/go2engle/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/dispatcher"
+	"github.com/go2engle/gantry/internal/entity"
+	"github.com/go2engle/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/metrics"
+	"github.com/go2engle/gantry/internal/search"
 )
 
 // Server is the Gantry HTTP server.
@@ -147,6 +147,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/enable", h.EnablePlugin)
 			protected.Get("/plugins/{name}/config", h.GetPluginConfig)
 			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/config", h.UpdatePluginConfig)
+			protected.With(middleware.RequireRole("developer")).Post("/plugins/{name}/sync", h.SyncPlugin)
 		})
 
 		// WebSocket (public -- auth is handled inside the WS handshake).

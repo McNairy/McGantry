@@ -163,6 +163,15 @@ export interface PluginConfig {
   values?: Record<string, any>;
 }
 
+export interface PluginSyncResult {
+  namespaces: number;
+  deployments: number;
+  services: number;
+  created: number;
+  updated: number;
+  errors?: string[];
+}
+
 export const ENTITY_KINDS = [
   { name: 'Service', plural: 'services', icon: 'Server' },
   { name: 'API', plural: 'apis', icon: 'Globe' },

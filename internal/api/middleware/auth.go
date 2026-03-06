@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gantrydev/gantry/internal/auth"
-	"github.com/gantrydev/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/auth"
+	"github.com/go2engle/gantry/internal/db"
 )
 
 type contextKey string

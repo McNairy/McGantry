@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/gantrydev/gantry/internal/config"
+	"github.com/go2engle/gantry/internal/config"
 
 	// SQLite driver (pure Go, no CGO required).
 	_ "modernc.org/sqlite"

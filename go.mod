@@ -1,4 +1,4 @@
-module github.com/gantrydev/gantry
+module github.com/go2engle/gantry
 
 go 1.22
 
