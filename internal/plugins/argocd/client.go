@@ -24,8 +24,14 @@ type Client struct {
 // NewClient creates a client from plugin config values.
 //
 //	config["argocdUrl"]        — required, e.g. "https://argocd.example.com"
-//	config["token"]            — required, ArgoCD API token
+//	config["token"]            — API token. Either this or username+password is required.
+//	config["username"]         — ArgoCD username (alternative to token)
+//	config["password"]         — ArgoCD password (alternative to token)
 //	config["insecureSkipTLS"]  — optional bool, skip TLS verification (default false)
+//
+// When username and password are provided instead of a token, NewClient calls
+// the ArgoCD session API to exchange them for a JWT which is used for all
+// subsequent requests.
 func NewClient(config map[string]any) (*Client, error) {
 	argoURL, _ := config["argocdUrl"].(string)
 	if argoURL == "" {
@@ -33,22 +39,69 @@ func NewClient(config map[string]any) (*Client, error) {
 	}
 	argoURL = strings.TrimRight(argoURL, "/")
 
-	token, _ := config["token"].(string)
-	if token == "" {
-		return nil, fmt.Errorf("argocd plugin: token is required")
-	}
-
 	insecure, _ := config["insecureSkipTLS"].(bool)
 	tlsCfg := &tls.Config{InsecureSkipVerify: insecure} //nolint:gosec
 
+	httpClient := &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: tlsCfg},
+	}
+
+	token, _ := config["token"].(string)
+
+	if token == "" {
+		// Fall back to username/password session auth.
+		username, _ := config["username"].(string)
+		password, _ := config["password"].(string)
+		if username == "" || password == "" {
+			return nil, fmt.Errorf("argocd plugin: either token or username+password is required")
+		}
+		var err error
+		token, err = createSession(httpClient, argoURL, username, password)
+		if err != nil {
+			return nil, fmt.Errorf("argocd plugin: authentication failed: %w", err)
+		}
+	}
+
 	return &Client{
-		baseURL: argoURL,
-		token:   token,
-		httpClient: &http.Client{
-			Timeout:   20 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: tlsCfg},
-		},
+		baseURL:    argoURL,
+		token:      token,
+		httpClient: httpClient,
 	}, nil
+}
+
+// createSession authenticates with ArgoCD using username/password and returns
+// the JWT token from the session API (POST /api/v1/session).
+func createSession(httpClient *http.Client, baseURL, username, password string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"username": username, "password": password})
+	req, err := http.NewRequest("POST", baseURL+"/api/v1/session", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("session request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("parse session response: %w", err)
+	}
+	if result.Token == "" {
+		return "", fmt.Errorf("empty token in session response")
+	}
+	return result.Token, nil
 }
 
 // ListApplications fetches all ArgoCD Applications the token has access to.

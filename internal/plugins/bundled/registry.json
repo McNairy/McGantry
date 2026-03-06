@@ -256,7 +256,17 @@
         "token": {
           "type": "string",
           "title": "API Token",
-          "description": "ArgoCD API token. Generate one via: argocd account generate-token --account <name>"
+          "description": "ArgoCD API token. Generate one via: argocd account generate-token --account <name>. Leave empty to use username/password instead."
+        },
+        "username": {
+          "type": "string",
+          "title": "Username",
+          "description": "ArgoCD username. Used instead of API token when token is not set."
+        },
+        "password": {
+          "type": "string",
+          "title": "Password",
+          "description": "ArgoCD password. Used instead of API token when token is not set."
         },
         "insecureSkipTLS": {
           "type": "boolean",
@@ -276,7 +286,7 @@
           "default": "5m"
         }
       },
-      "required": ["argocdUrl", "token"]
+      "required": ["argocdUrl"]
     },
     "entityPanels": ["Service"],
     "actionTypes": ["argocd-sync"]
