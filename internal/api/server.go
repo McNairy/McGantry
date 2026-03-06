@@ -150,6 +150,10 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/plugins/kubernetes/pods/{namespace}/{pod}/containers/{container}/logs", h.StreamKubernetesPodLogs)
 			// GitHub-specific plugin endpoints.
 			protected.Get("/plugins/github/repo", h.GetGitHubRepo)
+			// ArgoCD-specific plugin endpoints.
+			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)
+			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/sync", h.SyncArgoCDApp)
+			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/refresh", h.RefreshArgoCDApp)
 			protected.Get("/plugins/{name}", h.GetPlugin)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/{name}/install", h.InstallPlugin)
 			protected.With(middleware.RequireRole("developer")).Delete("/plugins/{name}", h.UninstallPlugin)

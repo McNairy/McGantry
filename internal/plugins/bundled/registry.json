@@ -240,23 +240,40 @@
   {
     "name": "argocd",
     "title": "ArgoCD",
-    "description": "Trigger ArgoCD sync actions and display application sync status on Service entities.",
-    "version": "1.0.0",
+    "description": "Auto-discovers ArgoCD Applications and syncs them to the catalog. Correlates with Kubernetes-discovered services to avoid duplicates. Adds sync status, health, and one-click refresh panels on Service entities.",
+    "version": "1.1.0",
     "author": "Gantry",
-    "category": "action-type",
-    "homepage": "https://github.com/gantrydev/plugin-argocd",
+    "category": "integration",
+    "homepage": "https://github.com/go2engle/gantry/tree/main/internal/plugins/argocd",
     "configSchema": {
       "type": "object",
       "properties": {
         "argocdUrl": {
           "type": "string",
           "title": "ArgoCD URL",
-          "description": "Base URL of your ArgoCD instance"
+          "description": "Base URL of your ArgoCD instance (e.g. https://argocd.example.com)"
         },
         "token": {
           "type": "string",
           "title": "API Token",
-          "description": "ArgoCD API token"
+          "description": "ArgoCD API token. Generate one via: argocd account generate-token --account <name>"
+        },
+        "insecureSkipTLS": {
+          "type": "boolean",
+          "title": "Skip TLS Verification",
+          "description": "Disable TLS certificate verification. Enable for self-signed certificates.",
+          "default": false
+        },
+        "project": {
+          "type": "string",
+          "title": "Project Filter",
+          "description": "Only sync applications in this ArgoCD project. Leave empty to discover all projects."
+        },
+        "syncInterval": {
+          "type": "string",
+          "title": "Sync Interval",
+          "description": "How often to automatically sync (e.g. 5m, 1h). Leave empty to sync manually only.",
+          "default": "5m"
         }
       },
       "required": ["argocdUrl", "token"]

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go2engle/gantry/internal/plugins"
+	argocd "github.com/go2engle/gantry/internal/plugins/argocd"
 	ghplugin "github.com/go2engle/gantry/internal/plugins/github"
 	k8s "github.com/go2engle/gantry/internal/plugins/kubernetes"
 )
@@ -266,9 +267,117 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[github-sync] error: %s", e)
 		}
 		writeJSON(w, http.StatusOK, result)
+	case "argocd":
+		result, err := argocd.Sync(r.Context(), p.Config, h.DB)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "argocd sync failed: "+err.Error())
+			return
+		}
+		for _, e := range result.Errors {
+			log.Printf("[argocd-sync] error: %s", e)
+		}
+		writeJSON(w, http.StatusOK, result)
 	default:
 		writeError(w, http.StatusNotImplemented, "sync not supported for plugin: "+name)
 	}
+}
+
+// GetArgoCDApp returns live status for a single ArgoCD Application by name.
+func (h *Handlers) GetArgoCDApp(w http.ResponseWriter, r *http.Request) {
+	appName := chi.URLParam(r, "appName")
+
+	p, err := h.DB.GetPlugin(r.Context(), "argocd")
+	if err != nil || p == nil {
+		writeError(w, http.StatusNotFound, "argocd plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "argocd plugin is not enabled")
+		return
+	}
+
+	client, err := argocd.NewClient(p.Config)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	app, err := client.GetApplication(appName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "argocd get app: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, argocd.AppToStatusResponse(app))
+}
+
+// SyncArgoCDApp triggers a sync (and optional refresh) for an ArgoCD Application.
+func (h *Handlers) SyncArgoCDApp(w http.ResponseWriter, r *http.Request) {
+	appName := chi.URLParam(r, "appName")
+
+	var body struct {
+		Hard bool `json:"hard"`
+	}
+	// Body is optional; ignore decode errors.
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	p, err := h.DB.GetPlugin(r.Context(), "argocd")
+	if err != nil || p == nil {
+		writeError(w, http.StatusNotFound, "argocd plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "argocd plugin is not enabled")
+		return
+	}
+
+	client, err := argocd.NewClient(p.Config)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err := client.SyncApplication(appName, body.Hard); err != nil {
+		writeError(w, http.StatusInternalServerError, "argocd sync: "+err.Error())
+		return
+	}
+
+	// Return the updated app status after triggering sync.
+	app, err := client.GetApplication(appName)
+	if err != nil {
+		// Sync was triggered; return success even if we can't fetch updated status.
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	writeJSON(w, http.StatusOK, argocd.AppToStatusResponse(app))
+}
+
+// RefreshArgoCDApp triggers a git refresh (no sync) for an ArgoCD Application.
+func (h *Handlers) RefreshArgoCDApp(w http.ResponseWriter, r *http.Request) {
+	appName := chi.URLParam(r, "appName")
+
+	p, err := h.DB.GetPlugin(r.Context(), "argocd")
+	if err != nil || p == nil {
+		writeError(w, http.StatusNotFound, "argocd plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "argocd plugin is not enabled")
+		return
+	}
+
+	client, err := argocd.NewClient(p.Config)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	app, err := client.RefreshApplication(appName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "argocd refresh: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, argocd.AppToStatusResponse(app))
 }
 
 // allClusterConfigs extracts every cluster from the plugin config and returns

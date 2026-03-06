@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -122,4 +122,13 @@ export const api = {
 
   getGitHubRepo: (url: string) =>
     request<GitHubRepoInfo>('GET', `/plugins/github/repo?url=${encodeURIComponent(url)}`),
+
+  getArgoCDApp: (appName: string) =>
+    request<ArgoCDAppStatus>('GET', `/plugins/argocd/apps/${encodeURIComponent(appName)}`),
+
+  syncArgoCDApp: (appName: string, hard = false) =>
+    request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/sync`, { hard }),
+
+  refreshArgoCDApp: (appName: string) =>
+    request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/refresh`, {}),
 };

@@ -8,6 +8,7 @@ import SchemaForm from '../components/SchemaForm';
 import EntityGraph from '../components/EntityGraph';
 import KubernetesTab from '../components/KubernetesTab';
 import GitHubTab from '../components/GitHubTab';
+import ArgoCDTab from '../components/ArgoCDTab';
 
 const ACTION_COLORS: Record<string, string> = {
   'entity.created': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
@@ -84,7 +85,7 @@ const LINK_ICONS: Record<string, React.ReactNode> = {
   other:     <CircleHelp className="h-3.5 w-3.5" />,
 };
 
-type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes' | 'github';
+type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes' | 'github' | 'argocd';
 
 export default function EntityDetail() {
   const { kind, name } = useParams<{ kind: string; name: string }>();
@@ -271,9 +272,11 @@ export default function EntityDetail() {
           (entity.spec?.repoUrl as string | undefined)?.includes('github.com') ||
           entity.metadata.annotations?.['github.com/repo']
         );
+        const hasArgoCD = !!(entity.metadata.annotations?.['argocd.io/appName']);
         const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
         if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure')) tabs.splice(1, 0, 'kubernetes');
         if (hasGitHub) tabs.splice(1, 0, 'github');
+        if (hasArgoCD && entity.kind === 'Service') tabs.splice(1, 0, 'argocd');
         return (
           <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
             {tabs.map((t) => (
@@ -286,7 +289,7 @@ export default function EntityDetail() {
                     : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
                 }`}
               >
-                {t === 'relationships' ? 'Dependencies' : t === 'kubernetes' ? 'Kubernetes' : t === 'github' ? 'GitHub' : t}
+                {t === 'relationships' ? 'Dependencies' : t === 'kubernetes' ? 'Kubernetes' : t === 'github' ? 'GitHub' : t === 'argocd' ? 'ArgoCD' : t}
                 {t === 'activity' && activity.length > 0 && (
                   <span className="ml-1.5 rounded-full bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs">
                     {activity.length}
@@ -529,13 +532,90 @@ export default function EntityDetail() {
                 );
               })()}
 
-              {/* User-defined annotations (kubernetes.io/* and github.com/* filtered out) */}
+              {/* ArgoCD source info — shown only for argocd-synced entities */}
+              {(() => {
+                const anno = entity.metadata.annotations ?? {};
+                const argoApp = anno['argocd.io/appName'];
+                if (!argoApp) return null;
+
+                const syncStatus = anno['argocd.io/syncStatus'];
+                const healthStatus = anno['argocd.io/healthStatus'];
+                const appURL = anno['argocd.io/appURL'];
+
+                const SYNC_DOT: Record<string, string> = {
+                  Synced: 'bg-green-500',
+                  OutOfSync: 'bg-yellow-500',
+                };
+                const HEALTH_DOT: Record<string, string> = {
+                  Healthy: 'bg-green-500',
+                  Degraded: 'bg-red-500',
+                  Progressing: 'bg-blue-500 animate-pulse',
+                  Missing: 'bg-orange-500',
+                };
+
+                return (
+                  <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">ArgoCD</h3>
+                      {appURL && (
+                        <a
+                          href={appURL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[var(--gantry-accent)] hover:underline"
+                        >
+                          Open ↗
+                        </a>
+                      )}
+                    </div>
+                    <dl className="mt-3 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">App</dt>
+                        <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{argoApp}</dd>
+                      </div>
+                      {syncStatus && (
+                        <div className="flex items-center justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Sync</dt>
+                          <dd className="flex items-center gap-1.5 text-xs text-[var(--gantry-text-primary)]">
+                            <span className={`h-2 w-2 rounded-full ${SYNC_DOT[syncStatus] ?? 'bg-gray-400'}`} />
+                            {syncStatus}
+                          </dd>
+                        </div>
+                      )}
+                      {healthStatus && (
+                        <div className="flex items-center justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Health</dt>
+                          <dd className="flex items-center gap-1.5 text-xs text-[var(--gantry-text-primary)]">
+                            <span className={`h-2 w-2 rounded-full ${HEALTH_DOT[healthStatus] ?? 'bg-gray-400'}`} />
+                            {healthStatus}
+                          </dd>
+                        </div>
+                      )}
+                      {anno['argocd.io/project'] && (
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Project</dt>
+                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right">{anno['argocd.io/project']}</dd>
+                        </div>
+                      )}
+                      {anno['argocd.io/destNamespace'] && (
+                        <div className="flex items-start justify-between gap-3">
+                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Namespace</dt>
+                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{anno['argocd.io/destNamespace']}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+                );
+              })()}
+
+              {/* User-defined annotations (kubernetes.io/*, github.com/*, argocd.io/* filtered out) */}
               {(() => {
                 const userAnnotations = Object.entries(entity.metadata.annotations ?? {}).filter(
                   ([k]) =>
                     !k.startsWith('kubernetes.io/') &&
                     !k.startsWith('deployment.kubernetes.io/') &&
-                    !k.startsWith('github.com/')
+                    !k.startsWith('github.com/') &&
+                    !k.startsWith('argocd.io/')
                 );
                 if (userAnnotations.length === 0) return null;
                 return (
@@ -609,6 +689,10 @@ export default function EntityDetail() {
 
         {tab === 'github' && (
           <GitHubTab entity={entity} />
+        )}
+
+        {tab === 'argocd' && (
+          <ArgoCDTab entity={entity} />
         )}
 
         {tab === 'relationships' && (

@@ -174,7 +174,38 @@ export interface PluginSyncResult {
   // GitHub enrichment fields
   scanned?: number;
   enriched?: number;
+  // ArgoCD sync fields
+  apps?: number;
   errors?: string[];
+}
+
+export interface ArgoCDResourceStatus {
+  group?: string;
+  version?: string;
+  kind?: string;
+  namespace?: string;
+  name?: string;
+  status?: string;
+  health?: { status: string; message?: string };
+}
+
+export interface ArgoCDAppStatus {
+  appName: string;
+  syncStatus: 'Synced' | 'OutOfSync' | 'Unknown' | string;
+  healthStatus: 'Healthy' | 'Degraded' | 'Progressing' | 'Missing' | 'Unknown' | 'Suspended' | string;
+  healthMessage?: string;
+  syncRevision?: string;
+  operationPhase?: string;
+  operationMsg?: string;
+  repoURL?: string;
+  targetRevision?: string;
+  path?: string;
+  chart?: string;
+  project?: string;
+  destServer?: string;
+  destNamespace?: string;
+  images?: string[];
+  resources?: ArgoCDResourceStatus[];
 }
 
 export interface K8sContainerInfo {
