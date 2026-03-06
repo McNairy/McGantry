@@ -3,6 +3,9 @@
 package auth
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -10,6 +13,35 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// APIKeyPrefix is the prefix for all Gantry API keys.
+const APIKeyPrefix = "gantry_"
+
+// GenerateAPIKey creates a new random API key and returns the raw key, its
+// SHA-256 hash, and a short display prefix. The raw key should be shown to the
+// user exactly once and never stored — only the hash should be persisted.
+func GenerateAPIKey() (rawKey, keyHash, prefix string, err error) {
+	b := make([]byte, 32)
+	if _, err = rand.Read(b); err != nil {
+		return "", "", "", fmt.Errorf("auth: generate api key: %w", err)
+	}
+	rawKey = APIKeyPrefix + hex.EncodeToString(b)
+	h := sha256.Sum256([]byte(rawKey))
+	keyHash = hex.EncodeToString(h[:])
+	// Keep first 12 chars (e.g. "gantry_a1b2c") as a recognizable display prefix.
+	if len(rawKey) > 12 {
+		prefix = rawKey[:12]
+	} else {
+		prefix = rawKey
+	}
+	return rawKey, keyHash, prefix, nil
+}
+
+// HashAPIKey returns the SHA-256 hex hash of a raw API key string.
+func HashAPIKey(rawKey string) string {
+	h := sha256.Sum256([]byte(rawKey))
+	return hex.EncodeToString(h[:])
+}
 
 // bcryptCost is the work factor used for password hashing.
 const bcryptCost = 10

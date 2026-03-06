@@ -16,6 +16,7 @@ const (
 	EntityUpdated   EventType = "entity.updated"
 	EntityDeleted   EventType = "entity.deleted"
 	ActionTriggered EventType = "action.triggered"
+	ActionRunUpdated EventType = "action.run.updated"
 	ActionCompleted EventType = "action.completed"
 	ActionFailed    EventType = "action.failed"
 	UserLogin       EventType = "user.login"

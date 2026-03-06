@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -65,6 +65,36 @@ export const api = {
 
   listActions: () => request<Entity[]>('GET', '/actions'),
 
+  listAllActionRuns: (limit = 10) =>
+    request<ActionRun[]>('GET', `/actions/runs?limit=${limit}`),
+
   executeAction: (name: string, inputs: Record<string, any>) =>
     request<ActionRun>('POST', `/actions/${name}/execute`, { inputs }),
+
+  getActionRun: (actionName: string, runId: string) =>
+    request<ActionRun>('GET', `/actions/${actionName}/runs/${runId}`),
+
+  listAuditEntries: (limit = 50, offset = 0) =>
+    request<AuditEntry[]>('GET', `/audit?limit=${limit}&offset=${offset}`),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ message: string }>('PUT', '/auth/me/password', { currentPassword, newPassword }),
+
+  listUsers: () => request<User[]>('GET', '/auth/users'),
+
+  createUser: (username: string, password: string, displayName?: string, email?: string, role?: string) =>
+    request<User>('POST', '/auth/register', { username, password, displayName, email, role }),
+
+  updateUser: (id: string, data: { displayName?: string; email?: string; role?: string }) =>
+    request<User>('PUT', `/auth/users/${id}`, data),
+
+  deleteUser: (id: string) => request<void>('DELETE', `/auth/users/${id}`),
+
+  listAPIKeys: () => request<APIKey[]>('GET', '/auth/apikeys'),
+
+  createAPIKey: (name: string) =>
+    request<APIKey>('POST', '/auth/apikeys', { name }),
+
+  revokeAPIKey: (id: string) =>
+    request<void>('DELETE', `/auth/apikeys/${id}`),
 };

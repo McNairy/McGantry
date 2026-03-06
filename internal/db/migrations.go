@@ -11,6 +11,7 @@ func allMigrations(dbType string) []string {
 	// Generated with: golang.org/x/crypto/bcrypt.GenerateFromPassword([]byte("changeme"), 10)
 	const adminPasswordHash = "$2a$10$eMgfxZdz20Vk.9EKPJ4oP.g99eQ1JgaHQs/JH7v2fpZZykUcN1Q8y"
 
+	// TIMESTAMP works in both SQLite (type affinity: NUMERIC) and PostgreSQL.
 	migrations := []string{
 		// ------------------------------------------------------------------
 		// Table: entities
@@ -28,8 +29,8 @@ func allMigrations(dbType string) []string {
 			annotations TEXT,
 			labels      TEXT,
 			spec        TEXT,
-			created_at  DATETIME,
-			updated_at  DATETIME,
+			created_at  TIMESTAMP,
+			updated_at  TIMESTAMP,
 			created_by  TEXT,
 			UNIQUE(kind, namespace, name)
 		)`,
@@ -49,8 +50,8 @@ func allMigrations(dbType string) []string {
 			display_name  TEXT,
 			email         TEXT,
 			role          TEXT NOT NULL DEFAULT 'viewer',
-			created_at    DATETIME,
-			updated_at    DATETIME
+			created_at    TIMESTAMP,
+			updated_at    TIMESTAMP
 		)`,
 
 		// ------------------------------------------------------------------
@@ -58,7 +59,7 @@ func allMigrations(dbType string) []string {
 		// ------------------------------------------------------------------
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id            TEXT PRIMARY KEY,
-			timestamp     DATETIME NOT NULL,
+			timestamp     TIMESTAMP NOT NULL,
 			user_id       TEXT,
 			user_name     TEXT,
 			action        TEXT NOT NULL,
@@ -81,20 +82,45 @@ func allMigrations(dbType string) []string {
 			inputs       TEXT,
 			outputs      TEXT,
 			triggered_by TEXT,
-			started_at   DATETIME,
-			completed_at DATETIME,
+			started_at   TIMESTAMP,
+			completed_at TIMESTAMP,
 			error        TEXT
 		)`,
 
 		// ------------------------------------------------------------------
-		// Default admin user (no-op if already present)
+		// Table: api_keys
 		// ------------------------------------------------------------------
-		`INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, created_at, updated_at)
-		 VALUES ('00000000-0000-0000-0000-000000000001', 'admin', '` + adminPasswordHash + `', 'Administrator', 'admin', datetime('now'), datetime('now'))`,
+		`CREATE TABLE IF NOT EXISTS api_keys (
+			id           TEXT PRIMARY KEY,
+			user_id      TEXT NOT NULL,
+			name         TEXT NOT NULL,
+			key_hash     TEXT UNIQUE NOT NULL,
+			prefix       TEXT NOT NULL,
+			role         TEXT NOT NULL DEFAULT 'developer',
+			created_at   TIMESTAMP NOT NULL,
+			last_used_at TIMESTAMP,
+			expires_at   TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_api_keys_user_id  ON api_keys(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash)`,
+	}
+
+	// Default admin user — dialect-aware upsert.
+	if dbType == "postgres" {
+		migrations = append(migrations,
+			`INSERT INTO users (id, username, password_hash, display_name, role, created_at, updated_at)
+			 VALUES ('00000000-0000-0000-0000-000000000001', 'admin', '`+adminPasswordHash+`', 'Administrator', 'admin', NOW(), NOW())
+			 ON CONFLICT (username) DO NOTHING`,
+		)
+	} else {
+		migrations = append(migrations,
+			`INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, created_at, updated_at)
+			 VALUES ('00000000-0000-0000-0000-000000000001', 'admin', '`+adminPasswordHash+`', 'Administrator', 'admin', datetime('now'), datetime('now'))`,
+		)
 	}
 
 	// FTS5 is only available on SQLite. For PostgreSQL, full-text search is
-	// handled via tsvector/GIN indexes (added separately when needed).
+	// handled via ILIKE fallback (tsvector/GIN indexes can be added separately).
 	if dbType == "sqlite" {
 		migrations = append(migrations,
 			// FTS5 virtual table for full-text search across entities.

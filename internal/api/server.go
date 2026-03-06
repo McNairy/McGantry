@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,8 +17,10 @@ import (
 	"github.com/gantrydev/gantry/internal/auth"
 	"github.com/gantrydev/gantry/internal/config"
 	"github.com/gantrydev/gantry/internal/db"
+	"github.com/gantrydev/gantry/internal/dispatcher"
 	"github.com/gantrydev/gantry/internal/entity"
 	"github.com/gantrydev/gantry/internal/events"
+	"github.com/gantrydev/gantry/internal/metrics"
 	"github.com/gantrydev/gantry/internal/search"
 )
 
@@ -61,29 +64,52 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 
 	// Build handlers.
 	h := &handlers.Handlers{
-		DB:        database,
-		Auth:      authSvc,
-		Events:    eventBus,
-		Validator: validator,
-		SearchSvc: searchSvc,
+		DB:         database,
+		Auth:       authSvc,
+		Events:     eventBus,
+		Validator:  validator,
+		SearchSvc:  searchSvc,
+		Dispatcher: dispatcher.New(database, eventBus),
 	}
 
 	// Health check routes (public).
 	r.Get("/healthz", h.Healthz)
 	r.Get("/readyz", h.Readyz)
 
+	// Prometheus metrics (public -- scrape targets typically don't send auth).
+	r.Handle("/metrics", metrics.Handler(func() {
+		counts, err := database.CountEntitiesByKind(context.Background())
+		if err == nil {
+			for kind, count := range counts {
+				metrics.EntitiesTotal.Set(map[string]string{"kind": kind}, count)
+			}
+		}
+	}))
+
 	// API v1 routes.
 	r.Route("/api/v1", func(api chi.Router) {
+		api.Use(middleware.RateLimit)
 		// Public auth endpoint.
 		api.Post("/auth/login", h.Login)
 
 		// Authenticated routes.
 		api.Group(func(protected chi.Router) {
-			protected.Use(middleware.RequireAuth(authSvc))
+			protected.Use(middleware.RequireAuth(authSvc, database))
 
 			// Auth endpoints.
 			protected.Get("/auth/me", h.GetMe)
+			protected.Put("/auth/me/password", h.ChangePassword)
 			protected.With(middleware.RequireRole("admin")).Post("/auth/register", h.Register)
+
+			// User management (admin only).
+			protected.With(middleware.RequireRole("admin")).Get("/auth/users", h.ListUsers)
+			protected.With(middleware.RequireRole("admin")).Put("/auth/users/{id}", h.UpdateUser)
+			protected.With(middleware.RequireRole("admin")).Delete("/auth/users/{id}", h.DeleteUser)
+
+			// API key management.
+			protected.Get("/auth/apikeys", h.ListAPIKeys)
+			protected.Post("/auth/apikeys", h.CreateAPIKey)
+			protected.Delete("/auth/apikeys/{id}", h.RevokeAPIKey)
 
 			// Entity CRUD.
 			protected.Get("/entities", h.ListEntities)
@@ -103,6 +129,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// Actions.
 			protected.Get("/actions", h.ListActions)
 			protected.Post("/actions/{name}/execute", h.ExecuteAction)
+			protected.Get("/actions/runs", h.ListAllActionRuns)
 			protected.Get("/actions/{name}/runs", h.ListActionRuns)
 			protected.Get("/actions/{name}/runs/{id}", h.GetActionRun)
 

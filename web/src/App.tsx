@@ -2,11 +2,13 @@ import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
 import CommandPalette from './components/CommandPalette';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Catalog from './pages/Catalog';
 import EntityDetail from './pages/EntityDetail';
 import Actions from './pages/Actions';
+import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
 
 function AuthenticatedLayout() {
@@ -15,14 +17,17 @@ function AuthenticatedLayout() {
       <Sidebar />
       <main className="flex-1 overflow-y-auto bg-[var(--gantry-bg-secondary)]">
         <div className="mx-auto max-w-7xl px-6 py-8">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/catalog" element={<Catalog />} />
-            <Route path="/catalog/:kind" element={<Catalog />} />
-            <Route path="/catalog/:kind/:name" element={<EntityDetail />} />
-            <Route path="/actions" element={<Actions />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/catalog" element={<Catalog />} />
+              <Route path="/catalog/:kind" element={<Catalog />} />
+              <Route path="/catalog/:kind/:name" element={<EntityDetail />} />
+              <Route path="/actions" element={<Actions />} />
+              <Route path="/audit" element={<AuditLog />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </ErrorBoundary>
         </div>
       </main>
       <CommandPalette />

@@ -56,6 +56,96 @@ type ActionRun struct {
 	Error       string     `json:"error,omitempty"`
 }
 
+// APIKey represents a long-lived API authentication token.
+type APIKey struct {
+	ID          string     `json:"id"`
+	UserID      string     `json:"userId"`
+	Name        string     `json:"name"`
+	Prefix      string     `json:"prefix"`
+	Role        string     `json:"role"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	LastUsedAt  *time.Time `json:"lastUsedAt,omitempty"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+}
+
+// CreateAPIKey inserts a new API key record. keyHash is the SHA-256 hex of the raw key.
+func (d *DB) CreateAPIKey(ctx context.Context, key *APIKey, keyHash string) error {
+	key.ID = newUUID()
+	key.CreatedAt = time.Now().UTC()
+	_, err := d.exec(ctx,
+		`INSERT INTO api_keys (id, user_id, name, key_hash, prefix, role, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		key.ID, key.UserID, key.Name, keyHash, key.Prefix, key.Role, key.CreatedAt)
+	return err
+}
+
+// GetAPIKeyByHash looks up an API key by its SHA-256 hash and updates last_used_at.
+func (d *DB) GetAPIKeyByHash(ctx context.Context, keyHash string) (*APIKey, error) {
+	row := d.queryRow(ctx,
+		`SELECT id, user_id, name, prefix, role, created_at, last_used_at, expires_at
+		 FROM api_keys WHERE key_hash = ?`, keyHash)
+	k := &APIKey{}
+	var lastUsed, expires sql.NullTime
+	if err := row.Scan(&k.ID, &k.UserID, &k.Name, &k.Prefix, &k.Role,
+		&k.CreatedAt, &lastUsed, &expires); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, entity.ErrEntityNotFound
+		}
+		return nil, err
+	}
+	if lastUsed.Valid {
+		k.LastUsedAt = &lastUsed.Time
+	}
+	if expires.Valid {
+		k.ExpiresAt = &expires.Time
+	}
+	// Update last_used_at in background — best effort.
+	now := time.Now().UTC()
+	_, _ = d.exec(ctx, `UPDATE api_keys SET last_used_at = ? WHERE id = ?`, now, k.ID)
+	return k, nil
+}
+
+// ListAPIKeys returns all API keys for the given user (hashes not included).
+func (d *DB) ListAPIKeys(ctx context.Context, userID string) ([]*APIKey, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT id, user_id, name, prefix, role, created_at, last_used_at, expires_at
+		 FROM api_keys WHERE user_id = ? ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []*APIKey
+	for rows.Next() {
+		k := &APIKey{}
+		var lastUsed, expires sql.NullTime
+		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.Prefix, &k.Role,
+			&k.CreatedAt, &lastUsed, &expires); err != nil {
+			return nil, err
+		}
+		if lastUsed.Valid {
+			k.LastUsedAt = &lastUsed.Time
+		}
+		if expires.Valid {
+			k.ExpiresAt = &expires.Time
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+// DeleteAPIKey removes an API key by ID, verifying it belongs to userID.
+func (d *DB) DeleteAPIKey(ctx context.Context, id, userID string) error {
+	res, err := d.exec(ctx, `DELETE FROM api_keys WHERE id = ? AND user_id = ?`, id, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return entity.ErrEntityNotFound
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // UUID generation
 // ---------------------------------------------------------------------------
@@ -150,7 +240,7 @@ func (d *DB) CreateEntity(ctx context.Context, e *entity.Entity) error {
 	labels := marshalJSON(e.Metadata.Labels)
 	spec := marshalJSON(e.Spec)
 
-	_, err := d.ExecContext(ctx,
+	_, err := d.exec(ctx,
 		`INSERT INTO entities (id, kind, api_version, name, namespace, title, description, owner,
 			tags, annotations, labels, spec, created_at, updated_at, created_by)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -182,7 +272,7 @@ func (d *DB) CreateEntity(ctx context.Context, e *entity.Entity) error {
 
 // GetEntity retrieves a single entity by kind, namespace, and name.
 func (d *DB) GetEntity(ctx context.Context, kind, namespace, name string) (*entity.Entity, error) {
-	row := d.QueryRowContext(ctx,
+	row := d.queryRow(ctx,
 		`SELECT kind, api_version, name, namespace, title, description, owner,
 			tags, annotations, labels, spec, created_at, updated_at, created_by
 		 FROM entities
@@ -211,7 +301,7 @@ func (d *DB) ListEntities(ctx context.Context, kind, namespace string) ([]*entit
 
 	query += " ORDER BY kind, namespace, name"
 
-	rows, err := d.QueryContext(ctx, query, args...)
+	rows, err := d.queryRows(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing entities: %w", err)
 	}
@@ -231,6 +321,25 @@ func (d *DB) ListEntities(ctx context.Context, kind, namespace string) ([]*entit
 	return entities, nil
 }
 
+// CountEntitiesByKind returns a map of entity kind to count for all entities.
+func (d *DB) CountEntitiesByKind(ctx context.Context) (map[string]int64, error) {
+	rows, err := d.queryRows(ctx, `SELECT kind, COUNT(*) FROM entities GROUP BY kind`)
+	if err != nil {
+		return nil, fmt.Errorf("counting entities by kind: %w", err)
+	}
+	defer rows.Close()
+	counts := make(map[string]int64)
+	for rows.Next() {
+		var kind string
+		var count int64
+		if err := rows.Scan(&kind, &count); err != nil {
+			return nil, err
+		}
+		counts[kind] = count
+	}
+	return counts, rows.Err()
+}
+
 // UpdateEntity updates an existing entity identified by kind, namespace, and name.
 // It updates all mutable fields and bumps the updated_at timestamp.
 func (d *DB) UpdateEntity(ctx context.Context, e *entity.Entity) error {
@@ -241,7 +350,7 @@ func (d *DB) UpdateEntity(ctx context.Context, e *entity.Entity) error {
 	labels := marshalJSON(e.Metadata.Labels)
 	spec := marshalJSON(e.Spec)
 
-	result, err := d.ExecContext(ctx,
+	result, err := d.exec(ctx,
 		`UPDATE entities
 		 SET api_version = ?, title = ?, description = ?, owner = ?,
 		     tags = ?, annotations = ?, labels = ?, spec = ?,
@@ -277,7 +386,7 @@ func (d *DB) UpdateEntity(ctx context.Context, e *entity.Entity) error {
 
 // DeleteEntity removes an entity by kind, namespace, and name.
 func (d *DB) DeleteEntity(ctx context.Context, kind, namespace, name string) error {
-	result, err := d.ExecContext(ctx,
+	result, err := d.exec(ctx,
 		`DELETE FROM entities WHERE kind = ? AND namespace = ? AND name = ?`,
 		kind, namespace, name,
 	)
@@ -326,7 +435,7 @@ func (d *DB) SearchEntities(ctx context.Context, query string) ([]*entity.Entity
 		args = append(args, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern)
 	}
 
-	rows, err := d.QueryContext(ctx, sqlQuery, args...)
+	rows, err := d.queryRows(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("searching entities: %w", err)
 	}
@@ -352,7 +461,7 @@ func (d *DB) SearchEntities(ctx context.Context, query string) ([]*entity.Entity
 
 // GetUserByUsername retrieves a user by their unique username.
 func (d *DB) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	row := d.QueryRowContext(ctx,
+	row := d.queryRow(ctx,
 		`SELECT id, username, password_hash, display_name, email, role, created_at, updated_at
 		 FROM users WHERE username = ?`,
 		username,
@@ -384,6 +493,87 @@ func (d *DB) GetUserByUsername(ctx context.Context, username string) (*User, err
 	return u, nil
 }
 
+// ListUsers returns all users ordered by creation date (password hash excluded).
+func (d *DB) ListUsers(ctx context.Context) ([]*User, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT id, username, display_name, email, role, created_at, updated_at
+		 FROM users ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("listing users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		u := &User{}
+		var displayName, email sql.NullString
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&u.ID, &u.Username, &displayName, &email, &u.Role, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scanning user: %w", err)
+		}
+		u.DisplayName = displayName.String
+		u.Email = email.String
+		if createdAt.Valid {
+			u.CreatedAt = createdAt.Time
+		}
+		if updatedAt.Valid {
+			u.UpdatedAt = updatedAt.Time
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// GetUserByID retrieves a user by their ID.
+func (d *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
+	row := d.queryRow(ctx,
+		`SELECT id, username, password_hash, display_name, email, role, created_at, updated_at
+		 FROM users WHERE id = ?`, id)
+	u := &User{}
+	var displayName, email sql.NullString
+	var createdAt, updatedAt sql.NullTime
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &displayName, &email, &u.Role, &createdAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("user %q: %w", id, entity.ErrEntityNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying user: %w", err)
+	}
+	u.DisplayName = displayName.String
+	u.Email = email.String
+	if createdAt.Valid {
+		u.CreatedAt = createdAt.Time
+	}
+	if updatedAt.Valid {
+		u.UpdatedAt = updatedAt.Time
+	}
+	return u, nil
+}
+
+// UpdateUser updates the mutable profile fields of a user (displayName, email, role).
+func (d *DB) UpdateUser(ctx context.Context, u *User) error {
+	u.UpdatedAt = time.Now().UTC()
+	_, err := d.exec(ctx,
+		`UPDATE users SET display_name = ?, email = ?, role = ?, updated_at = ? WHERE id = ?`,
+		u.DisplayName, u.Email, u.Role, u.UpdatedAt, u.ID)
+	return err
+}
+
+// UpdateUserPassword sets a new bcrypt password hash for the given user.
+func (d *DB) UpdateUserPassword(ctx context.Context, userID, passwordHash string) error {
+	now := time.Now().UTC()
+	_, err := d.exec(ctx,
+		`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`,
+		passwordHash, now, userID)
+	return err
+}
+
+// DeleteUser removes a user by ID.
+func (d *DB) DeleteUser(ctx context.Context, id string) error {
+	_, err := d.exec(ctx, `DELETE FROM users WHERE id = ?`, id)
+	return err
+}
+
 // CreateUser inserts a new user. The caller must set PasswordHash before calling.
 func (d *DB) CreateUser(ctx context.Context, u *User) error {
 	if u.ID == "" {
@@ -399,7 +589,7 @@ func (d *DB) CreateUser(ctx context.Context, u *User) error {
 		u.Role = "viewer"
 	}
 
-	_, err := d.ExecContext(ctx,
+	_, err := d.exec(ctx,
 		`INSERT INTO users (id, username, password_hash, display_name, email, role, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.ID, u.Username, u.PasswordHash,
@@ -428,7 +618,7 @@ func (d *DB) CreateAuditEntry(ctx context.Context, entry *AuditEntry) error {
 		entry.Timestamp = time.Now().UTC()
 	}
 
-	_, err := d.ExecContext(ctx,
+	_, err := d.exec(ctx,
 		`INSERT INTO audit_log (id, timestamp, user_id, user_name, action,
 			resource_type, resource_id, resource_name, before_state, after_state,
 			source, ip_address)
@@ -450,7 +640,7 @@ func (d *DB) ListAuditEntries(ctx context.Context, limit, offset int) ([]*AuditE
 		limit = 50
 	}
 
-	rows, err := d.QueryContext(ctx,
+	rows, err := d.queryRows(ctx,
 		`SELECT id, timestamp, user_id, user_name, action,
 			resource_type, resource_id, resource_name, before_state, after_state,
 			source, ip_address
@@ -509,7 +699,7 @@ func (d *DB) CreateActionRun(ctx context.Context, run *ActionRun) error {
 		run.Status = "pending"
 	}
 
-	_, err := d.ExecContext(ctx,
+	_, err := d.exec(ctx,
 		`INSERT INTO action_runs (id, action_name, status, inputs, outputs,
 			triggered_by, started_at, completed_at, error)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -525,7 +715,7 @@ func (d *DB) CreateActionRun(ctx context.Context, run *ActionRun) error {
 
 // GetActionRun retrieves a single action run by ID.
 func (d *DB) GetActionRun(ctx context.Context, id string) (*ActionRun, error) {
-	row := d.QueryRowContext(ctx,
+	row := d.queryRow(ctx,
 		`SELECT id, action_name, status, inputs, outputs,
 			triggered_by, started_at, completed_at, error
 		 FROM action_runs WHERE id = ?`,
@@ -544,7 +734,7 @@ func (d *DB) GetActionRun(ctx context.Context, id string) (*ActionRun, error) {
 
 // UpdateActionRun updates a mutable action run record (status, outputs, timestamps, error).
 func (d *DB) UpdateActionRun(ctx context.Context, run *ActionRun) error {
-	result, err := d.ExecContext(ctx,
+	result, err := d.exec(ctx,
 		`UPDATE action_runs
 		 SET status = ?, inputs = ?, outputs = ?,
 		     triggered_by = ?, started_at = ?, completed_at = ?, error = ?
@@ -586,7 +776,7 @@ func (d *DB) ListActionRuns(ctx context.Context, actionName string) ([]*ActionRu
 			 ORDER BY started_at DESC NULLS LAST`
 	}
 
-	rows, err := d.QueryContext(ctx, query, args...)
+	rows, err := d.queryRows(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing action runs: %w", err)
 	}

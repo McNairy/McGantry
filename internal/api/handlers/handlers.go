@@ -7,6 +7,7 @@ import (
 
 	"github.com/gantrydev/gantry/internal/auth"
 	"github.com/gantrydev/gantry/internal/db"
+	"github.com/gantrydev/gantry/internal/dispatcher"
 	"github.com/gantrydev/gantry/internal/entity"
 	"github.com/gantrydev/gantry/internal/events"
 	"github.com/gantrydev/gantry/internal/search"
@@ -14,11 +15,12 @@ import (
 
 // Handlers groups all dependencies needed by API handler functions.
 type Handlers struct {
-	DB        *db.DB
-	Auth      *auth.Service
-	Events    *events.Bus
-	Validator *entity.SchemaValidator
-	SearchSvc *search.Service
+	DB         *db.DB
+	Auth       *auth.Service
+	Events     *events.Bus
+	Validator  *entity.SchemaValidator
+	SearchSvc  *search.Service
+	Dispatcher *dispatcher.Manager
 }
 
 // writeJSON serializes v as JSON and writes it to the response with the given

@@ -16,6 +16,7 @@ import {
   Users,
   Cloud,
   FileText,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import ThemeToggle from './ThemeToggle';
@@ -50,6 +51,7 @@ const navItems: NavItem[] = [
     })),
   },
   { label: 'Actions', path: '/actions', icon: Zap },
+  { label: 'Audit Log', path: '/audit', icon: ClipboardList },
   { label: 'Settings', path: '/settings', icon: Settings },
 ];
 
@@ -74,7 +76,7 @@ export default function Sidebar() {
       <div className="flex h-16 items-center justify-between border-b border-[var(--gantry-border)] px-4">
         {!collapsed && (
           <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--gantry-accent)] text-sm font-bold text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--gantry-accent)] text-sm font-bold text-[var(--gantry-bg-primary)]">
               G
             </div>
             <span className="text-lg font-semibold text-[var(--gantry-text-primary)]">
@@ -84,7 +86,7 @@ export default function Sidebar() {
         )}
         {collapsed && (
           <Link to="/" className="mx-auto">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--gantry-accent)] text-sm font-bold text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--gantry-accent)] text-sm font-bold text-[var(--gantry-bg-primary)]">
               G
             </div>
           </Link>
@@ -106,7 +108,7 @@ export default function Sidebar() {
                     to={item.path}
                     className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                       active
-                        ? 'bg-[var(--gantry-accent)] bg-opacity-10 text-[var(--gantry-accent)]'
+                        ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
                         : 'text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
                     }`}
                     title={collapsed ? item.label : undefined}

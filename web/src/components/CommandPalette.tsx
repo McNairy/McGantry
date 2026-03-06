@@ -157,7 +157,7 @@ export default function CommandPalette() {
                         key={`${result.kind}-${result.name}`}
                         className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                           idx === selectedIndex
-                            ? 'bg-[var(--gantry-accent)] bg-opacity-10 text-[var(--gantry-accent)]'
+                            ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
                             : 'text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]'
                         }`}
                         onClick={() => selectResult(result)}

@@ -1,0 +1,11 @@
+node_modules/
+web/dist/
+web/node_modules/
+bin/
+data/
+.git/
+local/
+*.test
+.env
+.env.*
+!.env.example

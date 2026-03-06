@@ -2,16 +2,80 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ChevronRight, Pencil, Trash2, X, ExternalLink } from 'lucide-react';
 import { api } from '../lib/api';
-import type { Entity, JsonSchema } from '../lib/types';
+import type { Entity, JsonSchema, AuditEntry } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
 
-type Tab = 'overview' | 'yaml' | 'relationships';
+const ACTION_COLORS: Record<string, string> = {
+  'entity.created': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  'entity.updated': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  'entity.deleted': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+};
+
+function formatTime(ts: string): string {
+  const date = new Date(ts);
+  const diff = Date.now() - date.getTime();
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function toYaml(obj: unknown, indent = 0): string {
+  const pad = '  '.repeat(indent);
+  if (obj === null || obj === undefined) return 'null';
+  if (typeof obj === 'string') {
+    if (obj === '') return "''";
+    if (/[\n:#\[\]{},&*?|<>=!%@`]/.test(obj) || /^\s|\s$/.test(obj)) {
+      return `"${obj.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+    }
+    return obj;
+  }
+  if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj);
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '[]';
+    return '\n' + obj.map((item) => `${pad}- ${toYaml(item, indent + 1).trimStart()}`).join('\n');
+  }
+  if (typeof obj === 'object') {
+    const entries = Object.entries(obj as Record<string, unknown>).filter(
+      ([, v]) => v !== undefined && v !== null && v !== ''
+    );
+    if (entries.length === 0) return '{}';
+    return (
+      '\n' +
+      entries
+        .map(([k, v]) => {
+          const val = toYaml(v, indent + 1);
+          return val.startsWith('\n') ? `${pad}${k}:${val}` : `${pad}${k}: ${val}`;
+        })
+        .join('\n')
+    );
+  }
+  return String(obj);
+}
+
+function entityToYaml(entity: Entity): string {
+  const ordered: Record<string, unknown> = {
+    kind: entity.kind,
+    apiVersion: entity.apiVersion,
+    metadata: entity.metadata,
+    ...(entity.spec && Object.keys(entity.spec).length > 0 ? { spec: entity.spec } : {}),
+  };
+  return Object.entries(ordered)
+    .map(([k, v]) => {
+      const val = toYaml(v, 1);
+      return val.startsWith('\n') ? `${k}:${val}` : `${k}: ${val}`;
+    })
+    .join('\n');
+}
+
+type Tab = 'overview' | 'yaml' | 'relationships' | 'activity';
 
 export default function EntityDetail() {
   const { kind, name } = useParams<{ kind: string; name: string }>();
   const navigate = useNavigate();
   const [entity, setEntity] = useState<Entity | null>(null);
   const [schema, setSchema] = useState<JsonSchema | null>(null);
+  const [activity, setActivity] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
@@ -24,10 +88,15 @@ export default function EntityDetail() {
     Promise.all([
       api.getEntity(kind, name),
       api.getSchema(kind).catch(() => null),
+      api.listAuditEntries(100, 0).catch(() => [] as AuditEntry[]),
     ])
-      .then(([e, s]) => {
+      .then(([e, s, audit]) => {
         setEntity(e);
         setSchema(s);
+        const entries = (audit ?? []).filter(
+          (a) => a.resourceName === name && a.resourceType === kind
+        );
+        setActivity(entries);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -149,7 +218,7 @@ export default function EntityDetail() {
 
       {/* Tabs */}
       <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
-        {(['overview', 'yaml', ...(hasRelationships ? ['relationships'] : [])] as Tab[]).map((t) => (
+        {(['overview', 'yaml', ...(hasRelationships ? ['relationships'] : []), 'activity'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -160,6 +229,11 @@ export default function EntityDetail() {
             }`}
           >
             {t}
+            {t === 'activity' && activity.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs">
+                {activity.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -244,8 +318,49 @@ export default function EntityDetail() {
 
         {tab === 'yaml' && (
           <pre className="overflow-auto rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6 text-sm text-[var(--gantry-text-primary)]">
-            {JSON.stringify(entity, null, 2)}
+            {entityToYaml(entity)}
           </pre>
+        )}
+
+        {tab === 'activity' && (
+          <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]">
+            {activity.length === 0 ? (
+              <p className="px-6 py-8 text-center text-sm text-[var(--gantry-text-secondary)]">
+                No activity recorded for this entity yet.
+              </p>
+            ) : (
+              <table className="min-w-full divide-y divide-[var(--gantry-border)]">
+                <thead>
+                  <tr className="bg-[var(--gantry-bg-secondary)]">
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">User</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Action</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Source</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--gantry-border)]">
+                  {activity.map((entry) => (
+                    <tr key={entry.id} className="hover:bg-[var(--gantry-bg-secondary)]">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-[var(--gantry-text-secondary)]">
+                        {formatTime(entry.timestamp)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-[var(--gantry-text-primary)]">
+                        {entry.userName || 'system'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${ACTION_COLORS[entry.action] ?? 'bg-[var(--gantry-bg-tertiary)] text-[var(--gantry-text-secondary)]'}`}>
+                          {entry.action}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-[var(--gantry-text-secondary)]">
+                        {entry.source || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         )}
 
         {tab === 'relationships' && (

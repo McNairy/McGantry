@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Search, LayoutGrid, List, Plus, X } from 'lucide-react';
+import {
+  Search, LayoutGrid, List, Plus, X, ArrowLeft,
+  Server, Globe, Database, Users, Cloud, FileText,
+} from 'lucide-react';
 import { api } from '../lib/api';
 import { ENTITY_KINDS } from '../lib/types';
 import type { Entity, JsonSchema } from '../lib/types';
@@ -8,14 +11,50 @@ import EntityCard from '../components/EntityCard';
 import EntityTable from '../components/EntityTable';
 import SchemaForm from '../components/SchemaForm';
 
+const KIND_META: Record<string, { icon: React.ReactNode; description: string; color: string }> = {
+  Service: {
+    icon: <Server className="h-7 w-7" />,
+    description: 'A deployable unit of software — microservice, monolith, or serverless function.',
+    color: 'text-blue-500',
+  },
+  API: {
+    icon: <Globe className="h-7 w-7" />,
+    description: 'An interface that services expose — REST, GraphQL, gRPC, or event stream.',
+    color: 'text-purple-500',
+  },
+  Infrastructure: {
+    icon: <Database className="h-7 w-7" />,
+    description: 'Cloud resources — databases, queues, storage, and other infrastructure.',
+    color: 'text-orange-500',
+  },
+  Team: {
+    icon: <Users className="h-7 w-7" />,
+    description: 'A group of people who own and maintain services and resources.',
+    color: 'text-green-500',
+  },
+  Environment: {
+    icon: <Cloud className="h-7 w-7" />,
+    description: 'A deployment target — production, staging, development, or preview.',
+    color: 'text-cyan-500',
+  },
+  Documentation: {
+    icon: <FileText className="h-7 w-7" />,
+    description: 'Technical docs, runbooks, ADRs, and knowledge base articles.',
+    color: 'text-yellow-500',
+  },
+};
+
 export default function Catalog() {
   const { kind } = useParams<{ kind?: string }>();
   const navigate = useNavigate();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [view, setView] = useState<'grid' | 'table'>('table');
   const [showCreate, setShowCreate] = useState(false);
+  const [createStep, setCreateStep] = useState<'kind' | 'form'>('kind');
   const [createKind, setCreateKind] = useState('Service');
   const [schemas, setSchemas] = useState<Record<string, JsonSchema>>({});
   const [error, setError] = useState('');
@@ -30,17 +69,44 @@ export default function Catalog() {
     api.listSchemas().then((data) => setSchemas(data || {})).catch(() => {});
   }, []);
 
+  const allOwners = useMemo(() => {
+    const owners = new Set(entities.map((e) => e.metadata.owner).filter(Boolean) as string[]);
+    return Array.from(owners).sort();
+  }, [entities]);
+
+  const allTags = useMemo(() => {
+    const tags = new Set(entities.flatMap((e) => e.metadata.tags || []));
+    return Array.from(tags).sort();
+  }, [entities]);
+
   const filtered = useMemo(() => {
-    if (!searchQuery) return entities;
-    const q = searchQuery.toLowerCase();
-    return entities.filter(
-      (e) =>
-        e.metadata.name.toLowerCase().includes(q) ||
-        (e.metadata.title || '').toLowerCase().includes(q) ||
-        (e.metadata.owner || '').toLowerCase().includes(q) ||
-        (e.metadata.tags || []).some((t) => t.toLowerCase().includes(q)),
-    );
-  }, [entities, searchQuery]);
+    return entities.filter((e) => {
+      if (ownerFilter && e.metadata.owner !== ownerFilter) return false;
+      if (tagFilter && !(e.metadata.tags || []).includes(tagFilter)) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return (
+          e.metadata.name.toLowerCase().includes(q) ||
+          (e.metadata.title || '').toLowerCase().includes(q) ||
+          (e.metadata.owner || '').toLowerCase().includes(q) ||
+          (e.metadata.tags || []).some((t) => t.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [entities, searchQuery, ownerFilter, tagFilter]);
+
+  const hasFilters = searchQuery || ownerFilter || tagFilter;
+
+  const openCreate = () => {
+    setCreateStep('kind');
+    setShowCreate(true);
+  };
+
+  const closeCreate = () => {
+    setShowCreate(false);
+    setCreateStep('kind');
+  };
 
   const handleCreate = async (spec: Record<string, any>) => {
     try {
@@ -61,7 +127,7 @@ export default function Catalog() {
       };
       const created = await api.createEntity(newEntity);
       setEntities((prev) => [...prev, created]);
-      setShowCreate(false);
+      closeCreate();
     } catch (e: any) {
       setError(e.message);
     }
@@ -94,8 +160,8 @@ export default function Catalog() {
           </p>
         </div>
         <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--gantry-accent-hover)]"
+          onClick={() => openCreate()}
+          className="flex items-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
         >
           <Plus className="h-4 w-4" />
           Create Entity
@@ -103,8 +169,8 @@ export default function Catalog() {
       </div>
 
       {/* Filters */}
-      <div className="mt-6 flex items-center gap-4">
-        <div className="relative flex-1">
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-48 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--gantry-text-secondary)]" />
           <input
             type="text"
@@ -114,6 +180,42 @@ export default function Catalog() {
             className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] py-2 pl-10 pr-4 text-sm text-[var(--gantry-text-primary)] placeholder:text-[var(--gantry-text-secondary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
           />
         </div>
+        {allOwners.length > 0 && (
+          <select
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className={`rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)] ${
+              ownerFilter
+                ? 'border-[var(--gantry-accent)] bg-[var(--gantry-accent)]/5 text-[var(--gantry-accent)]'
+                : 'border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] text-[var(--gantry-text-primary)]'
+            }`}
+          >
+            <option value="">All owners</option>
+            {allOwners.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        )}
+        {allTags.length > 0 && (
+          <select
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            className={`rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)] ${
+              tagFilter
+                ? 'border-[var(--gantry-accent)] bg-[var(--gantry-accent)]/5 text-[var(--gantry-accent)]'
+                : 'border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] text-[var(--gantry-text-primary)]'
+            }`}
+          >
+            <option value="">All tags</option>
+            {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+        {hasFilters && (
+          <button
+            onClick={() => { setSearchQuery(''); setOwnerFilter(''); setTagFilter(''); }}
+            className="flex items-center gap-1 rounded-lg border border-[var(--gantry-border)] px-3 py-2 text-sm text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)]"
+          >
+            <X className="h-3.5 w-3.5" /> Clear
+          </button>
+        )}
         <div className="flex items-center rounded-lg border border-[var(--gantry-border)]">
           <button
             onClick={() => setView('table')}
@@ -173,11 +275,11 @@ export default function Catalog() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[var(--gantry-border)] py-16">
             <p className="text-sm text-[var(--gantry-text-secondary)]">
-              {searchQuery ? 'No entities match your search.' : 'No entities yet.'}
+              {hasFilters ? 'No entities match your filters.' : 'No entities yet.'}
             </p>
-            {!searchQuery && (
+            {!hasFilters && (
               <button
-                onClick={() => setShowCreate(true)}
+                onClick={() => openCreate()}
                 className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] px-4 py-2 text-sm text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
               >
                 <Plus className="h-4 w-4" />
@@ -196,38 +298,101 @@ export default function Catalog() {
         )}
       </div>
 
-      {/* Create Modal */}
+      {/* Create Panel */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-lg rounded-xl bg-[var(--gantry-bg-primary)] p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-[var(--gantry-text-primary)]">Create Entity</h2>
-              <button onClick={() => setShowCreate(false)} className="text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]">
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            onClick={closeCreate}
+          />
+          {/* Slide-over panel */}
+          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-[var(--gantry-bg-primary)] shadow-2xl">
+            {/* Panel header */}
+            <div className="flex items-center justify-between border-b border-[var(--gantry-border)] px-6 py-4">
+              <div className="flex items-center gap-3">
+                {createStep === 'form' && (
+                  <button
+                    onClick={() => setCreateStep('kind')}
+                    className="flex items-center gap-1 text-sm text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back
+                  </button>
+                )}
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--gantry-text-primary)]">
+                    {createStep === 'kind' ? 'Create Entity' : `New ${createKind}`}
+                  </h2>
+                  <p className="text-xs text-[var(--gantry-text-secondary)]">
+                    {createStep === 'kind' ? 'Choose a kind to get started' : 'Fill in the details below'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={closeCreate}
+                className="rounded-lg p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">Kind</label>
-              <select
-                value={createKind}
-                onChange={(e) => setCreateKind(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
-              >
-                {ENTITY_KINDS.map((k) => (
-                  <option key={k.name} value={k.name}>{k.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-4 max-h-96 overflow-y-auto">
-              <SchemaForm
-                schema={createSchema}
-                onSubmit={handleCreate}
-                onCancel={() => setShowCreate(false)}
-                submitLabel="Create"
-              />
-            </div>
+
+            {/* Step 1: Kind picker */}
+            {createStep === 'kind' && (
+              <div className="flex-1 overflow-y-auto p-6">
+                <p className="mb-6 text-sm text-[var(--gantry-text-secondary)]">
+                  Select the type of entity you want to add to the catalog.
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {ENTITY_KINDS.map((k) => {
+                    const meta = KIND_META[k.name];
+                    return (
+                      <button
+                        key={k.name}
+                        onClick={() => { setCreateKind(k.name); setCreateStep('form'); }}
+                        className="group flex items-start gap-4 rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-4 text-left transition-all hover:border-[var(--gantry-accent)] hover:shadow-md"
+                      >
+                        <div className={`mt-0.5 shrink-0 ${meta?.color ?? 'text-[var(--gantry-accent)]'}`}>
+                          {meta?.icon}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-[var(--gantry-text-primary)] group-hover:text-[var(--gantry-accent)]">
+                            {k.name}
+                          </div>
+                          <div className="mt-1 text-xs leading-relaxed text-[var(--gantry-text-secondary)]">
+                            {meta?.description}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Form */}
+            {createStep === 'form' && (
+              <div className="flex-1 overflow-y-auto p-6">
+                {/* Kind badge */}
+                <div className="mb-6 flex items-center gap-3 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-4 py-3">
+                  <div className={`shrink-0 ${KIND_META[createKind]?.color ?? 'text-[var(--gantry-accent)]'}`}>
+                    {KIND_META[createKind]?.icon}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-[var(--gantry-text-primary)]">{createKind}</div>
+                    <div className="text-xs text-[var(--gantry-text-secondary)]">{KIND_META[createKind]?.description}</div>
+                  </div>
+                </div>
+                <SchemaForm
+                  schema={createSchema}
+                  onSubmit={handleCreate}
+                  onCancel={closeCreate}
+                  submitLabel={`Create ${createKind}`}
+                />
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
     </div>
   );

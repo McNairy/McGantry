@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gantrydev/gantry/internal/auth"
+	"github.com/gantrydev/gantry/internal/db"
 )
 
 type contextKey string
@@ -22,8 +23,9 @@ var roleHierarchy = map[string]int{
 }
 
 // RequireAuth returns middleware that validates the Bearer token in the
-// Authorization header and stores the decoded claims in the request context.
-func RequireAuth(authSvc *auth.Service) func(http.Handler) http.Handler {
+// Authorization header. It accepts both JWT tokens and long-lived API keys
+// (tokens prefixed with "gantry_"). Claims are stored in the request context.
+func RequireAuth(authSvc *auth.Service, database *db.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -38,10 +40,31 @@ func RequireAuth(authSvc *auth.Service) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := authSvc.ValidateToken(parts[1])
-			if err != nil {
-				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
-				return
+			token := parts[1]
+			var claims *auth.Claims
+
+			if strings.HasPrefix(token, auth.APIKeyPrefix) {
+				// Validate as an API key.
+				keyHash := auth.HashAPIKey(token)
+				apiKey, err := database.GetAPIKeyByHash(r.Context(), keyHash)
+				if err != nil {
+					http.Error(w, `{"error":"invalid or revoked api key"}`, http.StatusUnauthorized)
+					return
+				}
+				// Synthesize claims from the stored API key.
+				claims = &auth.Claims{
+					UserID:   apiKey.UserID,
+					Username: "apikey:" + apiKey.Name,
+					Role:     apiKey.Role,
+				}
+			} else {
+				// Validate as a JWT.
+				var err error
+				claims, err = authSvc.ValidateToken(token)
+				if err != nil {
+					http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+					return
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), claimsKey, claims)

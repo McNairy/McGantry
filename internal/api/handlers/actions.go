@@ -33,12 +33,14 @@ type executeActionRequest struct {
 }
 
 // ExecuteAction handles POST /actions/{name}/execute. It creates a new action
-// run record in the database and publishes an ActionTriggered event.
+// run record in the database, publishes an ActionTriggered event, and kicks off
+// asynchronous dispatch (webhook, etc.) that transitions the run through
+// running → success/failed.
 func (h *Handlers) ExecuteAction(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
-	// Verify the action entity exists.
-	_, err := h.DB.GetEntity(r.Context(), "Action", entity.DefaultNamespace, name)
+	// Verify the action entity exists and retrieve it for dispatch.
+	actionEntity, err := h.DB.GetEntity(r.Context(), "Action", entity.DefaultNamespace, name)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			writeError(w, http.StatusNotFound, "action not found")
@@ -89,7 +91,7 @@ func (h *Handlers) ExecuteAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Publish event.
+	// Publish triggered event.
 	h.Events.Publish(events.Event{
 		Type: events.ActionTriggered,
 		Data: map[string]any{
@@ -99,7 +101,24 @@ func (h *Handlers) ExecuteAction(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 
+	// Asynchronously dispatch — updates run status as it progresses.
+	go h.Dispatcher.Dispatch(actionEntity, run)
+
 	writeJSON(w, http.StatusCreated, run)
+}
+
+// ListAllActionRuns handles GET /actions/runs. It returns recent runs across
+// all actions, ordered by most recent first.
+func (h *Handlers) ListAllActionRuns(w http.ResponseWriter, r *http.Request) {
+	runs, err := h.DB.ListActionRuns(r.Context(), "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list action runs")
+		return
+	}
+	if runs == nil {
+		runs = []*db.ActionRun{}
+	}
+	writeJSON(w, http.StatusOK, runs)
 }
 
 // ListActionRuns handles GET /actions/{name}/runs. It returns all runs for a

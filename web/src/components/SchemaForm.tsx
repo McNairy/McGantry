@@ -79,7 +79,7 @@ function FormField({ name, schema, value, onChange, required }: FieldProps) {
             }`}
           >
             <span
-              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--gantry-bg-primary)] shadow transition-transform ${
                 value ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
@@ -329,7 +329,7 @@ export default function SchemaForm({
         )}
         <button
           type="submit"
-          className="rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--gantry-accent-hover)]"
+          className="rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
         >
           {submitLabel}
         </button>

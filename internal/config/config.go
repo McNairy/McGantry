@@ -11,7 +11,70 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
+// FileConfig represents configuration fields that can be set in gantry.yaml.
+// Precedence: CLI flags > environment variables > config file > built-in defaults.
+type FileConfig struct {
+	Port          int    `yaml:"port"`
+	DB            string `yaml:"db"`
+	Dev           bool   `yaml:"dev"`
+	AdminPassword string `yaml:"adminPassword"`
+	JWTSecret     string `yaml:"jwtSecret"`
+	DataDir       string `yaml:"dataDir"`
+}
+
+// loadFileConfig reads a YAML config file and returns a FileConfig.
+// Returns nil (without error) if the file does not exist.
+func loadFileConfig(path string) (*FileConfig, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading config file %s: %w", path, err)
+	}
+	var fc FileConfig
+	if err := yaml.Unmarshal(data, &fc); err != nil {
+		return nil, fmt.Errorf("parsing config file %s: %w", path, err)
+	}
+	return &fc, nil
+}
+
+// applyFileConfig overlays non-zero fields from fc onto cfg.
+// This is called after defaults but before env-var overrides so that the
+// precedence order (flags > env > file > defaults) is maintained by callers.
+func applyFileConfig(cfg *Config, fc *FileConfig) {
+	if fc == nil {
+		return
+	}
+	if fc.Port > 0 {
+		cfg.Port = fc.Port
+	}
+	if fc.DataDir != "" {
+		cfg.DataDir = fc.DataDir
+	}
+	if fc.DB != "" {
+		if strings.HasPrefix(fc.DB, "postgres://") || strings.HasPrefix(fc.DB, "postgresql://") {
+			cfg.DBType = "postgres"
+			cfg.DBDSN = fc.DB
+		} else {
+			cfg.DBType = "sqlite"
+			cfg.DBDSN = fc.DB
+		}
+	}
+	if fc.Dev {
+		cfg.DevMode = true
+	}
+	if fc.AdminPassword != "" {
+		cfg.AdminPassword = fc.AdminPassword
+	}
+	if fc.JWTSecret != "" {
+		cfg.JWTSecret = fc.JWTSecret
+	}
+}
 
 // Config holds all Gantry configuration.
 type Config struct {
@@ -37,19 +100,31 @@ func Default() *Config {
 	}
 }
 
-// Load reads configuration from environment variables, falling back to defaults.
-// Environment variables:
-//
-//	GANTRY_PORT           - HTTP listen port (default: 8080)
-//	GANTRY_DB             - Database connection string. Prefix with "postgres://" for PostgreSQL,
-//	                        otherwise treated as SQLite file path (default: <DataDir>/gantry.db)
-//	GANTRY_DEV            - Enable development mode: "true", "1", or "yes" (default: false)
-//	GANTRY_ADMIN_PASSWORD - Initial admin user password (default: "changeme")
-//	GANTRY_JWT_SECRET     - JWT signing secret; auto-generated if not set
-//	GANTRY_DATA_DIR       - Data directory for SQLite and other files (default: ./data)
+// Load reads configuration with precedence: env vars > gantry.yaml > defaults.
+// If a gantry.yaml file exists in the current directory it is applied before
+// env var overrides.
 func Load() *Config {
+	return LoadWithFile("gantry.yaml")
+}
+
+// LoadWithFile loads configuration from the given YAML file path (if it exists),
+// then overlays environment variable overrides on top.
+// Precedence: env vars > config file > built-in defaults.
+func LoadWithFile(configPath string) *Config {
 	cfg := Default()
 
+	// Apply config file values (lower priority than env vars).
+	if fc, err := loadFileConfig(configPath); err == nil {
+		applyFileConfig(cfg, fc)
+	}
+
+	applyEnv(cfg)
+	cfg.normalize()
+	return cfg
+}
+
+// applyEnv overlays environment variable values onto cfg.
+func applyEnv(cfg *Config) {
 	if v := os.Getenv("GANTRY_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil && port > 0 && port <= 65535 {
 			cfg.Port = port
@@ -82,9 +157,6 @@ func Load() *Config {
 	if v := os.Getenv("GANTRY_JWT_SECRET"); v != "" {
 		cfg.JWTSecret = v
 	}
-
-	cfg.normalize()
-	return cfg
 }
 
 // normalize fills in derived values and generates secrets where needed.

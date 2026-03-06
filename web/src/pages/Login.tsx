@@ -32,7 +32,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         {/* Branding */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--gantry-accent)] text-2xl font-bold text-white">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--gantry-accent)] text-2xl font-bold text-[var(--gantry-bg-primary)]">
             G
           </div>
           <h1 className="text-2xl font-bold text-[var(--gantry-text-primary)]">
@@ -95,7 +95,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[var(--gantry-accent-hover)] disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2.5 text-sm font-medium text-[var(--gantry-bg-primary)] transition-colors hover:bg-[var(--gantry-accent-hover)] disabled:opacity-60"
             >
               {loading && <div className="spinner h-4 w-4" />}
               {loading ? 'Signing in...' : 'Sign in'}

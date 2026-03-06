@@ -5,6 +5,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ import (
 
 	// SQLite driver (pure Go, no CGO required).
 	_ "modernc.org/sqlite"
+	// PostgreSQL driver.
+	_ "github.com/lib/pq"
 )
 
 // DB wraps a standard database/sql.DB connection with Gantry-specific helpers.
@@ -69,4 +72,38 @@ func (d *DB) Migrate() error {
 // IsSQLite returns true if the underlying database is SQLite.
 func (d *DB) IsSQLite() bool {
 	return d.cfg.DBType == "sqlite"
+}
+
+// rebind converts SQLite-style ? placeholders to PostgreSQL-style $1, $2, ...
+// placeholders. For SQLite it returns the query unchanged.
+func (d *DB) rebind(query string) string {
+	if d.IsSQLite() {
+		return query
+	}
+	out := make([]byte, 0, len(query)+8)
+	n := 0
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			n++
+			out = fmt.Appendf(out, "$%d", n)
+		} else {
+			out = append(out, query[i])
+		}
+	}
+	return string(out)
+}
+
+// exec is a rebinding wrapper around ExecContext.
+func (d *DB) exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return d.ExecContext(ctx, d.rebind(query), args...)
+}
+
+// queryRows is a rebinding wrapper around QueryContext.
+func (d *DB) queryRows(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return d.QueryContext(ctx, d.rebind(query), args...)
+}
+
+// queryRow is a rebinding wrapper around QueryRowContext.
+func (d *DB) queryRow(ctx context.Context, query string, args ...any) *sql.Row {
+	return d.QueryRowContext(ctx, d.rebind(query), args...)
 }

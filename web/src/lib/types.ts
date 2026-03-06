@@ -51,12 +51,39 @@ export interface ActionRun {
   id: string;
   actionName: string;
   status: string;
-  inputs?: Record<string, any>;
-  outputs?: Record<string, any>;
+  inputs?: string;
+  outputs?: string;
   triggeredBy: string;
   startedAt: string;
   completedAt?: string;
   error?: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  userId?: string;
+  userName?: string;
+  action: string;
+  resourceType?: string;
+  resourceId?: string;
+  resourceName?: string;
+  beforeState?: string;
+  afterState?: string;
+  source?: string;
+  ipAddress?: string;
+}
+
+export interface APIKey {
+  id: string;
+  userId: string;
+  name: string;
+  prefix: string;
+  role: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+  key?: string; // only present on creation response
 }
 
 export interface JsonSchema {

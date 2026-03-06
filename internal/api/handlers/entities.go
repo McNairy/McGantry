@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gantrydev/gantry/internal/api/middleware"
@@ -11,6 +12,34 @@ import (
 	"github.com/gantrydev/gantry/internal/entity"
 	"github.com/gantrydev/gantry/internal/events"
 )
+
+// clientIP extracts the real client IP from the request.
+// Checks X-Real-IP, then X-Forwarded-For (first entry), then RemoteAddr.
+func clientIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return strings.TrimSpace(ip)
+	}
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if idx := strings.Index(fwd, ","); idx != -1 {
+			return strings.TrimSpace(fwd[:idx])
+		}
+		return strings.TrimSpace(fwd)
+	}
+	addr := r.RemoteAddr
+	if idx := strings.LastIndex(addr, ":"); idx != -1 {
+		addr = addr[:idx]
+	}
+	return strings.Trim(addr, "[]")
+}
+
+// marshalEntityState serializes an entity to a compact JSON string for audit storage.
+func marshalEntityState(e *entity.Entity) string {
+	b, err := json.Marshal(e)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
 
 // ListEntities handles GET /entities.
 // Supports query filters: ?namespace=, ?owner=, ?tag=
@@ -132,7 +161,9 @@ func (h *Handlers) CreateEntity(w http.ResponseWriter, r *http.Request) {
 		Action:       "entity.created",
 		ResourceType: e.Kind,
 		ResourceName: e.Metadata.Name,
+		AfterState:   marshalEntityState(&e),
 		Source:       "api",
+		IPAddress:    clientIP(r),
 	})
 
 	writeJSON(w, http.StatusCreated, e)
@@ -161,6 +192,16 @@ func (h *Handlers) UpdateEntity(w http.ResponseWriter, r *http.Request) {
 	if err := h.Validator.Validate(&e); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// Capture before state for audit log.
+	ns := e.Metadata.Namespace
+	if ns == "" {
+		ns = entity.DefaultNamespace
+	}
+	var beforeState string
+	if prev, err := h.DB.GetEntity(r.Context(), e.Kind, ns, e.Metadata.Name); err == nil {
+		beforeState = marshalEntityState(prev)
 	}
 
 	if err := h.DB.UpdateEntity(r.Context(), &e); err != nil {
@@ -196,7 +237,10 @@ func (h *Handlers) UpdateEntity(w http.ResponseWriter, r *http.Request) {
 		Action:       "entity.updated",
 		ResourceType: e.Kind,
 		ResourceName: e.Metadata.Name,
+		BeforeState:  beforeState,
+		AfterState:   marshalEntityState(&e),
 		Source:       "api",
+		IPAddress:    clientIP(r),
 	})
 
 	writeJSON(w, http.StatusOK, e)
@@ -210,6 +254,12 @@ func (h *Handlers) DeleteEntity(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	if namespace == "" {
 		namespace = entity.DefaultNamespace
+	}
+
+	// Capture before state for audit log.
+	var beforeState string
+	if prev, err := h.DB.GetEntity(r.Context(), kind, namespace, name); err == nil {
+		beforeState = marshalEntityState(prev)
 	}
 
 	if err := h.DB.DeleteEntity(r.Context(), kind, namespace, name); err != nil {
@@ -245,7 +295,9 @@ func (h *Handlers) DeleteEntity(w http.ResponseWriter, r *http.Request) {
 		Action:       "entity.deleted",
 		ResourceType: kind,
 		ResourceName: name,
+		BeforeState:  beforeState,
 		Source:       "api",
+		IPAddress:    clientIP(r),
 	})
 
 	w.WriteHeader(http.StatusNoContent)
