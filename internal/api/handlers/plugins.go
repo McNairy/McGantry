@@ -180,13 +180,12 @@ func (h *Handlers) GetPluginConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var schema map[string]any
-	if p.Manifest != nil && p.Manifest.ConfigSchema != nil {
+	// Always prefer the registry schema so config forms stay up-to-date
+	// even if the plugin was installed with an older manifest.
+	if entry, _ := plugins.FindInRegistry(name); entry != nil {
+		schema = entry.ConfigSchema
+	} else if p.Manifest != nil {
 		schema = p.Manifest.ConfigSchema
-	} else {
-		// Fallback for plugins installed before ConfigSchema was persisted.
-		if entry, _ := plugins.FindInRegistry(name); entry != nil {
-			schema = entry.ConfigSchema
-		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -231,10 +230,7 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 
 	switch name {
 	case "kubernetes":
-		config := make(map[string]any)
-		for k, v := range p.Config {
-			config[k] = v
-		}
+		config := normalizeK8sConfig(p.Config)
 		result, err := k8s.Sync(r.Context(), config, h.DB)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -244,6 +240,36 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotImplemented, "sync not supported for plugin: "+name)
 	}
+}
+
+// normalizeK8sConfig converts saved plugin config to the flat key format
+// expected by k8s.NewClient (clusterUrl, token, caData, namespace).
+// It handles both the flat format and the legacy "clusters" array format.
+func normalizeK8sConfig(raw map[string]any) map[string]any {
+	out := make(map[string]any, len(raw))
+	for k, v := range raw {
+		out[k] = v
+	}
+	// If using legacy clusters-array format, promote the first entry to flat keys.
+	if clusters, ok := raw["clusters"]; ok {
+		if arr, ok := clusters.([]any); ok && len(arr) > 0 {
+			if first, ok := arr[0].(map[string]any); ok {
+				if u, ok := first["url"].(string); ok && u != "" {
+					out["clusterUrl"] = u
+				}
+				if t, ok := first["token"].(string); ok && t != "" {
+					out["token"] = t
+				}
+				if ca, ok := first["caData"].(string); ok && ca != "" {
+					out["caData"] = ca
+				}
+				if ns, ok := first["namespaces"].(string); ok && ns != "" {
+					out["namespace"] = ns
+				}
+			}
+		}
+	}
+	return out
 }
 
 // newShortID generates a short random ID for plugin records.

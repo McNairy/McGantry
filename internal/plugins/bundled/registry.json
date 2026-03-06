@@ -74,55 +74,28 @@
     "configSchema": {
       "type": "object",
       "properties": {
-        "clusters": {
-          "type": "array",
-          "title": "Clusters",
-          "description": "One or more Kubernetes clusters to discover resources from.",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "title": "Cluster Name",
-                "description": "Display name for this cluster (e.g. prod-us-east)"
-              },
-              "url": {
-                "type": "string",
-                "title": "API Server URL",
-                "description": "Kubernetes API server URL (e.g. https://k8s.example.com:6443)"
-              },
-              "token": {
-                "type": "string",
-                "title": "Service Account Token",
-                "description": "Bearer token for cluster authentication"
-              },
-              "caData": {
-                "type": "string",
-                "title": "CA Certificate",
-                "description": "Base64-encoded cluster CA certificate. Leave empty to skip TLS verification."
-              },
-              "namespaces": {
-                "type": "string",
-                "title": "Namespaces",
-                "description": "Comma-separated list of namespaces to watch. Leave empty to discover all namespaces."
-              }
-            },
-            "required": ["name", "url", "token"]
-          }
-        },
-        "labelSelector": {
+        "clusterUrl": {
           "type": "string",
-          "title": "Label Selector",
-          "description": "Filter discovered resources by label (e.g. app.kubernetes.io/managed-by=gantry). Applied to all clusters."
+          "title": "API Server URL",
+          "description": "Kubernetes API server URL (e.g. https://k8s.example.com:6443)"
         },
-        "syncInterval": {
+        "token": {
           "type": "string",
-          "title": "Sync Interval",
-          "description": "How often to automatically sync (e.g. 5m, 1h). Leave empty to sync manually only.",
-          "default": "5m"
+          "title": "Service Account Token",
+          "description": "Bearer token for cluster authentication"
+        },
+        "caData": {
+          "type": "string",
+          "title": "CA Certificate (base64)",
+          "description": "Base64-encoded PEM cluster CA certificate. Leave empty to skip TLS verification."
+        },
+        "namespace": {
+          "type": "string",
+          "title": "Namespace Filter",
+          "description": "Limit discovery to a single namespace. Leave empty to discover all namespaces."
         }
       },
-      "required": ["clusters"]
+      "required": ["clusterUrl", "token"]
     },
     "entityPanels": ["Service", "Infrastructure"]
   },
