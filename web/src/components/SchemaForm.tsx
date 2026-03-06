@@ -3,6 +3,58 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { JsonSchema } from '../lib/types';
 import EntityPicker from './EntityPicker';
 
+const ENTITY_KINDS = [
+  'Service', 'API', 'Infrastructure', 'Team', 'Environment', 'Documentation', 'Action',
+];
+
+function isDependsOnItem(schema: JsonSchema): boolean {
+  if (schema.type !== 'object' || !schema.properties) return false;
+  const keys = Object.keys(schema.properties);
+  return keys.length === 2 && keys.includes('kind') && keys.includes('name');
+}
+
+function DependencyPicker({
+  value,
+  onChange,
+}: {
+  value: { kind: string; name: string };
+  onChange: (v: { kind: string; name: string }) => void;
+}) {
+  const kind = value.kind || '';
+  const name = value.name || '';
+  return (
+    <div className="flex flex-1 items-center gap-2">
+      <select
+        value={kind}
+        onChange={(e) => onChange({ kind: e.target.value, name: '' })}
+        className="w-36 shrink-0 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+      >
+        <option value="">Kind…</option>
+        {ENTITY_KINDS.map((k) => (
+          <option key={k} value={k}>{k}</option>
+        ))}
+      </select>
+      {kind ? (
+        <div className="flex-1">
+          <EntityPicker
+            entityKind={kind}
+            value={name}
+            onChange={(v) => onChange({ kind, name: v })}
+            placeholder="Search entity…"
+          />
+        </div>
+      ) : (
+        <input
+          type="text"
+          disabled
+          placeholder="Select a kind first"
+          className="flex-1 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-tertiary)] px-3 py-2 text-sm text-[var(--gantry-text-secondary)] opacity-60"
+        />
+      )}
+    </div>
+  );
+}
+
 interface SchemaFormProps {
   schema: JsonSchema;
   initialValues?: Record<string, any>;
@@ -125,6 +177,7 @@ function FormField({ name, schema, value, onChange, required }: FieldProps) {
   if (schema.type === 'array') {
     const items = Array.isArray(value) ? value : [];
     const itemEntityRef = schema.items?.['x-entity-ref'];
+    const isDepsOn = schema.items ? isDependsOnItem(schema.items) : false;
     return (
       <div className="space-y-1.5">
         <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
@@ -137,7 +190,16 @@ function FormField({ name, schema, value, onChange, required }: FieldProps) {
         <div className="space-y-2">
           {items.map((item: any, idx: number) => (
             <div key={idx} className="flex items-center gap-2">
-              {schema.items?.type === 'object' && schema.items.properties ? (
+              {isDepsOn ? (
+                <DependencyPicker
+                  value={item}
+                  onChange={(newItem) => {
+                    const next = [...items];
+                    next[idx] = newItem;
+                    onChange(next);
+                  }}
+                />
+              ) : schema.items?.type === 'object' && schema.items.properties ? (
                 <div className="flex-1 rounded-lg border border-[var(--gantry-border)] p-3">
                   <ObjectFields
                     schema={schema.items}
@@ -188,7 +250,9 @@ function FormField({ name, schema, value, onChange, required }: FieldProps) {
           <button
             type="button"
             onClick={() => {
-              const defaultItem = schema.items
+              const defaultItem = isDepsOn
+                ? { kind: '', name: '' }
+                : schema.items
                 ? getDefaultValue(schema.items)
                 : '';
               onChange([...items, defaultItem]);
