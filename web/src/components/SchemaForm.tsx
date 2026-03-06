@@ -61,6 +61,8 @@ interface SchemaFormProps {
   onSubmit: (data: Record<string, any>) => void;
   onCancel?: () => void;
   submitLabel?: string;
+  formId?: string;
+  hideActions?: boolean;
 }
 
 function getDefaultValue(schema: JsonSchema): any {
@@ -388,6 +390,8 @@ export default function SchemaForm({
   onSubmit,
   onCancel,
   submitLabel = 'Submit',
+  formId,
+  hideActions = false,
 }: SchemaFormProps) {
   const [values, setValues] = useState<Record<string, any>>(() => {
     if (initialValues) return { ...initialValues };
@@ -409,29 +413,31 @@ export default function SchemaForm({
   );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id={formId} onSubmit={handleSubmit} className="space-y-6">
       <ObjectFields
         schema={schema}
         value={values}
         onChange={setValues}
       />
-      <div className="flex items-center justify-end gap-3 border-t border-[var(--gantry-border)] pt-4">
-        {onCancel && (
+      {!hideActions && (
+        <div className="flex items-center justify-end gap-3 border-t border-[var(--gantry-border)] pt-4">
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+            >
+              Cancel
+            </button>
+          )}
           <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+            type="submit"
+            className="rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
           >
-            Cancel
+            {submitLabel}
           </button>
-        )}
-        <button
-          type="submit"
-          className="rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
-        >
-          {submitLabel}
-        </button>
-      </div>
+        </div>
+      )}
     </form>
   );
 }

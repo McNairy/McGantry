@@ -101,6 +101,7 @@ export default function EntityDetail() {
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [editMeta, setEditMeta] = useState({ title: '', description: '', owner: '', tags: '' });
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
 
@@ -133,11 +134,29 @@ export default function EntityDetail() {
       .finally(() => setGraphLoading(false));
   }, [tab, kind, name, graphData]);
 
+  function openEdit() {
+    if (!entity) return;
+    setEditMeta({
+      title: entity.metadata.title ?? '',
+      description: entity.metadata.description ?? '',
+      owner: entity.metadata.owner ?? '',
+      tags: (entity.metadata.tags ?? []).join(', '),
+    });
+    setEditing(true);
+  }
+
   const handleUpdate = async (spec: Record<string, any>) => {
     if (!entity || !kind || !name) return;
     try {
       const updated = await api.updateEntity(kind, name, {
         ...entity,
+        metadata: {
+          ...entity.metadata,
+          title: editMeta.title || undefined,
+          description: editMeta.description || undefined,
+          owner: editMeta.owner || undefined,
+          tags: editMeta.tags ? editMeta.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+        },
         spec,
       }, namespace);
       setEntity(updated);
@@ -230,7 +249,7 @@ export default function EntityDetail() {
         {canWrite && (
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setEditing(true)}
+              onClick={openEdit}
               className="flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
             >
               <Pencil className="h-4 w-4" /> Edit
@@ -607,27 +626,122 @@ export default function EntityDetail() {
         )}
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit Slide-over */}
       {editing && schema && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-lg rounded-xl bg-[var(--gantry-bg-primary)] p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-[var(--gantry-text-primary)]">Edit {entity.metadata.name}</h2>
-              <button onClick={() => setEditing(false)} className="text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]">
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/40"
+            onClick={() => setEditing(false)}
+          />
+          {/* Panel */}
+          <div className="fixed inset-y-0 right-0 z-50 flex flex-col w-full max-w-2xl bg-[var(--gantry-bg-primary)] shadow-2xl border-l border-[var(--gantry-border)]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)] flex-shrink-0">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--gantry-text-primary)]">
+                  Edit {entity.metadata.title || entity.metadata.name}
+                </h2>
+                <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
+                  {entity.kind} · {entity.metadata.namespace}/{entity.metadata.name}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditing(false)}
+                className="p-1.5 rounded-lg text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-4 max-h-96 overflow-y-auto">
-              <SchemaForm
-                schema={schema}
-                initialValues={entity.spec}
-                onSubmit={handleUpdate}
-                onCancel={() => setEditing(false)}
-                submitLabel="Save"
-              />
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
+              {/* Metadata section */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--gantry-text-secondary)] mb-4">
+                  Metadata
+                </h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">Title</label>
+                      <input
+                        type="text"
+                        className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+                        value={editMeta.title}
+                        placeholder={entity.metadata.name}
+                        onChange={(e) => setEditMeta((m) => ({ ...m, title: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">Owner</label>
+                      <input
+                        type="text"
+                        className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+                        value={editMeta.owner}
+                        placeholder="team-name or user"
+                        onChange={(e) => setEditMeta((m) => ({ ...m, owner: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">Description</label>
+                    <textarea
+                      rows={2}
+                      className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)] resize-none"
+                      value={editMeta.description}
+                      placeholder="A short description of this entity"
+                      onChange={(e) => setEditMeta((m) => ({ ...m, description: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">Tags</label>
+                    <p className="text-xs text-[var(--gantry-text-secondary)] mb-1.5">Comma-separated list of tags</p>
+                    <input
+                      type="text"
+                      className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+                      value={editMeta.tags}
+                      placeholder="api, backend, go"
+                      onChange={(e) => setEditMeta((m) => ({ ...m, tags: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Spec section */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--gantry-text-secondary)] mb-4">
+                  Spec
+                </h3>
+                <SchemaForm
+                  schema={schema}
+                  initialValues={entity.spec}
+                  onSubmit={handleUpdate}
+                  formId="entity-edit-form"
+                  hideActions
+                />
+              </div>
+            </div>
+
+            {/* Pinned footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)] flex-shrink-0 bg-[var(--gantry-bg-primary)]">
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-lg border border-[var(--gantry-border)] px-4 py-2 text-sm font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="entity-edit-form"
+                className="rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
+              >
+                Save Changes
+              </button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Delete Confirmation */}
