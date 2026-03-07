@@ -193,6 +193,51 @@ func AppToStatusResponse(app *Application) *AppStatusResponse {
 	return resp
 }
 
+// AllInstanceConfigs extracts every ArgoCD instance from the plugin config and
+// returns each as a flat map compatible with NewClient, plus an "instanceName" key.
+// It handles both the instances-array format and the legacy flat format.
+func AllInstanceConfigs(raw map[string]any) []map[string]any {
+	if raw == nil {
+		return nil
+	}
+	if instances, ok := raw["instances"]; ok {
+		if arr, ok := instances.([]any); ok && len(arr) > 0 {
+			var out []map[string]any
+			for _, item := range arr {
+				c, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				cfg := map[string]any{}
+				for _, key := range []string{"argocdUrl", "token", "username", "password", "authMode", "insecureSkipTLS", "project"} {
+					if v, ok := c[key]; ok {
+						cfg[key] = v
+					}
+				}
+				if name, _ := c["name"].(string); name != "" {
+					cfg["instanceName"] = name
+				}
+				if _, ok := cfg["argocdUrl"]; ok {
+					out = append(out, cfg)
+				}
+			}
+			return out
+		}
+	}
+	// Flat / legacy format: treat the whole config as a single instance.
+	if url, _ := raw["argocdUrl"].(string); url != "" {
+		cfg := map[string]any{}
+		for _, key := range []string{"argocdUrl", "token", "username", "password", "authMode", "insecureSkipTLS", "project"} {
+			if v, ok := raw[key]; ok {
+				cfg[key] = v
+			}
+		}
+		cfg["instanceName"] = "default"
+		return []map[string]any{cfg}
+	}
+	return nil
+}
+
 // get performs a GET request to the ArgoCD API and decodes the JSON response.
 func (c *Client) get(path string, out any) error {
 	req, err := http.NewRequest("GET", c.baseURL+path, nil)

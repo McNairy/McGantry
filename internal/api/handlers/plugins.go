@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -282,9 +283,39 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GetArgoCDApp returns live status for a single ArgoCD Application by name.
-func (h *Handlers) GetArgoCDApp(w http.ResponseWriter, r *http.Request) {
-	appName := chi.URLParam(r, "appName")
+// argoCDClientForInstance looks up the ArgoCD plugin, validates it is enabled,
+// and returns a client for the instance named by the ?instance= query param
+// (or the first/only instance if omitted).
+func (h *Handlers) argoCDClientForInstance(r *http.Request) (*argocd.Client, error) {
+	p, err := h.DB.GetPlugin(r.Context(), "argocd")
+	if err != nil || p == nil {
+		return nil, fmt.Errorf("argocd plugin not installed")
+	}
+	if !p.Enabled {
+		return nil, fmt.Errorf("argocd plugin is not enabled")
+	}
+
+	instanceName := r.URL.Query().Get("instance")
+	instances := argocd.AllInstanceConfigs(p.Config)
+	cfg := instances[0] // default: first instance
+	for _, inst := range instances {
+		if n, _ := inst["instanceName"].(string); n == instanceName || instanceName == "" {
+			cfg = inst
+			break
+		}
+	}
+	return argocd.NewClient(cfg)
+}
+
+// GetArgoCDEntityApps returns live status for all ArgoCD apps associated with
+// an entity. The appNames query param is a comma-separated list of
+// "instanceName:appName" pairs stored in the argocd.io/appNames annotation.
+func (h *Handlers) GetArgoCDEntityApps(w http.ResponseWriter, r *http.Request) {
+	appNamesParam := r.URL.Query().Get("appNames")
+	if appNamesParam == "" {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
 
 	p, err := h.DB.GetPlugin(r.Context(), "argocd")
 	if err != nil || p == nil {
@@ -296,9 +327,56 @@ func (h *Handlers) GetArgoCDApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := argocd.NewClient(p.Config)
+	// Build instance name → config map for quick lookup.
+	instanceMap := make(map[string]map[string]any)
+	for _, inst := range argocd.AllInstanceConfigs(p.Config) {
+		if name, _ := inst["instanceName"].(string); name != "" {
+			instanceMap[name] = inst
+		}
+	}
+
+	var results []*argocd.AppWithInstance
+	for _, pair := range strings.Split(appNamesParam, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		instanceName, appName := parts[0], parts[1]
+		cfg, ok := instanceMap[instanceName]
+		if !ok {
+			continue
+		}
+		client, err := argocd.NewClient(cfg)
+		if err != nil {
+			continue
+		}
+		app, err := client.GetApplication(appName)
+		if err != nil {
+			continue
+		}
+		results = append(results, &argocd.AppWithInstance{
+			Instance:          instanceName,
+			AppStatusResponse: argocd.AppToStatusResponse(app),
+		})
+	}
+	if results == nil {
+		results = []*argocd.AppWithInstance{}
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
+// GetArgoCDApp returns live status for a single ArgoCD Application by name.
+// An optional ?instance= query param selects the ArgoCD instance; defaults to the first.
+func (h *Handlers) GetArgoCDApp(w http.ResponseWriter, r *http.Request) {
+	appName := chi.URLParam(r, "appName")
+
+	client, err := h.argoCDClientForInstance(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -311,29 +389,19 @@ func (h *Handlers) GetArgoCDApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, argocd.AppToStatusResponse(app))
 }
 
-// SyncArgoCDApp triggers a sync (and optional refresh) for an ArgoCD Application.
+// SyncArgoCDApp triggers a sync (and optional hard sync) for an ArgoCD Application.
+// An optional ?instance= query param selects the ArgoCD instance.
 func (h *Handlers) SyncArgoCDApp(w http.ResponseWriter, r *http.Request) {
 	appName := chi.URLParam(r, "appName")
 
 	var body struct {
 		Hard bool `json:"hard"`
 	}
-	// Body is optional; ignore decode errors.
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	p, err := h.DB.GetPlugin(r.Context(), "argocd")
-	if err != nil || p == nil {
-		writeError(w, http.StatusNotFound, "argocd plugin not installed")
-		return
-	}
-	if !p.Enabled {
-		writeError(w, http.StatusBadRequest, "argocd plugin is not enabled")
-		return
-	}
-
-	client, err := argocd.NewClient(p.Config)
+	client, err := h.argoCDClientForInstance(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -342,10 +410,8 @@ func (h *Handlers) SyncArgoCDApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return the updated app status after triggering sync.
 	app, err := client.GetApplication(appName)
 	if err != nil {
-		// Sync was triggered; return success even if we can't fetch updated status.
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
@@ -353,22 +419,13 @@ func (h *Handlers) SyncArgoCDApp(w http.ResponseWriter, r *http.Request) {
 }
 
 // RefreshArgoCDApp triggers a git refresh (no sync) for an ArgoCD Application.
+// An optional ?instance= query param selects the ArgoCD instance.
 func (h *Handlers) RefreshArgoCDApp(w http.ResponseWriter, r *http.Request) {
 	appName := chi.URLParam(r, "appName")
 
-	p, err := h.DB.GetPlugin(r.Context(), "argocd")
-	if err != nil || p == nil {
-		writeError(w, http.StatusNotFound, "argocd plugin not installed")
-		return
-	}
-	if !p.Enabled {
-		writeError(w, http.StatusBadRequest, "argocd plugin is not enabled")
-		return
-	}
-
-	client, err := argocd.NewClient(p.Config)
+	client, err := h.argoCDClientForInstance(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

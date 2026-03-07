@@ -87,6 +87,13 @@ type ResourceStatus struct {
 	Health    *HealthStatus `json:"health,omitempty"`
 }
 
+// AppWithInstance bundles an AppStatusResponse with the name of the ArgoCD
+// instance it came from, so the frontend can display per-instance info.
+type AppWithInstance struct {
+	Instance string `json:"instance"`
+	*AppStatusResponse
+}
+
 // AppStatusResponse is the live status returned by the Gantry API.
 type AppStatusResponse struct {
 	AppName        string           `json:"appName"`

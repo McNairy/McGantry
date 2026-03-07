@@ -179,6 +179,10 @@ export interface PluginSyncResult {
   errors?: string[];
 }
 
+export interface ArgoCDAppWithInstance extends ArgoCDAppStatus {
+  instance: string;
+}
+
 export interface ArgoCDResourceStatus {
   group?: string;
   version?: string;

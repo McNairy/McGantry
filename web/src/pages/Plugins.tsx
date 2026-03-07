@@ -49,19 +49,14 @@ const PLUGIN_SECTIONS: Record<string, Array<{
 }>> = {
   argocd: [
     {
-      title: 'Connection',
-      description: 'Where to find your ArgoCD instance.',
-      fields: ['argocdUrl', 'insecureSkipTLS'],
+      title: 'Instances',
+      description: 'Add one or more ArgoCD instances to discover applications from. Each instance can use token or username/password auth.',
+      fields: ['instances'],
     },
     {
-      title: 'Authentication',
-      description: 'Choose how Gantry connects to the ArgoCD API.',
-      fields: ['authMode', 'token', 'username', 'password'],
-    },
-    {
-      title: 'Discovery',
-      description: 'Control which applications are synced and how often.',
-      fields: ['project', 'syncInterval'],
+      title: 'Global Settings',
+      description: 'Applied across all instances.',
+      fields: ['labelKey', 'syncInterval'],
     },
   ],
   github: [
@@ -120,11 +115,6 @@ const PLUGIN_SECTIONS: Record<string, Array<{
 // Conditional field visibility: a field is hidden unless its function returns true.
 type VisibilityFn = (values: Record<string, any>) => boolean;
 const FIELD_VISIBILITY: Record<string, Record<string, VisibilityFn>> = {
-  argocd: {
-    token:    (v) => !v.authMode || v.authMode === 'token',
-    username: (v) => v.authMode === 'credentials',
-    password: (v) => v.authMode === 'credentials',
-  },
   github: {
     personalAccessToken: (v) => !v.authMode || v.authMode === 'pat',
     appId:              (v) => v.authMode === 'app',

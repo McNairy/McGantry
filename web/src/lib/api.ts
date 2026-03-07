@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -123,12 +123,15 @@ export const api = {
   getGitHubRepo: (url: string) =>
     request<GitHubRepoInfo>('GET', `/plugins/github/repo?url=${encodeURIComponent(url)}`),
 
-  getArgoCDApp: (appName: string) =>
-    request<ArgoCDAppStatus>('GET', `/plugins/argocd/apps/${encodeURIComponent(appName)}`),
+  getArgoCDEntityApps: (appNames: string[]) =>
+    request<ArgoCDAppWithInstance[]>('GET', `/plugins/argocd/entity-apps?appNames=${encodeURIComponent(appNames.join(','))}`),
 
-  syncArgoCDApp: (appName: string, hard = false) =>
-    request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/sync`, { hard }),
+  getArgoCDApp: (appName: string, instance?: string) =>
+    request<ArgoCDAppStatus>('GET', `/plugins/argocd/apps/${encodeURIComponent(appName)}${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`),
 
-  refreshArgoCDApp: (appName: string) =>
-    request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/refresh`, {}),
+  syncArgoCDApp: (appName: string, hard = false, instance?: string) =>
+    request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/sync${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`, { hard }),
+
+  refreshArgoCDApp: (appName: string, instance?: string) =>
+    request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/refresh${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`, {}),
 };

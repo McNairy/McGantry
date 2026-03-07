@@ -151,6 +151,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// GitHub-specific plugin endpoints.
 			protected.Get("/plugins/github/repo", h.GetGitHubRepo)
 			// ArgoCD-specific plugin endpoints.
+			protected.Get("/plugins/argocd/entity-apps", h.GetArgoCDEntityApps)
 			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/sync", h.SyncArgoCDApp)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/refresh", h.RefreshArgoCDApp)

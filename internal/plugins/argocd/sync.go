@@ -25,38 +25,57 @@ type SyncResult struct {
 	Errors  []string `json:"errors,omitempty"`
 }
 
-// Sync discovers ArgoCD Applications and upserts them as Gantry Service entities.
+// Sync discovers ArgoCD Applications across all configured instances and upserts
+// them as Gantry Service entities.
 //
-// Correlation with Kubernetes:
-//   - ArgoCD Application names typically match the `app` label used by the
-//     Kubernetes deployment, which is also the entity name created by the k8s
-//     plugin. When both plugins are active, this function merges ArgoCD
-//     annotations onto the existing k8s-created Service entity (or creates a
-//     new one if none exists yet).
-//   - spec.deployedIn is augmented with the ArgoCD destination namespace so
-//     the Kubernetes tab can look up the right pods.
+// App grouping:
+//   - Apps are grouped by the value of the label key specified in config["labelKey"]
+//     (default: "name"). For example, apps "dxc-portal-api-dev", "dxc-portal-api-qa",
+//     and "dxc-portal-api-uat" that all carry label name=dxc-portal-api will be
+//     merged into a single Service entity named "dxc-portal-api".
+//   - The annotation argocd.io/appNames accumulates all instance:appName pairs for
+//     the entity so the UI can fetch live status for each one individually.
+//
+// Kubernetes correlation:
+//   - When the k8s plugin is also active, ArgoCD annotations are merged onto the
+//     existing k8s-created entity (or vice versa) via the same upsert mechanism.
 func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncResult, error) {
-	client, err := NewClient(config)
-	if err != nil {
-		return nil, err
+	instances := AllInstanceConfigs(config)
+	if len(instances) == 0 {
+		return nil, fmt.Errorf("argocd plugin: no instances configured")
 	}
 
-	project, _ := config["project"].(string)
-	argoURL, _ := config["argocdUrl"].(string)
-	argoURL = strings.TrimRight(argoURL, "/")
-
-	apps, err := client.ListApplications(project)
-	if err != nil {
-		return nil, fmt.Errorf("list applications: %w", err)
+	labelKey, _ := config["labelKey"].(string)
+	if labelKey == "" {
+		labelKey = "name"
 	}
 
 	res := &SyncResult{}
-	for _, app := range apps {
-		e := appToService(app, argoURL)
-		if err := upsert(ctx, store, e, res); err != nil {
-			res.Errors = append(res.Errors, fmt.Sprintf("app %s: %v", app.Metadata.Name, err))
+	for _, instCfg := range instances {
+		instanceName, _ := instCfg["instanceName"].(string)
+		argoURL, _ := instCfg["argocdUrl"].(string)
+		argoURL = strings.TrimRight(argoURL, "/")
+		project, _ := instCfg["project"].(string)
+
+		client, err := NewClient(instCfg)
+		if err != nil {
+			res.Errors = append(res.Errors, fmt.Sprintf("instance %s: %v", instanceName, err))
+			continue
 		}
-		res.Apps++
+
+		apps, err := client.ListApplications(project)
+		if err != nil {
+			res.Errors = append(res.Errors, fmt.Sprintf("instance %s: list applications: %v", instanceName, err))
+			continue
+		}
+
+		for _, app := range apps {
+			e := appToService(app, argoURL, instanceName, labelKey)
+			if err := upsert(ctx, store, e, res); err != nil {
+				res.Errors = append(res.Errors, fmt.Sprintf("instance %s, app %s: %v", instanceName, app.Metadata.Name, err))
+			}
+			res.Apps++
+		}
 	}
 	return res, nil
 }
@@ -66,10 +85,19 @@ func Sync(ctx context.Context, config map[string]any, store EntityStore) (*SyncR
 // ---------------------------------------------------------------------------
 
 // appToService converts an ArgoCD Application into a Gantry Service entity.
-// The entity name is the ArgoCD app name, matching the `app` label convention
-// used by the Kubernetes plugin — enabling cross-plugin correlation.
-func appToService(app Application, argoURL string) *entity.Entity {
-	annotations := buildAnnotations(app, argoURL)
+// The entity name is derived from the app label specified by labelKey (default
+// "name"), falling back to the ArgoCD app name. This enables grouping multiple
+// environment-specific apps (dev/qa/prod) under one Service entity.
+func appToService(app Application, argoURL, instanceName, labelKey string) *entity.Entity {
+	// Entity name: use the label value for grouping, fall back to the app name.
+	entityName := app.Metadata.Name
+	if labelKey != "" {
+		if lv, ok := app.Metadata.Labels[labelKey]; ok && lv != "" {
+			entityName = lv
+		}
+	}
+
+	annotations := buildAnnotations(app, argoURL, instanceName)
 	tags := labelsToTags(app.Metadata.Labels)
 	tags = append(tags, "argocd")
 
@@ -102,9 +130,9 @@ func appToService(app Application, argoURL string) *entity.Entity {
 		Kind:       "Service",
 		APIVersion: "gantry.io/v1",
 		Metadata: entity.EntityMetadata{
-			Name:        app.Metadata.Name,
+			Name:        entityName,
 			Namespace:   "default",
-			Title:       app.Metadata.Name,
+			Title:       entityName,
 			Description: desc,
 			Annotations: annotations,
 			Tags:        tags,
@@ -113,9 +141,13 @@ func appToService(app Application, argoURL string) *entity.Entity {
 	}
 }
 
-func buildAnnotations(app Application, argoURL string) map[string]string {
+// buildAnnotations produces ArgoCD-specific annotations for the entity.
+// The key argocd.io/appNames stores a single "instance:appName" pair for this
+// app; mergeAnnotations accumulates multiple such values as a CSV.
+func buildAnnotations(app Application, argoURL, instanceName string) map[string]string {
+	appRef := instanceName + ":" + app.Metadata.Name
 	a := map[string]string{
-		"argocd.io/appName":      app.Metadata.Name,
+		"argocd.io/appNames":     appRef,
 		"argocd.io/namespace":    app.Metadata.Namespace,
 		"argocd.io/syncStatus":   app.Status.Sync.Status,
 		"argocd.io/healthStatus": app.Status.Health.Status,
@@ -134,10 +166,6 @@ func buildAnnotations(app Application, argoURL string) map[string]string {
 	}
 	if app.Status.Sync.Revision != "" {
 		a["argocd.io/syncRevision"] = app.Status.Sync.Revision
-	}
-	// ArgoCD server UI deep-link for the application.
-	if argoURL != "" {
-		a["argocd.io/appURL"] = argoURL + "/applications/" + app.Metadata.Name
 	}
 	return a
 }
@@ -176,14 +204,39 @@ func upsert(ctx context.Context, store EntityStore, e *entity.Entity, res *SyncR
 }
 
 // mergeAnnotations overwrites ArgoCD-sourced keys, leaving others intact.
+// argocd.io/appNames is special: values are accumulated as a CSV so that
+// multiple apps grouped under one entity each contribute their instance:appName.
 func mergeAnnotations(existing, incoming map[string]string) map[string]string {
 	if existing == nil {
 		return incoming
 	}
 	for k, v := range incoming {
-		existing[k] = v
+		if k == "argocd.io/appNames" {
+			existing[k] = mergeCSV(existing[k], v)
+		} else {
+			existing[k] = v
+		}
+	}
+	// Migrate legacy argocd.io/appName key to the new plural format.
+	if old, ok := existing["argocd.io/appName"]; ok && old != "" {
+		existing["argocd.io/appNames"] = mergeCSV(existing["argocd.io/appNames"], old)
+		delete(existing, "argocd.io/appName")
 	}
 	return existing
+}
+
+// mergeCSV merges two comma-separated value strings, deduplicating entries.
+func mergeCSV(a, b string) string {
+	seen := make(map[string]bool)
+	var parts []string
+	for _, p := range strings.Split(a+","+b, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" && !seen[p] {
+			seen[p] = true
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 // mergeSpec merges incoming spec into existing, with special handling for

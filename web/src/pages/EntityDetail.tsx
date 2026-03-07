@@ -272,7 +272,10 @@ export default function EntityDetail() {
           (entity.spec?.repoUrl as string | undefined)?.includes('github.com') ||
           entity.metadata.annotations?.['github.com/repo']
         );
-        const hasArgoCD = !!(entity.metadata.annotations?.['argocd.io/appName']);
+        const hasArgoCD = !!(
+          entity.metadata.annotations?.['argocd.io/appNames'] ||
+          entity.metadata.annotations?.['argocd.io/appName']
+        );
         const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
         if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure')) tabs.splice(1, 0, 'kubernetes');
         if (hasGitHub) tabs.splice(1, 0, 'github');
@@ -535,12 +538,12 @@ export default function EntityDetail() {
               {/* ArgoCD source info — shown only for argocd-synced entities */}
               {(() => {
                 const anno = entity.metadata.annotations ?? {};
-                const argoApp = anno['argocd.io/appName'];
-                if (!argoApp) return null;
+                const appNamesRaw = anno['argocd.io/appNames'] || anno['argocd.io/appName'];
+                if (!appNamesRaw) return null;
 
+                const appNames = appNamesRaw.split(',').map((s: string) => s.trim()).filter(Boolean);
                 const syncStatus = anno['argocd.io/syncStatus'];
                 const healthStatus = anno['argocd.io/healthStatus'];
-                const appURL = anno['argocd.io/appURL'];
 
                 const SYNC_DOT: Record<string, string> = {
                   Synced: 'bg-green-500',
@@ -555,23 +558,15 @@ export default function EntityDetail() {
 
                 return (
                   <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">ArgoCD</h3>
-                      {appURL && (
-                        <a
-                          href={appURL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-[var(--gantry-accent)] hover:underline"
-                        >
-                          Open ↗
-                        </a>
-                      )}
-                    </div>
+                    <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">ArgoCD</h3>
                     <dl className="mt-3 space-y-3">
                       <div className="flex items-start justify-between gap-3">
-                        <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">App</dt>
-                        <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{argoApp}</dd>
+                        <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Apps</dt>
+                        <dd className="text-xs text-[var(--gantry-text-primary)] text-right">
+                          {appNames.length === 1
+                            ? appNames[0].split(':').pop()
+                            : `${appNames.length} applications`}
+                        </dd>
                       </div>
                       {syncStatus && (
                         <div className="flex items-center justify-between gap-3">
@@ -595,12 +590,6 @@ export default function EntityDetail() {
                         <div className="flex items-start justify-between gap-3">
                           <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Project</dt>
                           <dd className="text-xs text-[var(--gantry-text-primary)] text-right">{anno['argocd.io/project']}</dd>
-                        </div>
-                      )}
-                      {anno['argocd.io/destNamespace'] && (
-                        <div className="flex items-start justify-between gap-3">
-                          <dt className="text-xs font-medium text-[var(--gantry-text-secondary)] shrink-0">Namespace</dt>
-                          <dd className="text-xs text-[var(--gantry-text-primary)] text-right font-mono">{anno['argocd.io/destNamespace']}</dd>
                         </div>
                       )}
                     </dl>
