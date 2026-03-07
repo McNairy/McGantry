@@ -171,7 +171,7 @@ function AppCard({
                 onClick={handleRefresh}
                 disabled={busy}
                 title="Refresh from Git"
-                className="flex items-center gap-1 rounded-md border border-[var(--gantry-border)] px-2 py-1 text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] disabled:opacity-50"
+                className="flex items-center gap-1 rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2 py-1 text-xs font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] disabled:opacity-50"
               >
                 <RotateCcw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} /> Refresh
               </button>
@@ -187,7 +187,7 @@ function AppCard({
                 onClick={() => handleSync(true)}
                 disabled={busy}
                 title="Hard sync — prune and force re-apply"
-                className="flex items-center gap-1 rounded-md border border-[var(--gantry-border)] px-2 py-1 text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] disabled:opacity-50"
+                className="flex items-center gap-1 rounded-md border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2 py-1 text-xs font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] disabled:opacity-50"
               >
                 Hard Sync
               </button>
