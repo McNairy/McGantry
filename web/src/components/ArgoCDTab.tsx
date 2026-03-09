@@ -178,7 +178,7 @@ function AppCard({
               <button
                 onClick={() => handleSync(false)}
                 disabled={busy}
-                className="flex items-center gap-1 rounded-md bg-[var(--gantry-accent)] px-2 py-1 text-xs font-medium text-white hover:bg-[var(--gantry-accent-hover)] disabled:opacity-50"
+                className="flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 disabled:opacity-50"
               >
                 <RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} />
                 {busy ? 'Syncing…' : 'Sync'}
