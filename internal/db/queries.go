@@ -1310,10 +1310,12 @@ func defaultDashboardConfig() *DashboardConfig {
 		PinnedEntities: []DashboardPinnedEntity{},
 		Widgets: []DashboardWidgetConfig{
 			{ID: "entity_stats", Visible: true, Order: 0, Width: "full"},
-			{ID: "recent_activity", Visible: true, Order: 1, Width: "half"},
-			{ID: "action_runs", Visible: true, Order: 2, Width: "half"},
-			{ID: "my_entities", Visible: true, Order: 3, Width: "half"},
-			{ID: "recently_updated", Visible: true, Order: 4, Width: "half"},
+			{ID: "quick_links", Visible: true, Order: 1, Width: "full"},
+			{ID: "pinned_entities", Visible: true, Order: 2, Width: "full"},
+			{ID: "recent_activity", Visible: true, Order: 3, Width: "half"},
+			{ID: "action_runs", Visible: true, Order: 4, Width: "half"},
+			{ID: "my_entities", Visible: true, Order: 5, Width: "half"},
+			{ID: "recently_updated", Visible: true, Order: 6, Width: "half"},
 		},
 	}
 }
@@ -1342,6 +1344,24 @@ func (d *DB) GetDashboardConfig(ctx context.Context) (*DashboardConfig, error) {
 		// Backfill defaults if widgets are missing (e.g. first save after migration).
 		if len(cfg.Widgets) == 0 {
 			cfg.Widgets = defaultDashboardConfig().Widgets
+		} else {
+			// Backfill any new widget IDs not yet present in stored config.
+			existing := map[string]bool{}
+			maxOrder := 0
+			for _, w := range cfg.Widgets {
+				existing[w.ID] = true
+				if w.Order > maxOrder {
+					maxOrder = w.Order
+				}
+			}
+			for _, def := range defaultDashboardConfig().Widgets {
+				if !existing[def.ID] {
+					maxOrder++
+					cfg.Widgets = append(cfg.Widgets, DashboardWidgetConfig{
+						ID: def.ID, Visible: def.Visible, Order: maxOrder, Width: def.Width,
+					})
+				}
+			}
 		}
 		if cfg.Announcements == nil {
 			cfg.Announcements = []DashboardAnnouncement{}

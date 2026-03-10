@@ -97,6 +97,8 @@ const SEVERITY_ICON_STYLES: Record<DashboardSeverity, string> = {
 
 const WIDGET_LABELS: Record<string, string> = {
   entity_stats: 'Entity Stats',
+  quick_links: 'Quick Links',
+  pinned_entities: 'Pinned Entities',
   recent_activity: 'Recent Activity',
   action_runs: 'Action Runs',
   my_entities: 'My Entities',
@@ -105,10 +107,12 @@ const WIDGET_LABELS: Record<string, string> = {
 
 const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
   { id: 'entity_stats', visible: true, order: 0, width: 'full' },
-  { id: 'recent_activity', visible: true, order: 1, width: 'half' },
-  { id: 'action_runs', visible: true, order: 2, width: 'half' },
-  { id: 'my_entities', visible: true, order: 3, width: 'half' },
-  { id: 'recently_updated', visible: true, order: 4, width: 'half' },
+  { id: 'quick_links', visible: true, order: 1, width: 'full' },
+  { id: 'pinned_entities', visible: true, order: 2, width: 'full' },
+  { id: 'recent_activity', visible: true, order: 3, width: 'half' },
+  { id: 'action_runs', visible: true, order: 4, width: 'half' },
+  { id: 'my_entities', visible: true, order: 5, width: 'half' },
+  { id: 'recently_updated', visible: true, order: 6, width: 'half' },
 ];
 
 interface KindCount {
@@ -696,6 +700,60 @@ export default function Dashboard() {
           </div>
         ) : null;
 
+      case 'quick_links': {
+        const links = config?.quickLinks ?? [];
+        if (links.length === 0) return null;
+        return (
+          <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-4">
+            <h2 className="mb-3 text-sm font-semibold text-[var(--gantry-text-secondary)]">Quick Links</h2>
+            <div className="flex flex-wrap gap-2">
+              {links.map((l) => {
+                const Icon = LINK_ICON_MAP[l.icon] || LinkIcon;
+                return (
+                  <a
+                    key={l.id}
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-accent)]"
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {l.title}
+                    <ExternalLink className="h-3 w-3 shrink-0 text-[var(--gantry-text-secondary)]" />
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      case 'pinned_entities': {
+        const pinned = config?.pinnedEntities ?? [];
+        if (pinned.length === 0) return null;
+        return (
+          <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-4">
+            <h2 className="mb-3 text-sm font-semibold text-[var(--gantry-text-secondary)]">Pinned Entities</h2>
+            <div className="flex flex-wrap gap-2">
+              {pinned.map((p) => {
+                const Icon = iconMap[ENTITY_KINDS.find((k) => k.name === p.kind)?.icon || ''] || Box;
+                return (
+                  <Link
+                    key={p.id}
+                    to={`/catalog/${p.kind}/${p.name}`}
+                    className="flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-accent)]"
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-[var(--gantry-text-secondary)]">· {p.kind}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
       default:
         return null;
     }
@@ -1035,54 +1093,6 @@ export default function Dashboard() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Quick Links */}
-      {config && config.quickLinks.length > 0 && (
-        <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-4">
-          <h2 className="mb-3 text-sm font-semibold text-[var(--gantry-text-secondary)]">Quick Links</h2>
-          <div className="flex flex-wrap gap-2">
-            {config.quickLinks.map((l) => {
-              const Icon = LINK_ICON_MAP[l.icon] || LinkIcon;
-              return (
-                <a
-                  key={l.id}
-                  href={l.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-accent)]"
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {l.title}
-                  <ExternalLink className="h-3 w-3 shrink-0 text-[var(--gantry-text-secondary)]" />
-                </a>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Pinned Entities */}
-      {config && config.pinnedEntities.length > 0 && (
-        <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-4">
-          <h2 className="mb-3 text-sm font-semibold text-[var(--gantry-text-secondary)]">Pinned Entities</h2>
-          <div className="flex flex-wrap gap-2">
-            {config.pinnedEntities.map((p) => {
-              const Icon = iconMap[ENTITY_KINDS.find((k) => k.name === p.kind)?.icon || ''] || Box;
-              return (
-                <Link
-                  key={p.id}
-                  to={`/catalog/${p.kind}/${p.name}`}
-                  className="flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-accent)]"
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-[var(--gantry-text-secondary)]">· {p.kind}</span>
-                </Link>
-              );
-            })}
-          </div>
         </div>
       )}
 
