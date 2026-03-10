@@ -202,6 +202,8 @@ func (h *Handlers) GetGitHubRepo(w http.ResponseWriter, r *http.Request) {
 
 	commits, _ := client.GetCommits(owner, repo, 5)
 	prs, _ := client.GetPullRequests(owner, repo, 10)
+	readme, _ := client.GetReadme(owner, repo)
+	latestRelease, _ := client.GetLatestRelease(owner, repo)
 
 	// Ensure slices are never null in JSON.
 	if commits == nil {
@@ -212,9 +214,11 @@ func (h *Handlers) GetGitHubRepo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, ghplugin.RepoInfo{
-		Repo:         repoInfo,
-		Commits:      commits,
-		PullRequests: prs,
+		Repo:          repoInfo,
+		Commits:       commits,
+		PullRequests:  prs,
+		Readme:        readme,
+		LatestRelease: latestRelease,
 	})
 }
 

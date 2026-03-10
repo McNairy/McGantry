@@ -45,4 +45,108 @@ body {
   .spinner {
     @apply inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin;
   }
+
+  /* Markdown prose styles for README rendering */
+  .gantry-markdown {
+    color: var(--gantry-text-primary);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+  .gantry-markdown h1,
+  .gantry-markdown h2,
+  .gantry-markdown h3,
+  .gantry-markdown h4,
+  .gantry-markdown h5,
+  .gantry-markdown h6 {
+    font-weight: 600;
+    margin-top: 1.25em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+    color: var(--gantry-text-primary);
+  }
+  .gantry-markdown h1 { font-size: 1.5rem; padding-bottom: 0.3em; border-bottom: 1px solid var(--gantry-border); }
+  .gantry-markdown h2 { font-size: 1.25rem; padding-bottom: 0.25em; border-bottom: 1px solid var(--gantry-border); }
+  .gantry-markdown h3 { font-size: 1.1rem; }
+  .gantry-markdown h4 { font-size: 1rem; }
+  .gantry-markdown p { margin-bottom: 0.75em; }
+  .gantry-markdown a { color: var(--gantry-accent); text-decoration: underline; }
+  .gantry-markdown a:hover { color: var(--gantry-accent-hover); }
+  .gantry-markdown strong { font-weight: 600; }
+  .gantry-markdown em { font-style: italic; }
+  .gantry-markdown ul,
+  .gantry-markdown ol {
+    padding-left: 1.5em;
+    margin-bottom: 0.75em;
+  }
+  .gantry-markdown ul { list-style-type: disc; }
+  .gantry-markdown ol { list-style-type: decimal; }
+  .gantry-markdown li { margin-bottom: 0.25em; }
+  .gantry-markdown li > ul,
+  .gantry-markdown li > ol { margin-top: 0.25em; margin-bottom: 0; }
+  .gantry-markdown blockquote {
+    border-left: 3px solid var(--gantry-border);
+    padding-left: 1em;
+    margin: 0.75em 0;
+    color: var(--gantry-text-secondary);
+    font-style: italic;
+  }
+  .gantry-markdown code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82em;
+    background-color: var(--gantry-bg-tertiary);
+    border-radius: 0.25rem;
+    padding: 0.15em 0.35em;
+  }
+  .gantry-markdown pre {
+    background-color: var(--gantry-bg-tertiary);
+    border: 1px solid var(--gantry-border);
+    border-radius: 0.375rem;
+    padding: 1em;
+    overflow-x: auto;
+    margin-bottom: 0.75em;
+    font-size: 0.82em;
+    line-height: 1.5;
+  }
+  .gantry-markdown pre code {
+    background-color: transparent;
+    padding: 0;
+    font-size: inherit;
+  }
+  .gantry-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0.75em;
+    font-size: 0.85em;
+  }
+  .gantry-markdown th,
+  .gantry-markdown td {
+    border: 1px solid var(--gantry-border);
+    padding: 0.4em 0.75em;
+    text-align: left;
+  }
+  .gantry-markdown th {
+    background-color: var(--gantry-bg-tertiary);
+    font-weight: 600;
+  }
+  .gantry-markdown tr:nth-child(even) td {
+    background-color: var(--gantry-bg-secondary);
+  }
+  .gantry-markdown img {
+    max-width: 100%;
+    border-radius: 0.25rem;
+    display: inline;
+    vertical-align: middle;
+  }
+  /* Paragraphs that are purely images (logos, badge rows) should not stack as full blocks */
+  .gantry-markdown p:has(> img:only-child),
+  .gantry-markdown p:has(> a:only-child > img:only-child) {
+    margin-bottom: 0.25em;
+    line-height: 1;
+  }
+  .gantry-markdown hr {
+    border: none;
+    border-top: 1px solid var(--gantry-border);
+    margin: 1em 0;
+  }
 }

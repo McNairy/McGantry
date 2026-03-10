@@ -118,6 +118,51 @@ func (c *Client) GetPullRequests(owner, repo string, n int) ([]PullRequest, erro
 	return prs, nil
 }
 
+// GetLatestRelease fetches the latest published release for a repository.
+// Returns nil (no error) when the repository has no releases.
+func (c *Client) GetLatestRelease(owner, repo string) (*Release, error) {
+	var r Release
+	if err := c.get(fmt.Sprintf("/repos/%s/%s/releases/latest", owner, repo), &r); err != nil {
+		// 404 means no releases exist — not an error.
+		if strings.Contains(err.Error(), "Not Found") || strings.Contains(err.Error(), "404") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &r, nil
+}
+
+// GetReadme fetches the raw markdown content of the default README for a repository.
+// Returns an empty string (no error) when the repository has no README.
+func (c *Client) GetReadme(owner, repo string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/repos/%s/%s/readme", apiBase, owner, repo), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/vnd.github.raw+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("github readme request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return "", fmt.Errorf("github readme %s/%s: HTTP %d", owner, repo, res.StatusCode)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", fmt.Errorf("read readme body: %w", err)
+	}
+	return string(body), nil
+}
+
 // ListOrgRepos fetches all repositories for a GitHub organization (all pages).
 func (c *Client) ListOrgRepos(org string) ([]Repository, error) {
 	var repos []Repository

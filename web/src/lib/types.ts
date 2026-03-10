@@ -290,10 +290,21 @@ export interface GitHubRepo {
   visibility: string;
 }
 
+export interface GitHubRelease {
+  tag_name: string;
+  name: string;
+  html_url: string;
+  prerelease: boolean;
+  draft: boolean;
+  published_at: string;
+}
+
 export interface GitHubRepoInfo {
   repo: GitHubRepo;
   commits: GitHubCommit[];
   pullRequests: GitHubPullRequest[];
+  readme?: string;
+  latestRelease?: GitHubRelease;
 }
 
 export interface EntityLink {

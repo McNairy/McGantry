@@ -69,11 +69,23 @@ type GitHubUser struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
+// Release represents a GitHub release summary.
+type Release struct {
+	TagName    string `json:"tag_name"`
+	Name       string `json:"name"`
+	HTMLURL    string `json:"html_url"`
+	Prerelease bool   `json:"prerelease"`
+	Draft      bool   `json:"draft"`
+	PublishedAt string `json:"published_at"`
+}
+
 // RepoInfo is the enriched repository response returned by the Gantry GitHub plugin API.
 type RepoInfo struct {
-	Repo        *Repository   `json:"repo"`
-	Commits     []Commit      `json:"commits"`
-	PullRequests []PullRequest `json:"pullRequests"`
+	Repo          *Repository   `json:"repo"`
+	Commits       []Commit      `json:"commits"`
+	PullRequests  []PullRequest `json:"pullRequests"`
+	Readme        string        `json:"readme,omitempty"`
+	LatestRelease *Release      `json:"latestRelease,omitempty"`
 }
 
 // SyncResult summarizes what happened during a GitHub entity enrichment sync.

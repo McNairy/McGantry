@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Star, GitFork, CircleDot, GitBranch, GitPullRequest,
-  GitCommit, ExternalLink, Archive, Lock, Globe, RefreshCw,
+  GitCommit, ExternalLink, Archive, Lock, Globe, RefreshCw, BookOpen, ChevronDown, ChevronUp, Tag,
 } from 'lucide-react';
+import { marked } from 'marked';
 import { api } from '../lib/api';
 import type { Entity, GitHubRepoInfo, GitHubPullRequest } from '../lib/types';
 
@@ -43,6 +44,7 @@ export default function GitHubTab({ entity }: { entity: Entity }) {
   const [data, setData] = useState<GitHubRepoInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [readmeExpanded, setReadmeExpanded] = useState(true);
 
   // Derive repo URL from spec.repoUrl or the github.com/repo annotation.
   const repoUrl: string =
@@ -65,6 +67,20 @@ export default function GitHubTab({ entity }: { entity: Entity }) {
   }
 
   useEffect(() => { load(); }, [repoUrl]);
+
+  const readmeHtml = useMemo(() => {
+    if (!data?.readme) return '';
+    let html = marked.parse(data.readme) as string;
+    // Rewrite relative image src URLs to GitHub raw content so logos/badges load.
+    if (data.repo) {
+      const branch = data.repo.default_branch;
+      const rawBase = `https://raw.githubusercontent.com/${data.repo.full_name}/${branch}/`;
+      html = html.replace(/src="(?!https?:\/\/)([^"]+)"/g, (_, path) =>
+        `src="${rawBase}${path.replace(/^\.\//, '')}"`,
+      );
+    }
+    return html;
+  }, [data?.readme, data?.repo?.full_name, data?.repo?.default_branch]);
 
   if (!repoUrl) {
     return (
@@ -95,7 +111,7 @@ export default function GitHubTab({ entity }: { entity: Entity }) {
 
   if (!data?.repo) return null;
 
-  const { repo, commits, pullRequests } = data;
+  const { repo, commits, pullRequests, latestRelease } = data;
   const openPRs = pullRequests.filter((pr: GitHubPullRequest) => !pr.draft);
   const draftPRs = pullRequests.filter((pr: GitHubPullRequest) => pr.draft);
 
@@ -114,6 +130,20 @@ export default function GitHubTab({ entity }: { entity: Entity }) {
               >
                 {repo.full_name}
               </a>
+              {latestRelease && (
+                <a
+                  href={latestRelease.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 rounded-full border border-[var(--gantry-border)] px-2 py-0.5 text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] hover:border-[var(--gantry-accent)]"
+                >
+                  <Tag className="h-3 w-3" />
+                  {latestRelease.tag_name}
+                  {latestRelease.prerelease && (
+                    <span className="ml-0.5 text-[10px] text-yellow-600 dark:text-yellow-400">pre</span>
+                  )}
+                </a>
+              )}
               {repo.archived && (
                 <span className="flex items-center gap-1 rounded-full border border-yellow-400 px-2 py-0.5 text-xs text-yellow-600 dark:text-yellow-400">
                   <Archive className="h-3 w-3" /> Archived
@@ -294,6 +324,33 @@ export default function GitHubTab({ entity }: { entity: Entity }) {
           )}
         </div>
       </div>
+
+      {/* README */}
+      {readmeHtml && (
+        <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]">
+          <button
+            onClick={() => setReadmeExpanded((e) => !e)}
+            className="flex w-full items-center justify-between px-4 py-3 border-b border-[var(--gantry-border)] hover:bg-[var(--gantry-bg-secondary)] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-[var(--gantry-text-secondary)]" />
+              <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">README</h3>
+            </div>
+            {readmeExpanded
+              ? <ChevronUp className="h-4 w-4 text-[var(--gantry-text-secondary)]" />
+              : <ChevronDown className="h-4 w-4 text-[var(--gantry-text-secondary)]" />
+            }
+          </button>
+          {readmeExpanded && (
+            <div
+              className="px-6 py-5 gantry-markdown"
+              // README content is fetched from GitHub's API for the user's own repo.
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: readmeHtml }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
