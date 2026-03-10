@@ -15,6 +15,14 @@ frontend:
 dev:
 	go run ./cmd/gantry serve --dev
 
+# Live reload dev (requires: go install github.com/air-verse/air@latest)
+# Backend auto-reloads on .go changes; frontend has HMR at http://localhost:3000
+AIR := $(shell go env GOPATH)/bin/air
+
+dev-watch:
+	@test -f $(AIR) || (echo "air not found — run: go install github.com/air-verse/air@latest" && exit 1)
+	@trap 'kill 0' INT TERM; $(AIR) & cd web && npm run dev & wait
+
 # Run all tests
 test:
 	go test ./...

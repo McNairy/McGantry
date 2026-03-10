@@ -1,0 +1,27 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./bin/gantry ./cmd/gantry"
+  bin = "./bin/gantry"
+  full_bin = "./bin/gantry serve --dev"
+  include_ext = ["go"]
+  exclude_dir = ["bin", "data", "local", "tmp", "web", "vendor"]
+  exclude_regex = ["_test\\.go$"]
+  exclude_unchanged = true
+  delay = 500
+  stop_on_error = true
+  kill_delay = "2s"
+  send_interrupt = true
+
+[log]
+  time = true
+
+[color]
+  build = "yellow"
+  runner = "green"
+  watcher = "cyan"
+  app = ""
+
+[misc]
+  clean_on_exit = true

@@ -66,6 +66,28 @@ npx tsc --noEmit
 npm run build
 ```
 
+### Live Reload (recommended for development)
+
+For the fastest feedback loop, use `air` for Go hot-reload combined with Vite's HMR for the frontend — no manual rebuilds needed.
+
+**One-time setup:**
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+**Then just run:**
+
+```bash
+make dev-watch
+```
+
+This starts both processes together:
+- **Backend** (`air`) — watches `*.go` files, rebuilds and restarts automatically on save
+- **Frontend** (Vite) — hot module replacement at `http://localhost:3000`, proxies `/api` to `:8080`
+
+Open `http://localhost:3000` in your browser. `Ctrl+C` stops both processes.
+
 ### Full Build
 
 ```bash
