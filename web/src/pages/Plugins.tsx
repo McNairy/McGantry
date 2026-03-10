@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Package, CheckCircle, Circle, Settings, ExternalLink, Search, Puzzle,
   RefreshCw, Plus, Trash2, ChevronDown, ChevronUp, X,
+  BookOpen, Zap, Layers, CheckSquare, Info,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { PluginRegistryEntry, PluginConfig, PluginSyncResult } from '../lib/types';
@@ -26,6 +27,15 @@ const CATEGORY_COLORS: Record<string, string> = {
   'auth-provider': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
+// Subtle background accent per category for the icon area in the detail modal.
+const CATEGORY_ICON_BG: Record<string, string> = {
+  integration: 'bg-blue-500/10 text-blue-500',
+  widget: 'bg-purple-500/10 text-purple-500',
+  'action-type': 'bg-orange-500/10 text-orange-500',
+  'entity-kind': 'bg-green-500/10 text-green-500',
+  'auth-provider': 'bg-red-500/10 text-red-500',
+};
+
 function isSecret(key: string): boolean {
   return ['key', 'token', 'secret', 'password', 'privatekey'].some((s) =>
     key.toLowerCase().includes(s)
@@ -39,8 +49,6 @@ function isLongText(key: string): boolean {
 }
 
 // ── Per-plugin section definitions ─────────────────────────────────────────
-// Fields listed here are rendered in grouped sections instead of a flat list.
-// renderBanner (optional) renders an info callout above the fields.
 const PLUGIN_SECTIONS: Record<string, Array<{
   title: string;
   description?: string;
@@ -112,7 +120,7 @@ const PLUGIN_SECTIONS: Record<string, Array<{
   ],
 };
 
-// Conditional field visibility: a field is hidden unless its function returns true.
+// Conditional field visibility
 type VisibilityFn = (values: Record<string, any>) => boolean;
 const FIELD_VISIBILITY: Record<string, Record<string, VisibilityFn>> = {
   github: {
@@ -127,7 +135,6 @@ const FIELD_VISIBILITY: Record<string, Record<string, VisibilityFn>> = {
 };
 
 // ── ConfigField ──────────────────────────────────────────────────────────────
-// Renders a single config field with the correct input widget for its type.
 function ConfigField({
   fieldKey,
   fieldSchema,
@@ -166,7 +173,6 @@ function ConfigField({
     );
   }
 
-  // Boolean → toggle switch
   if (isBool) {
     return (
       <div className="flex items-start justify-between gap-6 py-1">
@@ -197,7 +203,6 @@ function ConfigField({
     );
   }
 
-  // Enum → select dropdown; long text → textarea; secret → password; default → text
   return (
     <div>
       <label className="block text-sm font-medium text-[var(--gantry-text-primary)] mb-1">
@@ -242,7 +247,6 @@ function ConfigField({
 }
 
 // ── ArrayObjectField ─────────────────────────────────────────────────────────
-// Renders an array of objects as expandable rows with add/remove.
 function ArrayObjectField({
   fieldKey,
   schema,
@@ -383,41 +387,19 @@ function ArrayObjectField({
   );
 }
 
-// ── ConfigModal ───────────────────────────────────────────────────────────────
-function ConfigModal({
+// ── ConfigFormBody ────────────────────────────────────────────────────────────
+// The scrollable form content shared by the config tab in the detail modal.
+function ConfigFormBody({
   plugin,
-  onClose,
+  config,
+  values,
+  setValues,
 }: {
   plugin: PluginRegistryEntry;
-  onClose: () => void;
+  config: PluginConfig | null;
+  values: Record<string, any>;
+  setValues: React.Dispatch<React.SetStateAction<Record<string, any>>>;
 }) {
-  const [config, setConfig] = useState<PluginConfig | null>(null);
-  const [values, setValues] = useState<Record<string, any>>({});
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.getPluginConfig(plugin.name).then((c) => {
-      setConfig(c);
-      setValues(c.values ?? {});
-    }).catch(() => {});
-  }, [plugin.name]);
-
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      await api.updatePluginConfig(plugin.name, values);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const allFields: Record<string, any> = config?.schema?.properties ?? {};
   const required: string[] = config?.schema?.required ?? [];
   const sections = PLUGIN_SECTIONS[plugin.name];
@@ -448,115 +430,388 @@ function ConfigModal({
     );
   }
 
+  if (!config) {
+    return (
+      <div className="flex items-center justify-center py-16 text-[var(--gantry-text-secondary)] text-sm">
+        Loading…
+      </div>
+    );
+  }
+
   const hasFields = Object.keys(allFields).length > 0;
+  if (!hasFields) {
+    return (
+      <p className="text-sm text-[var(--gantry-text-secondary)]">
+        This plugin has no configuration options.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {sections ? (
+        <>
+          {sections.map((section) => {
+            const anyVisible = section.fields.some((k) => allFields[k] && isVisible(k));
+            if (!anyVisible) return null;
+            return (
+              <div
+                key={section.title}
+                className="rounded-lg border border-[var(--gantry-border)] overflow-hidden"
+              >
+                <div className="px-5 py-3.5 bg-[var(--gantry-bg-tertiary)] border-b border-[var(--gantry-border)]">
+                  <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">
+                    {section.title}
+                  </h3>
+                  {section.description && (
+                    <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
+                      {section.description}
+                    </p>
+                  )}
+                </div>
+                <div className="px-5 py-4 space-y-4 bg-[var(--gantry-bg-primary)]">
+                  {section.renderBanner?.()}
+                  {section.fields.map((key) => renderField(key))}
+                </div>
+              </div>
+            );
+          })}
+          {ungroupedKeys.length > 0 && (
+            <div className="rounded-lg border border-[var(--gantry-border)] overflow-hidden">
+              <div className="px-5 py-3.5 bg-[var(--gantry-bg-tertiary)] border-b border-[var(--gantry-border)]">
+                <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Other</h3>
+              </div>
+              <div className="px-5 py-4 space-y-4 bg-[var(--gantry-bg-primary)]">
+                {ungroupedKeys.map((key) => renderField(key))}
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-4">
+          {ungroupedKeys.map((key) => renderField(key))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── PluginDetailModal ─────────────────────────────────────────────────────────
+// Full-screen overlay with Overview and Configuration tabs.
+function PluginDetailModal({
+  plugin,
+  initialTab,
+  syncing,
+  syncResult,
+  onClose,
+  onAction,
+  onSync,
+}: {
+  plugin: PluginRegistryEntry;
+  initialTab: 'overview' | 'config';
+  syncing: boolean;
+  syncResult: PluginSyncResult | null;
+  onClose: () => void;
+  onAction: (action: 'install' | 'enable' | 'disable') => void;
+  onSync: () => void;
+}) {
+  const [tab, setTab] = useState<'overview' | 'config'>(initialTab);
+  const [config, setConfig] = useState<PluginConfig | null>(null);
+  const [values, setValues] = useState<Record<string, any>>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Sync initialTab if it changes (e.g. when parent reopens with different tab)
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
+
+  // Load config whenever we switch to config tab
+  useEffect(() => {
+    if (tab !== 'config' || !plugin.installed) return;
+    if (config) return; // already loaded
+    api.getPluginConfig(plugin.name).then((c) => {
+      setConfig(c);
+      setValues(c.values ?? {});
+    }).catch(() => {});
+  }, [tab, plugin.name, plugin.installed]);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api.updatePluginConfig(plugin.name, values);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e: any) {
+      setSaveError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
+  const iconBg = CATEGORY_ICON_BG[plugin.category] ?? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]';
+  const canSync = plugin.installed && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
+  const hasConfig = plugin.installed;
+  const configHasFields = config && Object.keys(config.schema?.properties ?? {}).length > 0;
+
+  // Parse longDescription paragraphs
+  const paragraphs = (plugin.longDescription ?? plugin.description).split('\n\n').filter(Boolean);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div
-        className="bg-[var(--gantry-bg-secondary)] rounded-xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden"
-        style={{ maxHeight: '90vh' }}
+        className="bg-[var(--gantry-bg-secondary)] rounded-xl shadow-2xl w-full flex flex-col overflow-hidden"
+        style={{ maxWidth: '860px', maxHeight: '92vh' }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--gantry-border)] flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[var(--gantry-accent)]/10 flex items-center justify-center flex-shrink-0">
-              <Settings size={17} className="text-[var(--gantry-accent)]" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-[var(--gantry-text-primary)] leading-tight">
-                Configure {plugin.title}
-              </h2>
-              <p className="text-xs text-[var(--gantry-text-secondary)]">v{plugin.version} · {plugin.author}</p>
-            </div>
+        {/* ── Header ── */}
+        <div className="flex items-start gap-4 px-6 py-5 border-b border-[var(--gantry-border)] flex-shrink-0">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+            <Puzzle size={22} />
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto flex-1 px-6 py-6">
-          {!config && (
-            <div className="flex items-center justify-center py-16 text-[var(--gantry-text-secondary)] text-sm">
-              Loading…
-            </div>
-          )}
-          {config && !hasFields && (
-            <p className="text-sm text-[var(--gantry-text-secondary)]">
-              This plugin has no configuration options.
-            </p>
-          )}
-          {config && hasFields && (
-            <div className="space-y-6">
-              {sections ? (
-                <>
-                  {sections.map((section) => {
-                    const anyVisible = section.fields.some((k) => allFields[k] && isVisible(k));
-                    if (!anyVisible) return null;
-                    return (
-                      <div
-                        key={section.title}
-                        className="rounded-lg border border-[var(--gantry-border)] overflow-hidden"
-                      >
-                        <div className="px-5 py-3.5 bg-[var(--gantry-bg-tertiary)] border-b border-[var(--gantry-border)]">
-                          <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">
-                            {section.title}
-                          </h3>
-                          {section.description && (
-                            <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
-                              {section.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="px-5 py-4 space-y-4 bg-[var(--gantry-bg-primary)]">
-                          {section.renderBanner?.()}
-                          {section.fields.map((key) => renderField(key))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {ungroupedKeys.length > 0 && (
-                    <div className="rounded-lg border border-[var(--gantry-border)] overflow-hidden">
-                      <div className="px-5 py-3.5 bg-[var(--gantry-bg-tertiary)] border-b border-[var(--gantry-border)]">
-                        <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Other</h3>
-                      </div>
-                      <div className="px-5 py-4 space-y-4 bg-[var(--gantry-bg-primary)]">
-                        {ungroupedKeys.map((key) => renderField(key))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-4">
-                  {ungroupedKeys.map((key) => renderField(key))}
-                </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-[var(--gantry-text-primary)] leading-tight">{plugin.title}</h2>
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}>
+                {CATEGORIES.find((c) => c.id === plugin.category)?.label ?? plugin.category}
+              </span>
+              {plugin.installed && (
+                <span className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                  plugin.enabled
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                }`}>
+                  <CheckCircle size={10} />
+                  {plugin.enabled ? 'Active' : 'Installed'}
+                </span>
               )}
             </div>
-          )}
-          {error && (
-            <p className="mt-4 text-sm text-[var(--gantry-danger)]">{error}</p>
+            <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
+              v{plugin.version} · by {plugin.author}
+            </p>
+          </div>
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {!plugin.installed ? (
+              <button
+                onClick={() => onAction('install')}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity"
+              >
+                Install
+              </button>
+            ) : (
+              <>
+                {canSync && (
+                  <button
+                    onClick={onSync}
+                    disabled={syncing}
+                    title="Sync now"
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+                    Sync
+                  </button>
+                )}
+                <button
+                  onClick={() => onAction(plugin.enabled ? 'disable' : 'enable')}
+                  className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 ${
+                    plugin.enabled
+                      ? 'border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]'
+                      : 'border-[var(--gantry-accent)] text-[var(--gantry-accent)] hover:bg-[var(--gantry-accent)]/10'
+                  }`}
+                >
+                  {plugin.enabled ? <><Circle size={12} /> Disable</> : <><CheckCircle size={12} /> Enable</>}
+                </button>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Tab bar ── */}
+        <div className="flex gap-1 px-6 pt-3 border-b border-[var(--gantry-border)] flex-shrink-0">
+          <button
+            onClick={() => setTab('overview')}
+            className={`flex items-center gap-1.5 px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
+              tab === 'overview'
+                ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
+                : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
+            }`}
+          >
+            <BookOpen size={14} />
+            Overview
+          </button>
+          {hasConfig && (
+            <button
+              onClick={() => setTab('config')}
+              className={`flex items-center gap-1.5 px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                tab === 'config'
+                  ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
+                  : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
+              }`}
+            >
+              <Settings size={14} />
+              Configuration
+            </button>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)] flex-shrink-0 bg-[var(--gantry-bg-secondary)]">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || (!!config && !hasFields)}
-            className="px-4 py-2 text-sm rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity disabled:opacity-50"
-          >
-            {saved ? 'Saved!' : saving ? 'Saving…' : 'Save Changes'}
-          </button>
+        {/* ── Body ── */}
+        <div className="overflow-y-auto flex-1 px-6 py-6">
+          {tab === 'overview' && (
+            <div className="space-y-6">
+              {/* Description */}
+              <div className="space-y-3">
+                {paragraphs.map((p, i) => (
+                  <p key={i} className="text-sm text-[var(--gantry-text-primary)] leading-relaxed">{p}</p>
+                ))}
+              </div>
+
+              {/* Features */}
+              {plugin.features && plugin.features.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--gantry-text-secondary)] mb-3">
+                    What this plugin does
+                  </h3>
+                  <ul className="space-y-2">
+                    {plugin.features.map((f, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-sm text-[var(--gantry-text-primary)]">
+                        <CheckSquare size={15} className="text-[var(--gantry-accent)] flex-shrink-0 mt-0.5" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Metadata grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Entity panels */}
+                {plugin.entityPanels && plugin.entityPanels.length > 0 && (
+                  <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Layers size={14} className="text-[var(--gantry-text-secondary)]" />
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--gantry-text-secondary)]">
+                        Adds panels to
+                      </h4>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {plugin.entityPanels.map((kind) => (
+                        <span
+                          key={kind}
+                          className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--gantry-bg-tertiary)] text-[var(--gantry-text-primary)] border border-[var(--gantry-border)]"
+                        >
+                          {kind}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action types */}
+                {plugin.actionTypes && plugin.actionTypes.length > 0 && (
+                  <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Zap size={14} className="text-[var(--gantry-text-secondary)]" />
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--gantry-text-secondary)]">
+                        Action types
+                      </h4>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {plugin.actionTypes.map((t) => (
+                        <span
+                          key={t}
+                          className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--gantry-bg-tertiary)] text-[var(--gantry-text-primary)] border border-[var(--gantry-border)] font-mono"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sync result */}
+              {syncResult && (
+                <div className={`text-xs rounded-lg border px-3 py-2 space-y-1 ${
+                  (syncResult.errors?.length ?? 0) > 0
+                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
+                    : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
+                }`}>
+                  <div>
+                    {syncResult.enriched != null
+                      ? `Enriched ${syncResult.enriched} of ${syncResult.scanned ?? 0} entities`
+                      : syncResult.apps != null
+                      ? `${syncResult.apps} app${syncResult.apps !== 1 ? 's' : ''} synced: ${syncResult.created ?? 0} created, ${syncResult.updated ?? 0} updated`
+                      : `Synced: ${syncResult.created ?? 0} created, ${syncResult.updated ?? 0} updated`}
+                    {(syncResult.errors?.length ?? 0) > 0 && ` · ${syncResult.errors!.length} error(s)`}
+                  </div>
+                  {syncResult.errors?.map((e, i) => (
+                    <div key={i} className="text-red-600 dark:text-red-400 font-mono break-all">{e}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Footer links */}
+              <div className="flex items-center gap-4 pt-2 border-t border-[var(--gantry-border)]">
+                {plugin.homepage && (
+                  <a
+                    href={plugin.homepage}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-accent)] transition-colors"
+                  >
+                    <ExternalLink size={12} />
+                    View source & docs
+                  </a>
+                )}
+                {!plugin.installed && (
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--gantry-text-secondary)]">
+                    <Info size={12} />
+                    Install this plugin to configure it
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {tab === 'config' && (
+            <ConfigFormBody
+              plugin={plugin}
+              config={config}
+              values={values}
+              setValues={setValues}
+            />
+          )}
+
+          {tab === 'config' && saveError && (
+            <p className="mt-4 text-sm text-[var(--gantry-danger)]">{saveError}</p>
+          )}
         </div>
+
+        {/* ── Footer (config tab only) ── */}
+        {tab === 'config' && (
+          <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--gantry-border)] flex-shrink-0 bg-[var(--gantry-bg-secondary)]">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !configHasFields}
+              className="px-4 py-2 text-sm rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {saved ? 'Saved!' : saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -569,58 +824,61 @@ function PluginCard({
   syncResult,
   onAction,
   onSync,
+  onOpenDetail,
 }: {
   plugin: PluginRegistryEntry;
   syncing: boolean;
   syncResult: PluginSyncResult | null;
-  onAction: (action: 'install' | 'enable' | 'disable' | 'configure') => void;
+  onAction: (action: 'install' | 'enable' | 'disable') => void;
   onSync: () => void;
+  onOpenDetail: (tab: 'overview' | 'config') => void;
 }) {
   const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
+  const iconBg = CATEGORY_ICON_BG[plugin.category] ?? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]';
   const canSync = plugin.installed && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
 
   return (
-    <div className="bg-[var(--gantry-bg-secondary)] rounded-xl border border-[var(--gantry-border)] p-5 flex flex-col gap-4 hover:border-[var(--gantry-accent)] transition-colors">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[var(--gantry-accent)]/10 flex items-center justify-center flex-shrink-0">
-            <Puzzle size={20} className="text-[var(--gantry-accent)]" />
+    <div className="bg-[var(--gantry-bg-secondary)] rounded-xl border border-[var(--gantry-border)] flex flex-col hover:border-[var(--gantry-accent)] transition-colors">
+      {/* Clickable top area → opens detail overlay */}
+      <button
+        type="button"
+        onClick={() => onOpenDetail('overview')}
+        className="flex flex-col gap-3 p-5 text-left flex-1 min-h-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gantry-accent)] rounded-t-xl"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+              <Puzzle size={19} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-[var(--gantry-text-primary)] text-sm leading-tight">{plugin.title}</h3>
+              <p className="text-xs text-[var(--gantry-text-secondary)]">by {plugin.author} · v{plugin.version}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold text-[var(--gantry-text-primary)] text-sm leading-tight">{plugin.title}</h3>
-            <p className="text-xs text-[var(--gantry-text-secondary)]">by {plugin.author} · v{plugin.version}</p>
-          </div>
+          {plugin.installed && (
+            <span className={`flex-shrink-0 flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+              plugin.enabled
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+            }`}>
+              <CheckCircle size={10} />
+              {plugin.enabled ? 'Active' : 'Installed'}
+            </span>
+          )}
         </div>
-        {plugin.installed && (
-          <span className="flex-shrink-0 flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-            <CheckCircle size={10} />
-            {plugin.enabled ? 'Active' : 'Installed'}
+
+        <p className="text-sm text-[var(--gantry-text-secondary)] line-clamp-2">{plugin.description}</p>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}>
+            {CATEGORIES.find((c) => c.id === plugin.category)?.label ?? plugin.category}
           </span>
-        )}
-      </div>
+        </div>
+      </button>
 
-      <p className="text-sm text-[var(--gantry-text-secondary)] line-clamp-2 flex-1">{plugin.description}</p>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}>
-          {CATEGORIES.find((c) => c.id === plugin.category)?.label ?? plugin.category}
-        </span>
-        {plugin.homepage && (
-          <a
-            href={plugin.homepage}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto text-xs text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-accent)] flex items-center gap-1 transition-colors"
-          >
-            <ExternalLink size={10} />
-            Docs
-          </a>
-        )}
-      </div>
-
-      {/* Sync result summary */}
+      {/* Sync result inline summary */}
       {syncResult && (
-        <div className={`text-xs rounded-lg border px-3 py-2 space-y-1 ${
+        <div className={`mx-5 mb-3 text-xs rounded-lg border px-3 py-2 space-y-1 ${
           (syncResult.errors?.length ?? 0) > 0
             ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
             : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
@@ -639,14 +897,23 @@ function PluginCard({
         </div>
       )}
 
-      <div className="flex items-center gap-2 pt-1 border-t border-[var(--gantry-border)]">
+      {/* Action row */}
+      <div className="flex items-center gap-2 px-5 pb-5 pt-1 border-t border-[var(--gantry-border)]">
         {!plugin.installed ? (
-          <button
-            onClick={() => onAction('install')}
-            className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity"
-          >
-            Install
-          </button>
+          <>
+            <button
+              onClick={() => onAction('install')}
+              className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)] hover:opacity-90 transition-opacity"
+            >
+              Install
+            </button>
+            <button
+              onClick={() => onOpenDetail('overview')}
+              className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
+            >
+              Details
+            </button>
+          </>
         ) : (
           <>
             <button
@@ -674,7 +941,8 @@ function PluginCard({
               </button>
             )}
             <button
-              onClick={() => onAction('configure')}
+              onClick={() => onOpenDetail('config')}
+              title="Configure"
               className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
             >
               <Settings size={12} />
@@ -694,7 +962,7 @@ export default function Plugins() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [tab, setTab] = useState<'browse' | 'installed'>('browse');
-  const [configPlugin, setConfigPlugin] = useState<PluginRegistryEntry | null>(null);
+  const [detail, setDetail] = useState<{ plugin: PluginRegistryEntry; tab: 'overview' | 'config' } | null>(null);
   const [syncingPlugins, setSyncingPlugins] = useState<Set<string>>(new Set());
   const [syncResults, setSyncResults] = useState<Record<string, PluginSyncResult>>({});
 
@@ -705,21 +973,25 @@ export default function Plugins() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function handleAction(plugin: PluginRegistryEntry, action: 'install' | 'enable' | 'disable' | 'configure') {
-    if (action === 'configure') {
-      setConfigPlugin(plugin);
-      return;
-    }
+  async function handleAction(plugin: PluginRegistryEntry, action: 'install' | 'enable' | 'disable') {
     try {
       if (action === 'install') {
         await api.installPlugin(plugin.name);
         setPlugins((prev) => prev.map((p) => p.name === plugin.name ? { ...p, installed: true } : p));
+        // After install, open the detail modal on the config tab so user can configure immediately
+        setDetail({ plugin: { ...plugin, installed: true }, tab: 'config' });
       } else if (action === 'enable') {
         await api.enablePlugin(plugin.name, true);
         setPlugins((prev) => prev.map((p) => p.name === plugin.name ? { ...p, enabled: true } : p));
+        if (detail?.plugin.name === plugin.name) {
+          setDetail((d) => d ? { ...d, plugin: { ...d.plugin, enabled: true } } : null);
+        }
       } else if (action === 'disable') {
         await api.enablePlugin(plugin.name, false);
         setPlugins((prev) => prev.map((p) => p.name === plugin.name ? { ...p, enabled: false } : p));
+        if (detail?.plugin.name === plugin.name) {
+          setDetail((d) => d ? { ...d, plugin: { ...d.plugin, enabled: false } } : null);
+        }
       }
     } catch (e: any) {
       setError(e.message);
@@ -751,6 +1023,11 @@ export default function Plugins() {
 
   const installedCount = plugins.filter((p) => p.installed).length;
   const enabledCount = plugins.filter((p) => p.enabled).length;
+
+  // Keep detail plugin state in sync with the canonical plugins list
+  const detailPlugin = detail
+    ? (plugins.find((p) => p.name === detail.plugin.name) ?? detail.plugin)
+    : null;
 
   return (
     <div className="flex-1 flex flex-col overflow-auto bg-[var(--gantry-bg-primary)]">
@@ -842,15 +1119,24 @@ export default function Plugins() {
                 syncResult={syncResults[plugin.name] ?? null}
                 onAction={(action) => handleAction(plugin, action)}
                 onSync={() => handleSync(plugin.name)}
+                onOpenDetail={(t) => setDetail({ plugin, tab: t })}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* Config modal */}
-      {configPlugin && (
-        <ConfigModal plugin={configPlugin} onClose={() => setConfigPlugin(null)} />
+      {/* Detail modal */}
+      {detail && detailPlugin && (
+        <PluginDetailModal
+          plugin={detailPlugin}
+          initialTab={detail.tab}
+          syncing={syncingPlugins.has(detailPlugin.name)}
+          syncResult={syncResults[detailPlugin.name] ?? null}
+          onClose={() => setDetail(null)}
+          onAction={(action) => handleAction(detailPlugin, action)}
+          onSync={() => handleSync(detailPlugin.name)}
+        />
       )}
     </div>
   );

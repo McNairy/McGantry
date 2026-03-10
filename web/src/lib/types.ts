@@ -128,11 +128,15 @@ export interface PluginRegistryEntry {
   name: string;
   title: string;
   description: string;
+  longDescription?: string;
+  features?: string[];
   version: string;
   author: string;
   category: 'integration' | 'widget' | 'entity-kind' | 'action-type' | 'auth-provider';
   iconUrl?: string;
   homepage?: string;
+  entityPanels?: string[];
+  actionTypes?: string[];
   installed: boolean;
   enabled: boolean;
   installedAt?: string;

@@ -3,6 +3,15 @@
     "name": "github",
     "title": "GitHub",
     "description": "Repository info panels on entities with a repoUrl, GitHub Actions workflow dispatch, and optional GitHub OAuth SSO.",
+    "longDescription": "The GitHub plugin connects Gantry to your GitHub organization, enriching service entities with live repository data — open pull requests, recent commits, workflow runs, and contributor stats. It supports both Personal Access Tokens and GitHub App authentication for org-wide access. Optionally, enable GitHub OAuth SSO so your team can sign in to Gantry with their GitHub identities instead of a local password.\n\nOnce installed, any entity with a `spec.repoUrl` pointing to GitHub will automatically show a live GitHub tab with real-time repo info.",
+    "features": [
+      "Live repository panel on Service, API, and Infrastructure entities",
+      "View open PRs, recent commits, topics, stars, and forks",
+      "Trigger GitHub Actions workflows directly from Gantry Actions",
+      "GitHub App or Personal Access Token authentication",
+      "GitHub OAuth SSO — sign in to Gantry with your GitHub account",
+      "Auto-discovers org repositories and syncs them as Service entities"
+    ],
     "version": "1.1.0",
     "author": "Gantry",
     "category": "integration",
@@ -68,6 +77,14 @@
     "name": "pagerduty",
     "title": "PagerDuty",
     "description": "On-call schedule panels for Services and Teams, plus incident management widgets.",
+    "longDescription": "The PagerDuty plugin adds on-call schedule and incident panels to Service and Team entity pages. Link your Gantry entities to PagerDuty services via a simple annotation and your engineers will see who is currently on-call, the active escalation policy, and a live list of open incidents — all without leaving the service catalog.\n\nSet the `pagerduty.com/service-id` annotation on any Service or Team entity to activate the panel automatically.",
+    "features": [
+      "On-call schedule panel on Service and Team entities",
+      "Real-time open incident list with severity and status",
+      "Escalation policy overview",
+      "Annotation-driven setup — no code required",
+      "Configurable annotation key for PagerDuty service ID mapping"
+    ],
     "version": "1.0.0",
     "author": "Gantry",
     "category": "integration",
@@ -95,6 +112,15 @@
     "name": "kubernetes",
     "title": "Kubernetes",
     "description": "Auto-discovers services, deployments, and namespaces from your clusters and syncs them to the catalog. Adds resource status panels.",
+    "longDescription": "The Kubernetes plugin connects to one or more clusters and continuously discovers your workloads. Namespaces become Environment entities, Deployments become Service entities, and Kubernetes Services become Infrastructure entities — automatically populating your catalog without any manual YAML.\n\nA live workload panel on service pages shows pod health, restart counts, resource requests/limits, and a streaming container log viewer. Configure multiple clusters, per-cluster namespace filters, and a global label selector to scope exactly which resources are imported.",
+    "features": [
+      "Auto-discovery of Namespaces, Deployments, and Services into the catalog",
+      "Multi-cluster support with independent per-cluster namespace filters",
+      "Live pod status, restart counts, and resource usage on entity pages",
+      "Streaming container log viewer in the entity panel",
+      "Label selector for scoping which resources to import",
+      "Configurable periodic background sync (default: every 5 minutes)"
+    ],
     "version": "1.0.0",
     "author": "Gantry",
     "category": "integration",
@@ -158,6 +184,14 @@
     "name": "slack",
     "title": "Slack",
     "description": "Send notifications on action runs, approvals, and sync errors to Slack channels.",
+    "longDescription": "The Slack plugin lets Gantry post structured notifications to your Slack workspace. When an Action run completes, an approval is requested, or a catalog sync fails, Gantry sends a rich message to the configured Slack channel — keeping your team informed without having to check the UI.\n\nMessages include direct links back to the relevant entity or action run so engineers can jump straight to the right context.",
+    "features": [
+      "Action run completion notifications with pass/fail status",
+      "Approval-request messages with direct deep-links into Gantry",
+      "Catalog sync error alerts with error details",
+      "Configurable default channel with per-action overrides",
+      "Rich message formatting with entity context"
+    ],
     "version": "1.0.0",
     "author": "Gantry",
     "category": "integration",
@@ -183,6 +217,14 @@
     "name": "datadog",
     "title": "Datadog",
     "description": "Embed SLO status, error rates, and service metrics panels on Service entities.",
+    "longDescription": "The Datadog plugin embeds live SLO status, error-rate trends, and service metrics directly into Gantry entity pages. Engineers see at a glance whether a service is meeting its SLOs and can review recent error rates without switching tools.\n\nUse entity annotations to map Gantry services to their Datadog service names or SLO IDs. Supports all Datadog sites including US, EU, US-Gov, and AP1.",
+    "features": [
+      "SLO status badge and remaining error budget on Service entities",
+      "Error rate and latency trend charts",
+      "Service metrics overview pulled from Datadog APM",
+      "Annotation-driven mapping — no code required",
+      "Supports datadoghq.com, datadoghq.eu, and other Datadog sites"
+    ],
     "version": "1.0.0",
     "author": "Gantry",
     "category": "widget",
@@ -215,6 +257,14 @@
     "name": "grafana",
     "title": "Grafana",
     "description": "Embed Grafana dashboard panels directly on Service and Infrastructure entity pages.",
+    "longDescription": "The Grafana plugin embeds live dashboard panels from your Grafana instance directly into Gantry entity pages. Set a dashboard UID and panel IDs in entity annotations and Gantry will render the live Grafana visualization inline — no separate browser tab needed.\n\nWorks with any self-hosted or Grafana Cloud instance running Grafana 9 or later using a service account token.",
+    "features": [
+      "Embed any Grafana dashboard panel on Service and Infrastructure entity pages",
+      "Configure dashboards per-entity via annotations — no code required",
+      "Supports Grafana 9+ (self-hosted and Grafana Cloud)",
+      "Service account token authentication",
+      "Multiple panels per entity page"
+    ],
     "version": "1.0.0",
     "author": "Gantry",
     "category": "widget",
@@ -241,6 +291,17 @@
     "name": "argocd",
     "title": "ArgoCD",
     "description": "Auto-discovers ArgoCD Applications across multiple instances and syncs them to the catalog. Apps sharing the same label value are grouped under one service entity. Correlates with Kubernetes-discovered services to avoid duplicates.",
+    "longDescription": "The ArgoCD plugin discovers applications across one or more ArgoCD instances and syncs them to the Gantry service catalog. Each application becomes a Service entity enriched with live sync status, health state, and deployment metadata.\n\nApps sharing the same label value are grouped under a single Gantry service. The plugin automatically correlates with Kubernetes-discovered entities to avoid duplicates, and fills in the deployment namespace and Git repo URL so the Kubernetes pod panel and GitHub tab activate automatically.",
+    "features": [
+      "Multi-instance ArgoCD discovery and automatic catalog sync",
+      "Live sync status, health state, and last-deployed timestamp on entity pages",
+      "One-click Sync, Refresh, and Hard Sync from the Gantry UI",
+      "Smart deduplication: correlates with Kubernetes plugin to avoid duplicate entities",
+      "Populates deployment namespace for automatic Kubernetes pod panel activation",
+      "Populates repo URL for automatic GitHub panel activation",
+      "Token or username/password authentication per instance",
+      "App label grouping: multiple ArgoCD apps map to a single Gantry service"
+    ],
     "version": "1.2.0",
     "author": "Gantry",
     "category": "integration",
@@ -317,6 +378,13 @@
     "name": "flux",
     "title": "Flux CD",
     "description": "Trigger Flux GitOps reconciliation actions from the Gantry UI.",
+    "longDescription": "The Flux CD plugin enables Gantry Actions to trigger Flux GitOps reconciliation via the Flux notification API webhook. Use it to build self-service deploy workflows where developers can request an immediate reconcile of a Flux Kustomization or HelmRelease directly from the Gantry portal — no kubectl access needed.\n\nDefine a `flux-reconcile` action on any entity and point it at the Flux API endpoint.",
+    "features": [
+      "Trigger Flux Kustomization and HelmRelease reconciliation from Gantry",
+      "Works with the Flux notification API webhook endpoint",
+      "flux-reconcile action type for use in Gantry Action definitions",
+      "Enables developer self-service for GitOps deploys without kubectl"
+    ],
     "version": "1.0.0",
     "author": "Gantry",
     "category": "action-type",
@@ -338,6 +406,14 @@
     "name": "terraform-cloud",
     "title": "Terraform Cloud",
     "description": "Trigger Terraform plan and apply runs and view workspace status on Infrastructure entities.",
+    "longDescription": "The Terraform Cloud plugin connects Gantry to your Terraform Cloud (or Terraform Enterprise) organization. It adds a workspace status panel to Infrastructure entities so teams can see the latest run outcome without opening Terraform Cloud, and provides `terraform-plan` and `terraform-apply` action types for self-service infrastructure operations.\n\nMap Gantry Infrastructure entities to Terraform workspaces via annotations to activate the panel automatically.",
+    "features": [
+      "Workspace run status and last-apply outcome on Infrastructure entity pages",
+      "terraform-plan and terraform-apply Gantry action types",
+      "View plan output and apply status inline",
+      "Supports Terraform Cloud and Terraform Enterprise",
+      "Annotation-driven workspace mapping — no code required"
+    ],
     "version": "1.0.0",
     "author": "Gantry",
     "category": "action-type",
