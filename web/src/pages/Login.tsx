@@ -57,7 +57,7 @@ export default function Login() {
           {ssoEnabled && (
             <>
               <a
-                href="/api/v1/auth/github"
+                href={`/api/v1/auth/github?return_to=${encodeURIComponent(window.location.origin)}`}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--gantry-border)] px-4 py-2.5 text-sm font-medium text-[var(--gantry-text-primary)] transition-colors hover:bg-[var(--gantry-bg-secondary)]"
               >
                 <Github className="h-4 w-4" />

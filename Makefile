@@ -21,7 +21,12 @@ AIR := $(shell go env GOPATH)/bin/air
 
 dev-watch:
 	@test -f $(AIR) || (echo "air not found — run: go install github.com/air-verse/air@latest" && exit 1)
-	@trap 'kill 0' INT TERM; $(AIR) & cd web && npm run dev & wait
+	@echo "Starting backend (air) on :8080 and frontend (vite) on :8080..."
+	@echo "Open http://localhost:3000 in your browser"
+	@trap 'kill 0' INT TERM; \
+		$(AIR) & \
+		(cd web && npm run dev) & \
+		wait
 
 # Run all tests
 test:

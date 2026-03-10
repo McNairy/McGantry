@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go2engle/gantry/internal/auth"
@@ -55,6 +56,19 @@ func (h *Handlers) GitHubOAuthBegin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
+
+	// Store the frontend origin so the callback can redirect back to the
+	// correct host:port (e.g. localhost:3000 in dev with a Vite proxy).
+	if returnTo := r.URL.Query().Get("return_to"); returnTo != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "gh_oauth_return_to",
+			Value:    returnTo,
+			Path:     "/",
+			MaxAge:   600,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 
 	authURL := fmt.Sprintf(
 		"https://github.com/login/oauth/authorize?client_id=%s&state=%s&scope=read:user+user:email",
@@ -156,7 +170,17 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to the SPA with the token as a query param.
 	// The frontend reads this param on load, stores it, and cleans the URL.
-	http.Redirect(w, r, "/?github_token="+token, http.StatusTemporaryRedirect)
+	redirectURL := "/?github_token=" + token
+	if c, err := r.Cookie("gh_oauth_return_to"); err == nil && c.Value != "" {
+		// Only honor return_to if it shares the same hostname as the server.
+		// This allows a Vite dev proxy on a different port (e.g. :3000 vs :8080)
+		// while blocking open-redirect attacks to foreign hosts.
+		if u, err := url.Parse(c.Value); err == nil && u.Hostname() == requestHostname(r) {
+			redirectURL = c.Value + "/?github_token=" + token
+		}
+		http.SetCookie(w, &http.Cookie{Name: "gh_oauth_return_to", Value: "", Path: "/", MaxAge: -1})
+	}
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
 // GetGitHubRepo fetches live repository info from GitHub for a given URL.
@@ -220,6 +244,15 @@ func (h *Handlers) GetGitHubRepo(w http.ResponseWriter, r *http.Request) {
 		Readme:        readme,
 		LatestRelease: latestRelease,
 	})
+}
+
+// requestHostname returns just the hostname from r.Host, stripping any port.
+func requestHostname(r *http.Request) string {
+	host := r.Host
+	if h, _, found := strings.Cut(host, ":"); found {
+		return h
+	}
+	return host
 }
 
 // randomHex16 generates 16 random bytes as a hex string.
