@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { ChevronRight, Pencil, Trash2, X, ExternalLink, LayoutDashboard, BookOpen, FileText, Github, MessageSquare, Bell, Activity, Cpu, CircleHelp } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
-import type { Entity, JsonSchema, AuditEntry, GraphData, EntityLink } from '../lib/types';
+import type { Entity, JsonSchema, AuditEntry, GraphData, EntityLink, PluginRegistryEntry } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
 import EntityGraph from '../components/EntityGraph';
 import KubernetesTab from '../components/KubernetesTab';
@@ -105,6 +105,7 @@ export default function EntityDetail() {
   const [editMeta, setEditMeta] = useState({ title: '', description: '', owner: '', tags: '' });
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [enabledPlugins, setEnabledPlugins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!kind || !name) return;
@@ -113,8 +114,10 @@ export default function EntityDetail() {
       api.getEntity(kind, name, namespace),
       api.getSchema(kind).catch(() => null),
       api.listAuditEntries(100, 0).catch(() => [] as AuditEntry[]),
+      api.listPlugins().catch(() => [] as PluginRegistryEntry[]),
     ])
-      .then(([e, s, audit]) => {
+      .then(([e, s, audit, plugins]) => {
+        setEnabledPlugins(new Set((plugins as PluginRegistryEntry[]).filter((p) => p.enabled).map((p) => p.name)));
         setEntity(e);
         setSchema(s);
         api.recordView(kind, name, namespace).catch(() => {});
@@ -278,9 +281,9 @@ export default function EntityDetail() {
           entity.metadata.annotations?.['argocd.io/appName']
         );
         const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
-        if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure')) tabs.splice(1, 0, 'kubernetes');
-        if (hasGitHub) tabs.splice(1, 0, 'github');
-        if (hasArgoCD && entity.kind === 'Service') tabs.splice(1, 0, 'argocd');
+        if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure') && enabledPlugins.has('kubernetes')) tabs.splice(1, 0, 'kubernetes');
+        if (hasGitHub && enabledPlugins.has('github')) tabs.splice(1, 0, 'github');
+        if (hasArgoCD && entity.kind === 'Service' && enabledPlugins.has('argocd')) tabs.splice(1, 0, 'argocd');
         return (
           <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
             {tabs.map((t) => (
