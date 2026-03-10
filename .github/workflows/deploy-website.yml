@@ -1,0 +1,51 @@
+# name: Deploy Website
+
+# on:
+#   push:
+#     branches: [main]
+#     paths:
+#       - 'website/**'
+#   workflow_dispatch:
+
+# permissions:
+#   contents: write
+
+# jobs:
+#   deploy:
+#     name: Build & Deploy Website
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       - name: Set up Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: '20'
+
+#       # Build a clean output directory from website/
+#       - name: Prepare deploy directory
+#         run: |
+#           mkdir -p _deploy
+#           # Copy everything from website/ except the docs/ source folder
+#           rsync -av --exclude='docs/' website/ _deploy/
+#           # Prevent GitHub Pages from running Jekyll on the output
+#           touch _deploy/.nojekyll
+
+#       # Build Docusaurus if docs/package.json is present
+#       - name: Build Docusaurus docs
+#         if: hashFiles('website/docs/package.json') != ''
+#         working-directory: website/docs
+#         run: |
+#           npm ci
+#           npm run build
+#           cp -r build/ ../../_deploy/docs/
+
+#       - name: Deploy to website branch
+#         uses: JamesIves/github-pages-deploy-action@v4
+#         with:
+#           branch: website
+#           folder: _deploy
+#           clean: true
+#           commit-message: "chore: deploy website [skip ci] (${{ github.sha }})"
