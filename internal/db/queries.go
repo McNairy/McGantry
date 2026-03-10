@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go2engle/gantry/internal/entity"
+	gantrycrypto "github.com/go2engle/gantry/internal/crypto"
 	"github.com/go2engle/gantry/internal/plugins"
 )
 
@@ -1137,7 +1138,7 @@ func (d *DB) ListPlugins(ctx context.Context) ([]plugins.Plugin, error) {
 
 	var result []plugins.Plugin
 	for rows.Next() {
-		p, err := scanPlugin(rows)
+		p, err := d.scanPlugin(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -1151,7 +1152,7 @@ func (d *DB) GetPlugin(ctx context.Context, name string) (*plugins.Plugin, error
 	row := d.queryRow(ctx, `
 		SELECT id, name, version, enabled, config, manifest, installed_at, updated_at
 		FROM plugins WHERE name = ?`, name)
-	p, err := scanPlugin(row)
+	p, err := d.scanPlugin(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1161,11 +1162,15 @@ func (d *DB) GetPlugin(ctx context.Context, name string) (*plugins.Plugin, error
 	return &p, nil
 }
 
-// UpsertPlugin inserts or updates a plugin record.
+// UpsertPlugin inserts or updates a plugin record, encrypting the config at rest.
 func (d *DB) UpsertPlugin(ctx context.Context, p *plugins.Plugin) error {
 	configJSON, err := json.Marshal(p.Config)
 	if err != nil {
 		return err
+	}
+	encryptedConfig, err := gantrycrypto.Encrypt(d.encKey, configJSON)
+	if err != nil {
+		return fmt.Errorf("encrypting plugin config: %w", err)
 	}
 	manifestJSON, err := json.Marshal(p.Manifest)
 	if err != nil {
@@ -1188,7 +1193,7 @@ func (d *DB) UpsertPlugin(ctx context.Context, p *plugins.Plugin) error {
 			updated_at   = excluded.updated_at`,
 		p.ID, p.Name, p.Version,
 		boolToInt(p.Enabled),
-		string(configJSON),
+		encryptedConfig,
 		string(manifestJSON),
 		p.InstalledAt, p.UpdatedAt,
 	)
@@ -1209,15 +1214,19 @@ func (d *DB) UpdatePluginEnabled(ctx context.Context, name string, enabled bool)
 	return err
 }
 
-// UpdatePluginConfig saves the config JSON for a plugin.
+// UpdatePluginConfig saves the config JSON for a plugin, encrypted at rest.
 func (d *DB) UpdatePluginConfig(ctx context.Context, name string, config map[string]any) error {
 	configJSON, err := json.Marshal(config)
 	if err != nil {
 		return err
 	}
+	encrypted, err := gantrycrypto.Encrypt(d.encKey, configJSON)
+	if err != nil {
+		return fmt.Errorf("encrypting plugin config: %w", err)
+	}
 	_, err = d.exec(ctx,
 		`UPDATE plugins SET config = ?, updated_at = ? WHERE name = ?`,
-		string(configJSON), time.Now().UTC().Format(time.RFC3339), name)
+		encrypted, time.Now().UTC().Format(time.RFC3339), name)
 	return err
 }
 
@@ -1225,7 +1234,7 @@ type pluginScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanPlugin(s pluginScanner) (plugins.Plugin, error) {
+func (d *DB) scanPlugin(s pluginScanner) (plugins.Plugin, error) {
 	var p plugins.Plugin
 	var enabledInt int
 	var configStr, manifestStr sql.NullString
@@ -1238,7 +1247,11 @@ func scanPlugin(s pluginScanner) (plugins.Plugin, error) {
 	p.Enabled = enabledInt != 0
 
 	if configStr.Valid && configStr.String != "" && configStr.String != "null" {
-		_ = json.Unmarshal([]byte(configStr.String), &p.Config)
+		plaintext, err := gantrycrypto.Decrypt(d.encKey, configStr.String)
+		if err != nil {
+			return p, fmt.Errorf("decrypting plugin config: %w", err)
+		}
+		_ = json.Unmarshal(plaintext, &p.Config)
 	}
 	if manifestStr.Valid && manifestStr.String != "" {
 		var m plugins.Manifest

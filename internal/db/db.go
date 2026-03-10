@@ -6,12 +6,17 @@ package db
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go2engle/gantry/internal/config"
+	"github.com/go2engle/gantry/internal/crypto"
 
 	// SQLite driver (pure Go, no CGO required).
 	_ "modernc.org/sqlite"
@@ -22,19 +27,17 @@ import (
 // DB wraps a standard database/sql.DB connection with Gantry-specific helpers.
 type DB struct {
 	*sql.DB
-	cfg *config.Config
+	cfg    *config.Config
+	encKey []byte
 }
 
 // New opens a database connection based on the provided configuration.
 // For SQLite, it ensures the data directory exists and enables WAL mode
 // and foreign keys. For PostgreSQL, it connects using the provided DSN.
 func New(cfg *config.Config) (*DB, error) {
-	// For SQLite, ensure the data directory exists.
-	if cfg.DBType == "sqlite" {
-		dir := filepath.Dir(cfg.DBDSN)
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return nil, fmt.Errorf("creating data directory %s: %w", dir, err)
-		}
+	// Ensure the data directory exists (needed for both SQLite and the key file).
+	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
+		return nil, fmt.Errorf("creating data directory %s: %w", cfg.DataDir, err)
 	}
 
 	sqlDB, err := sql.Open(cfg.DriverName(), cfg.DSN())
@@ -53,7 +56,93 @@ func New(cfg *config.Config) (*DB, error) {
 		sqlDB.SetMaxOpenConns(1)
 	}
 
-	return &DB{DB: sqlDB, cfg: cfg}, nil
+	encKey, err := loadOrGenerateEncryptionKey(cfg)
+	if err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("loading encryption key: %w", err)
+	}
+
+	return &DB{DB: sqlDB, cfg: cfg, encKey: encKey}, nil
+}
+
+// loadOrGenerateEncryptionKey returns a 32-byte AES key for encrypting secrets.
+//
+// Priority:
+//  1. GANTRY_ENCRYPTION_KEY env var / config field — derive via SHA-256.
+//  2. Persisted key file at <DataDir>/encryption.key — load it.
+//  3. Generate a fresh random key and persist it to the key file.
+//
+// Using a persisted key file means single-binary deployments work out of the
+// box without any extra configuration, while production operators can supply
+// an explicit key via GANTRY_ENCRYPTION_KEY for portability and rotation.
+func loadOrGenerateEncryptionKey(cfg *config.Config) ([]byte, error) {
+	if cfg.EncryptionKey != "" {
+		h := sha256.Sum256([]byte(cfg.EncryptionKey))
+		return h[:], nil
+	}
+
+	keyPath := filepath.Join(cfg.DataDir, "encryption.key")
+	if data, err := os.ReadFile(keyPath); err == nil {
+		key, err := hex.DecodeString(strings.TrimSpace(string(data)))
+		if err == nil && len(key) == 32 {
+			return key, nil
+		}
+	}
+
+	// Generate and persist a new key.
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("generating encryption key: %w", err)
+	}
+	if err := os.WriteFile(keyPath, []byte(hex.EncodeToString(key)), 0o600); err != nil {
+		return nil, fmt.Errorf("persisting encryption key to %s: %w", keyPath, err)
+	}
+	return key, nil
+}
+
+// MigrateEncryptPluginConfigs encrypts any plaintext plugin configs left over
+// from before encryption was introduced. It is safe to call on every startup —
+// already-encrypted values are left unchanged.
+func (d *DB) MigrateEncryptPluginConfigs(ctx context.Context) error {
+	rows, err := d.queryRows(ctx, `SELECT name, config FROM plugins`)
+	if err != nil {
+		return err
+	}
+
+	type row struct {
+		name   string
+		config string
+	}
+	var plaintext []row
+	for rows.Next() {
+		var name string
+		var configStr sql.NullString
+		if err := rows.Scan(&name, &configStr); err != nil {
+			rows.Close()
+			return err
+		}
+		if configStr.Valid && configStr.String != "" &&
+			configStr.String != "null" &&
+			!crypto.IsEncrypted(configStr.String) {
+			plaintext = append(plaintext, row{name: name, config: configStr.String})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, r := range plaintext {
+		encrypted, err := crypto.Encrypt(d.encKey, []byte(r.config))
+		if err != nil {
+			return fmt.Errorf("encrypting config for plugin %s: %w", r.name, err)
+		}
+		if _, err := d.exec(ctx,
+			`UPDATE plugins SET config = ? WHERE name = ?`, encrypted, r.name); err != nil {
+			return fmt.Errorf("updating config for plugin %s: %w", r.name, err)
+		}
+	}
+	return nil
 }
 
 // Migrate runs all database migrations to bring the schema up to date.

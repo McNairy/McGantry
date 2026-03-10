@@ -94,6 +94,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("running database migrations: %w", err)
 	}
 
+	// Encrypt any plugin configs written before encryption was introduced.
+	if err := database.MigrateEncryptPluginConfigs(context.Background()); err != nil {
+		return fmt.Errorf("encrypting plugin configs: %w", err)
+	}
+
 	// Create core services.
 	authService := auth.NewService(cfg.JWTSecret)
 	eventBus := events.New()
