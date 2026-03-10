@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go2engle/gantry/internal/db"
@@ -54,6 +55,8 @@ func (m *Manager) Dispatch(action *entity.Entity, run *db.ActionRun) {
 	switch actionType {
 	case "webhook":
 		outputJSON, execErr = m.runWebhook(action, run)
+	case "github-action":
+		outputJSON, execErr = m.runGitHubAction(ctx, action, run)
 	default:
 		// Unrecognized type — complete immediately with a note.
 		outputJSON = fmt.Sprintf(`{"message":"action type %q has no executor; marked as succeeded","type":%q}`,
@@ -90,12 +93,23 @@ func (m *Manager) publishRunEvent(run *db.ActionRun) {
 func (m *Manager) runWebhook(action *entity.Entity, run *db.ActionRun) (string, error) {
 	rawURL, _ := action.Spec["url"].(string)
 	if rawURL == "" {
-		return "", fmt.Errorf("webhook action %q has no url in spec", action.Metadata.Name)
+		// Also check config.url
+		if cfg, ok := action.Spec["config"].(map[string]any); ok {
+			rawURL, _ = cfg["url"].(string)
+		}
+	}
+	if rawURL == "" {
+		return "", fmt.Errorf("webhook action %q has no url in spec or spec.config", action.Metadata.Name)
 	}
 
 	method := "POST"
-	if m, ok := action.Spec["method"].(string); ok && m != "" {
-		method = m
+	if m2, ok := action.Spec["method"].(string); ok && m2 != "" {
+		method = m2
+	}
+	if cfg, ok := action.Spec["config"].(map[string]any); ok {
+		if m2, ok := cfg["method"].(string); ok && m2 != "" {
+			method = m2
+		}
 	}
 
 	// Parse stored inputs.
@@ -112,13 +126,19 @@ func (m *Manager) runWebhook(action *entity.Entity, run *db.ActionRun) (string, 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Gantry/1.0")
 
-	// Apply custom headers from spec.headers (map[string]string).
-	if headers, ok := action.Spec["headers"].(map[string]any); ok {
-		for k, v := range headers {
-			if vs, ok := v.(string); ok {
-				req.Header.Set(k, vs)
+	// Apply custom headers from spec.headers or spec.config.headers.
+	applyHeaders := func(headersRaw any) {
+		if headers, ok := headersRaw.(map[string]any); ok {
+			for k, v := range headers {
+				if vs, ok := v.(string); ok {
+					req.Header.Set(k, vs)
+				}
 			}
 		}
+	}
+	applyHeaders(action.Spec["headers"])
+	if cfg, ok := action.Spec["config"].(map[string]any); ok {
+		applyHeaders(cfg["headers"])
 	}
 
 	resp, err := m.client.Do(req)
@@ -137,4 +157,173 @@ func (m *Manager) runWebhook(action *entity.Entity, run *db.ActionRun) (string, 
 		return string(outputJSON), fmt.Errorf("webhook returned HTTP %d", resp.StatusCode)
 	}
 	return string(outputJSON), nil
+}
+
+// runGitHubAction triggers a GitHub Actions workflow_dispatch event and waits
+// briefly for the run to appear in the API.
+func (m *Manager) runGitHubAction(ctx context.Context, action *entity.Entity, run *db.ActionRun) (string, error) {
+	cfg, _ := action.Spec["config"].(map[string]any)
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+
+	repoURL, _ := cfg["repoUrl"].(string)
+	workflow, _ := cfg["workflow"].(string)
+	ref, _ := cfg["ref"].(string)
+
+	if repoURL == "" || workflow == "" {
+		return "", fmt.Errorf("github-action requires config.repoUrl and config.workflow")
+	}
+	if ref == "" {
+		ref = "main"
+	}
+
+	owner, repo, err := parseGitHubURL(repoURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid repoUrl: %w", err)
+	}
+
+	// Get token — action config takes priority over plugin config.
+	token, _ := cfg["token"].(string)
+	if token == "" {
+		token, err = m.getGitHubToken(ctx)
+		if err != nil {
+			return "", fmt.Errorf("no GitHub token available (configure the GitHub plugin or set config.token): %w", err)
+		}
+	}
+
+	// Parse stored inputs and convert to strings (GitHub Actions requires strings).
+	var inputs map[string]any
+	if run.Inputs != "" {
+		_ = json.Unmarshal([]byte(run.Inputs), &inputs)
+	}
+	stringInputs := map[string]string{}
+	for k, v := range inputs {
+		stringInputs[k] = fmt.Sprintf("%v", v)
+	}
+
+	// Dispatch the workflow.
+	dispatchURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/workflows/%s/dispatches", owner, repo, workflow)
+	payload, _ := json.Marshal(map[string]any{
+		"ref":    ref,
+		"inputs": stringInputs,
+	})
+
+	req, err := http.NewRequest(http.MethodPost, dispatchURL, bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("building dispatch request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+
+	dispatched := time.Now().UTC()
+
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("dispatching workflow: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		var ghErr struct {
+			Message string `json:"message"`
+		}
+		json.Unmarshal(body, &ghErr)
+		msg := ghErr.Message
+		if msg == "" {
+			msg = string(body)
+		}
+		return "", fmt.Errorf("GitHub API returned HTTP %d: %s", resp.StatusCode, msg)
+	}
+
+	// Wait a moment then try to locate the new run for its URL.
+	time.Sleep(3 * time.Second)
+	runURL := m.findLatestWorkflowRun(token, owner, repo, dispatched)
+
+	repoHTMLURL := fmt.Sprintf("https://github.com/%s/%s", owner, repo)
+	out, _ := json.Marshal(map[string]any{
+		"message":  "GitHub Actions workflow dispatched successfully",
+		"repo":     repoHTMLURL,
+		"workflow": workflow,
+		"ref":      ref,
+		"runUrl":   runURL,
+	})
+	return string(out), nil
+}
+
+// getGitHubToken retrieves the personal access token from the GitHub plugin config.
+func (m *Manager) getGitHubToken(ctx context.Context) (string, error) {
+	plugin, err := m.DB.GetPlugin(ctx, "github")
+	if err != nil {
+		return "", fmt.Errorf("github plugin not installed")
+	}
+	if !plugin.Enabled {
+		return "", fmt.Errorf("github plugin is disabled")
+	}
+	if plugin.Config == nil {
+		return "", fmt.Errorf("github plugin has no configuration")
+	}
+	token, _ := plugin.Config["personalAccessToken"].(string)
+	if token == "" {
+		return "", fmt.Errorf("personalAccessToken not set in GitHub plugin config")
+	}
+	return token, nil
+}
+
+// findLatestWorkflowRun polls the GitHub API for the most recent workflow_dispatch
+// run created after the dispatch timestamp and returns its HTML URL.
+func (m *Manager) findLatestWorkflowRun(token, owner, repo string, after time.Time) string {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/runs?event=workflow_dispatch&per_page=10", owner, repo)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		WorkflowRuns []struct {
+			HTMLURL   string `json:"html_url"`
+			CreatedAt string `json:"created_at"`
+		} `json:"workflow_runs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ""
+	}
+
+	for _, r := range result.WorkflowRuns {
+		t, err := time.Parse(time.RFC3339, r.CreatedAt)
+		if err != nil {
+			continue
+		}
+		if t.After(after.Add(-10 * time.Second)) {
+			return r.HTMLURL
+		}
+	}
+	return ""
+}
+
+// parseGitHubURL parses a GitHub repository URL and returns owner and repo.
+// Handles https://github.com/owner/repo and github.com/owner/repo forms.
+func parseGitHubURL(rawURL string) (owner, repo string, err error) {
+	u := strings.TrimPrefix(rawURL, "https://")
+	u = strings.TrimPrefix(u, "http://")
+	u = strings.TrimPrefix(u, "github.com/")
+	u = strings.TrimSuffix(u, ".git")
+
+	parts := strings.SplitN(strings.Trim(u, "/"), "/", 3)
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid GitHub URL: %s", rawURL)
+	}
+	return parts[0], parts[1], nil
 }

@@ -117,6 +117,17 @@ func allMigrations(dbType string) []string {
 			installed_at TIMESTAMP NOT NULL,
 			updated_at   TIMESTAMP NOT NULL
 		)`,
+
+		// ------------------------------------------------------------------
+		// Table: dashboard_config
+		// Single-row global dashboard configuration (id is always 1).
+		// ------------------------------------------------------------------
+		`CREATE TABLE IF NOT EXISTS dashboard_config (
+			id         INTEGER PRIMARY KEY CHECK (id = 1),
+			config     TEXT    NOT NULL DEFAULT '{}',
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_by TEXT
+		)`,
 	}
 
 	// Default admin user — dialect-aware upsert.
@@ -130,6 +141,20 @@ func allMigrations(dbType string) []string {
 		migrations = append(migrations,
 			`INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, created_at, updated_at)
 			 VALUES ('00000000-0000-0000-0000-000000000001', 'admin', '`+adminPasswordHash+`', 'Administrator', 'admin', datetime('now'), datetime('now'))`,
+		)
+	}
+
+	// Seed the single dashboard_config row — dialect-aware.
+	if dbType == "postgres" {
+		migrations = append(migrations,
+			`INSERT INTO dashboard_config (id, config, updated_at)
+			 VALUES (1, '{}', NOW())
+			 ON CONFLICT (id) DO NOTHING`,
+		)
+	} else {
+		migrations = append(migrations,
+			`INSERT OR IGNORE INTO dashboard_config (id, config, updated_at)
+			 VALUES (1, '{}', datetime('now'))`,
 		)
 	}
 

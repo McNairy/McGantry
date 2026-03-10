@@ -9,9 +9,13 @@
       "enum": ["github-action", "argocd-sync", "flux-update", "webhook", "internal"],
       "description": "Action execution type"
     },
+    "category": {
+      "type": "string",
+      "description": "Grouping category shown as a section header on the Actions page (e.g. Deployment, Database, Security)"
+    },
     "config": {
       "type": "object",
-      "description": "Action-specific configuration",
+      "description": "Action-specific configuration (type-dependent fields)",
       "additionalProperties": true
     },
     "inputs": {
@@ -21,23 +25,27 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Input parameter name"
+            "description": "Input parameter name (used as variable key)"
+          },
+          "title": {
+            "type": "string",
+            "description": "Human-readable label for the input"
           },
           "type": {
             "type": "string",
-            "enum": ["string", "number", "boolean", "select"],
+            "enum": ["string", "textarea", "number", "boolean", "select"],
             "description": "Input parameter type"
           },
           "description": {
             "type": "string",
-            "description": "Human-readable description of the input"
+            "description": "Help text shown below the input field"
           },
           "required": {
             "type": "boolean",
-            "description": "Whether this input is required"
+            "description": "Whether this input must be provided before execution"
           },
           "default": {
-            "description": "Default value for the input"
+            "description": "Default value pre-filled in the form"
           },
           "options": {
             "type": "array",
@@ -47,7 +55,7 @@
         },
         "required": ["name", "type"]
       },
-      "description": "Input parameters for the action"
+      "description": "Input parameters collected from the user before execution"
     },
     "permissions": {
       "type": "object",

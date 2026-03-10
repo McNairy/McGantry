@@ -135,10 +135,17 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 
 			// Actions. Execute: developer+.
 			protected.Get("/actions", h.ListActions)
-			protected.With(middleware.RequireRole("developer")).Post("/actions/{name}/execute", h.ExecuteAction)
+			// GitHub-specific action helper endpoints (before {name} wildcard routes).
+			protected.Get("/actions/github-workflows", h.GetGitHubWorkflows)
+			protected.Get("/actions/github-workflow-inputs", h.GetGitHubWorkflowInputs)
 			protected.Get("/actions/runs", h.ListAllActionRuns)
+			protected.With(middleware.RequireRole("developer")).Post("/actions/{name}/execute", h.ExecuteAction)
 			protected.Get("/actions/{name}/runs", h.ListActionRuns)
 			protected.Get("/actions/{name}/runs/{id}", h.GetActionRun)
+
+			// Dashboard config. Read: any authenticated user. Write: admin only.
+			protected.Get("/dashboard/config", h.GetDashboardConfig)
+			protected.With(middleware.RequireRole("admin")).Put("/dashboard/config", h.SetDashboardConfig)
 
 			// Audit log.
 			protected.Get("/audit", h.ListAuditEntries)

@@ -302,6 +302,27 @@ export interface EntityLink {
   icon?: 'dashboard' | 'docs' | 'runbook' | 'github' | 'slack' | 'alert' | 'monitor' | 'ci' | 'other';
 }
 
+// ─── Actions ─────────────────────────────────────────────────────────────────
+
+export type ActionInputType = 'string' | 'textarea' | 'number' | 'boolean' | 'select';
+
+export interface ActionInputDef {
+  name: string;
+  title?: string;
+  type: ActionInputType;
+  description?: string;
+  required?: boolean;
+  default?: string | number | boolean;
+  options?: string[];
+}
+
+export interface GitHubWorkflow {
+  id: number;
+  name: string;
+  path: string;
+  state: string;
+}
+
 export const ENTITY_KINDS = [
   { name: 'Service', plural: 'services', icon: 'Server' },
   { name: 'API', plural: 'apis', icon: 'Globe' },
@@ -312,3 +333,47 @@ export const ENTITY_KINDS = [
 ] as const;
 
 export type EntityKindName = (typeof ENTITY_KINDS)[number]['name'];
+
+// ─── Dashboard Config ──────────────────────────────────────────────────────
+
+export type DashboardSeverity = 'info' | 'warning' | 'danger';
+
+export type DashboardLinkIcon =
+  | 'dashboard' | 'docs' | 'runbook' | 'github'
+  | 'slack' | 'alert' | 'monitor' | 'ci' | 'other';
+
+export interface DashboardAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  severity: DashboardSeverity;
+}
+
+export interface DashboardQuickLink {
+  id: string;
+  title: string;
+  url: string;
+  icon: DashboardLinkIcon;
+}
+
+export interface DashboardPinnedEntity {
+  id: string;
+  kind: string;
+  name: string;
+}
+
+export interface DashboardWidgetConfig {
+  id: string;
+  visible: boolean;
+  order: number;
+  width?: 'full' | 'half';
+}
+
+export interface DashboardConfig {
+  announcements: DashboardAnnouncement[];
+  quickLinks: DashboardQuickLink[];
+  pinnedEntities: DashboardPinnedEntity[];
+  widgets: DashboardWidgetConfig[];
+  updatedAt?: string;
+  updatedBy?: string;
+}

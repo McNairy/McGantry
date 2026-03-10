@@ -1255,3 +1255,130 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard config queries
+// ---------------------------------------------------------------------------
+
+// DashboardAnnouncement is an admin-authored banner shown to all users.
+type DashboardAnnouncement struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+	Severity string `json:"severity"` // "info" | "warning" | "danger"
+}
+
+// DashboardQuickLink is an admin-pinned link shown on the dashboard.
+type DashboardQuickLink struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	URL   string `json:"url"`
+	Icon  string `json:"icon"`
+}
+
+// DashboardPinnedEntity is a catalog entity the admin has highlighted.
+type DashboardPinnedEntity struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+
+// DashboardWidgetConfig controls the visibility, order, and width of one standard widget.
+type DashboardWidgetConfig struct {
+	ID      string `json:"id"`
+	Visible bool   `json:"visible"`
+	Order   int    `json:"order"`
+	Width   string `json:"width"` // "full" | "half"; empty treated as "full"
+}
+
+// DashboardConfig is the complete admin-controlled dashboard configuration.
+// It is stored as a single JSON blob in the dashboard_config table.
+type DashboardConfig struct {
+	Announcements  []DashboardAnnouncement `json:"announcements"`
+	QuickLinks     []DashboardQuickLink    `json:"quickLinks"`
+	PinnedEntities []DashboardPinnedEntity `json:"pinnedEntities"`
+	Widgets        []DashboardWidgetConfig `json:"widgets"`
+	UpdatedAt      string                  `json:"updatedAt,omitempty"`
+	UpdatedBy      string                  `json:"updatedBy,omitempty"`
+}
+
+// defaultDashboardConfig returns the out-of-box config with all standard widgets visible.
+func defaultDashboardConfig() *DashboardConfig {
+	return &DashboardConfig{
+		Announcements:  []DashboardAnnouncement{},
+		QuickLinks:     []DashboardQuickLink{},
+		PinnedEntities: []DashboardPinnedEntity{},
+		Widgets: []DashboardWidgetConfig{
+			{ID: "entity_stats", Visible: true, Order: 0, Width: "full"},
+			{ID: "recent_activity", Visible: true, Order: 1, Width: "half"},
+			{ID: "action_runs", Visible: true, Order: 2, Width: "half"},
+			{ID: "my_entities", Visible: true, Order: 3, Width: "half"},
+			{ID: "recently_updated", Visible: true, Order: 4, Width: "half"},
+		},
+	}
+}
+
+// GetDashboardConfig returns the global dashboard configuration.
+// If no row exists or the stored config has no widgets, the default is returned.
+func (d *DB) GetDashboardConfig(ctx context.Context) (*DashboardConfig, error) {
+	row := d.queryRow(ctx, `SELECT config, updated_at, updated_by FROM dashboard_config WHERE id = 1`)
+	var raw string
+	var updatedAt sql.NullTime
+	var updatedBy sql.NullString
+	if err := row.Scan(&raw, &updatedAt, &updatedBy); err != nil {
+		if err == sql.ErrNoRows {
+			return defaultDashboardConfig(), nil
+		}
+		return nil, fmt.Errorf("getting dashboard config: %w", err)
+	}
+
+	cfg := &DashboardConfig{}
+	if raw == "" || raw == "{}" {
+		cfg = defaultDashboardConfig()
+	} else {
+		if err := json.Unmarshal([]byte(raw), cfg); err != nil {
+			return nil, fmt.Errorf("parsing dashboard config: %w", err)
+		}
+		// Backfill defaults if widgets are missing (e.g. first save after migration).
+		if len(cfg.Widgets) == 0 {
+			cfg.Widgets = defaultDashboardConfig().Widgets
+		}
+		if cfg.Announcements == nil {
+			cfg.Announcements = []DashboardAnnouncement{}
+		}
+		if cfg.QuickLinks == nil {
+			cfg.QuickLinks = []DashboardQuickLink{}
+		}
+		if cfg.PinnedEntities == nil {
+			cfg.PinnedEntities = []DashboardPinnedEntity{}
+		}
+	}
+
+	if updatedAt.Valid {
+		cfg.UpdatedAt = updatedAt.Time.UTC().Format(time.RFC3339)
+	}
+	cfg.UpdatedBy = updatedBy.String
+	return cfg, nil
+}
+
+// SetDashboardConfig saves the global dashboard configuration.
+func (d *DB) SetDashboardConfig(ctx context.Context, cfg *DashboardConfig, updatedBy string) error {
+	// Strip metadata fields before storing — they are set server-side.
+	cfg.UpdatedAt = ""
+	cfg.UpdatedBy = ""
+
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling dashboard config: %w", err)
+	}
+	now := time.Now().UTC()
+	_, err = d.exec(ctx, `
+		INSERT INTO dashboard_config (id, config, updated_at, updated_by)
+		VALUES (1, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			config     = excluded.config,
+			updated_at = excluded.updated_at,
+			updated_by = excluded.updated_by`,
+		string(raw), now, updatedBy)
+	return err
+}

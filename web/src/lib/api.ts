@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -68,11 +68,20 @@ export const api = {
   listAllActionRuns: (limit = 10) =>
     request<ActionRun[]>('GET', `/actions/runs?limit=${limit}`),
 
+  listActionRuns: (actionName: string) =>
+    request<ActionRun[]>('GET', `/actions/${encodeURIComponent(actionName)}/runs`),
+
   executeAction: (name: string, inputs: Record<string, any>) =>
     request<ActionRun>('POST', `/actions/${name}/execute`, { inputs }),
 
   getActionRun: (actionName: string, runId: string) =>
     request<ActionRun>('GET', `/actions/${actionName}/runs/${runId}`),
+
+  getGitHubWorkflows: (repoUrl: string) =>
+    request<GitHubWorkflow[]>('GET', `/actions/github-workflows?repo=${encodeURIComponent(repoUrl)}`),
+
+  getGitHubWorkflowInputs: (repoUrl: string, workflow: string) =>
+    request<ActionInputDef[]>('GET', `/actions/github-workflow-inputs?repo=${encodeURIComponent(repoUrl)}&workflow=${encodeURIComponent(workflow)}`),
 
   listAuditEntries: (limit = 50, offset = 0) =>
     request<AuditEntry[]>('GET', `/audit?limit=${limit}&offset=${offset}`),
@@ -134,4 +143,8 @@ export const api = {
 
   refreshArgoCDApp: (appName: string, instance?: string) =>
     request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/refresh${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`, {}),
+
+  // Dashboard config
+  getDashboardConfig: () => request<DashboardConfig>('GET', '/dashboard/config'),
+  setDashboardConfig: (config: DashboardConfig) => request<DashboardConfig>('PUT', '/dashboard/config', config),
 };
