@@ -119,6 +119,21 @@ func allMigrations(dbType string) []string {
 		)`,
 
 		// ------------------------------------------------------------------
+		// Table: user_history
+		// Per-user recently browsed entity history (max 20 per user).
+		// ------------------------------------------------------------------
+		`CREATE TABLE IF NOT EXISTS user_history (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			username   TEXT NOT NULL,
+			kind       TEXT NOT NULL,
+			name       TEXT NOT NULL,
+			namespace  TEXT NOT NULL DEFAULT 'default',
+			viewed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(username, kind, name, namespace)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_history_username ON user_history(username, viewed_at DESC)`,
+
+		// ------------------------------------------------------------------
 		// Table: dashboard_config
 		// Single-row global dashboard configuration (id is always 1).
 		// ------------------------------------------------------------------

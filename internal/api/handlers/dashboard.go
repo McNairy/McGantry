@@ -10,13 +10,14 @@ import (
 
 // knownWidgetIDs is the set of valid standard widget identifiers.
 var knownWidgetIDs = map[string]bool{
-	"entity_stats":     true,
-	"recent_activity":  true,
-	"action_runs":      true,
-	"my_entities":      true,
-	"recently_updated": true,
-	"quick_links":      true,
-	"pinned_entities":  true,
+	"entity_stats":      true,
+	"recent_activity":   true,
+	"action_runs":       true,
+	"my_entities":       true,
+	"recently_updated":  true,
+	"quick_links":       true,
+	"pinned_entities":   true,
+	"recently_browsed":  true,
 }
 
 // GetDashboardConfig handles GET /api/v1/dashboard/config.

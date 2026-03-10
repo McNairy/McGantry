@@ -147,6 +147,10 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/dashboard/config", h.GetDashboardConfig)
 			protected.With(middleware.RequireRole("admin")).Put("/dashboard/config", h.SetDashboardConfig)
 
+			// User browsing history (per-user, not shared).
+			protected.Get("/history", h.GetHistory)
+			protected.Post("/history", h.RecordHistory)
+
 			// Audit log.
 			protected.Get("/audit", h.ListAuditEntries)
 

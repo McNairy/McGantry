@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig, HistoryEntry } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -147,4 +147,9 @@ export const api = {
   // Dashboard config
   getDashboardConfig: () => request<DashboardConfig>('GET', '/dashboard/config'),
   setDashboardConfig: (config: DashboardConfig) => request<DashboardConfig>('PUT', '/dashboard/config', config),
+
+  // User browsing history
+  getHistory: (limit = 5) => request<HistoryEntry[]>('GET', `/history?limit=${limit}`),
+  recordView: (kind: string, name: string, namespace?: string) =>
+    request<void>('POST', '/history', { kind, name, namespace: namespace || 'default' }),
 };

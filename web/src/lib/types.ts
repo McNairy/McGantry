@@ -380,6 +380,13 @@ export interface DashboardWidgetConfig {
   width?: 'full' | 'half';
 }
 
+export interface HistoryEntry {
+  kind: string;
+  name: string;
+  namespace: string;
+  viewedAt: string;
+}
+
 export interface DashboardConfig {
   announcements: DashboardAnnouncement[];
   quickLinks: DashboardQuickLink[];

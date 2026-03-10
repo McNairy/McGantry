@@ -1329,6 +1329,7 @@ func defaultDashboardConfig() *DashboardConfig {
 			{ID: "action_runs", Visible: true, Order: 4, Width: "half"},
 			{ID: "my_entities", Visible: true, Order: 5, Width: "half"},
 			{ID: "recently_updated", Visible: true, Order: 6, Width: "half"},
+			{ID: "recently_browsed", Visible: true, Order: 7, Width: "half"},
 		},
 	}
 }
@@ -1414,4 +1415,79 @@ func (d *DB) SetDashboardConfig(ctx context.Context, cfg *DashboardConfig, updat
 			updated_by = excluded.updated_by`,
 		string(raw), now, updatedBy)
 	return err
+}
+
+// ---------------------------------------------------------------------------
+// User history
+// ---------------------------------------------------------------------------
+
+// HistoryEntry records a single entity view in a user's browsing history.
+type HistoryEntry struct {
+	Kind      string    `json:"kind"`
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	ViewedAt  time.Time `json:"viewedAt"`
+}
+
+// RecordEntityView upserts a history entry for the given user, updating the
+// viewed_at timestamp. After the upsert, older entries beyond the most recent
+// 20 are pruned so the table stays small.
+func (d *DB) RecordEntityView(ctx context.Context, username, kind, name, namespace string) error {
+	now := time.Now().UTC()
+	if namespace == "" {
+		namespace = "default"
+	}
+	_, err := d.exec(ctx, `
+		INSERT INTO user_history (username, kind, name, namespace, viewed_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(username, kind, name, namespace) DO UPDATE SET viewed_at = excluded.viewed_at`,
+		username, kind, name, namespace, now)
+	if err != nil {
+		return err
+	}
+	// Prune entries beyond the 20 most recent for this user.
+	_, err = d.exec(ctx, `
+		DELETE FROM user_history
+		WHERE username = ?
+		  AND id NOT IN (
+			SELECT id FROM user_history
+			WHERE username = ?
+			ORDER BY viewed_at DESC
+			LIMIT 20
+		  )`, username, username)
+	return err
+}
+
+// GetUserHistory returns up to limit recently browsed entities for the given user,
+// ordered most-recent first.
+func (d *DB) GetUserHistory(ctx context.Context, username string, limit int) ([]HistoryEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := d.queryRows(ctx,
+		`SELECT kind, name, namespace, viewed_at FROM user_history
+		 WHERE username = ?
+		 ORDER BY viewed_at DESC
+		 LIMIT ?`, username, limit)
+	if err != nil {
+		return nil, fmt.Errorf("getting user history: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []HistoryEntry
+	for rows.Next() {
+		var e HistoryEntry
+		var viewedAt sql.NullTime
+		if err := rows.Scan(&e.Kind, &e.Name, &e.Namespace, &viewedAt); err != nil {
+			return nil, err
+		}
+		if viewedAt.Valid {
+			e.ViewedAt = viewedAt.Time.UTC()
+		}
+		entries = append(entries, e)
+	}
+	if entries == nil {
+		entries = []HistoryEntry{}
+	}
+	return entries, rows.Err()
 }

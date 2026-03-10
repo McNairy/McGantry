@@ -117,6 +117,7 @@ export default function EntityDetail() {
       .then(([e, s, audit]) => {
         setEntity(e);
         setSchema(s);
+        api.recordView(kind, name, namespace).catch(() => {});
         const entries = (audit ?? []).filter(
           (a) => a.resourceName === name && a.resourceType === kind
         );

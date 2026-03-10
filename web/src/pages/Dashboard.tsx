@@ -53,6 +53,7 @@ import type {
   DashboardWidgetConfig,
   DashboardSeverity,
   DashboardLinkIcon,
+  HistoryEntry,
 } from '../lib/types';
 import { ENTITY_KINDS } from '../lib/types';
 
@@ -103,6 +104,7 @@ const WIDGET_LABELS: Record<string, string> = {
   action_runs: 'Action Runs',
   my_entities: 'My Entities',
   recently_updated: 'Recently Updated',
+  recently_browsed: 'Recently Browsed',
 };
 
 const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
@@ -113,6 +115,7 @@ const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
   { id: 'action_runs', visible: true, order: 4, width: 'half' },
   { id: 'my_entities', visible: true, order: 5, width: 'half' },
   { id: 'recently_updated', visible: true, order: 6, width: 'half' },
+  { id: 'recently_browsed', visible: true, order: 7, width: 'half' },
 ];
 
 interface KindCount {
@@ -275,6 +278,7 @@ export default function Dashboard() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [activity, setActivity] = useState<AuditEntry[]>([]);
   const [actionRuns, setActionRuns] = useState<ActionRun[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [config, setConfig] = useState<DashboardConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -299,11 +303,13 @@ export default function Dashboard() {
       api.listAuditEntries(5, 0).catch(() => [] as AuditEntry[]),
       api.listAllActionRuns(5).catch(() => [] as ActionRun[]),
       api.getDashboardConfig().catch(() => null),
+      api.getHistory(5).catch(() => [] as HistoryEntry[]),
     ])
-      .then(([ents, audit, runs, cfg]) => {
+      .then(([ents, audit, runs, cfg, hist]) => {
         setEntities(ents || []);
         setActivity(audit || []);
         setActionRuns(runs || []);
+        setHistory(hist || []);
         setConfig(cfg || { announcements: [], quickLinks: [], pinnedEntities: [], widgets: DEFAULT_WIDGETS });
       })
       .catch((err) => setError(err.message))
@@ -753,6 +759,41 @@ export default function Dashboard() {
           </div>
         );
       }
+
+      case 'recently_browsed':
+        return (
+          <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]">
+            <div className="border-b border-[var(--gantry-border)] px-6 py-4">
+              <h2 className="text-base font-semibold text-[var(--gantry-text-primary)]">Recently Browsed</h2>
+              <p className="mt-0.5 text-xs text-[var(--gantry-text-secondary)]">Your recent entity views</p>
+            </div>
+            {history.length === 0 ? (
+              <p className="px-6 py-4 text-sm text-[var(--gantry-text-secondary)]">No entities browsed yet.</p>
+            ) : (
+              <div className="divide-y divide-[var(--gantry-border)]">
+                {history.map((entry) => {
+                  const Icon = iconMap[ENTITY_KINDS.find((k) => k.name === entry.kind)?.icon || ''] || Box;
+                  return (
+                    <Link
+                      key={`${entry.kind}-${entry.name}-${entry.namespace}`}
+                      to={`/catalog/${entry.kind}/${entry.name}${entry.namespace && entry.namespace !== 'default' ? `?namespace=${encodeURIComponent(entry.namespace)}` : ''}`}
+                      className="flex items-center gap-4 px-6 py-3 transition-colors hover:bg-[var(--gantry-bg-secondary)]"
+                    >
+                      <Icon className="h-4 w-4 shrink-0 text-[var(--gantry-text-secondary)]" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-[var(--gantry-text-primary)]">{entry.name}</p>
+                        <p className="text-xs text-[var(--gantry-text-secondary)]">{entry.kind}</p>
+                      </div>
+                      <span className="shrink-0 text-xs text-[var(--gantry-text-secondary)]">
+                        {relativeTime(entry.viewedAt)}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
 
       default:
         return null;
