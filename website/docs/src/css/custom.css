@@ -1,0 +1,312 @@
+/* ============================================================
+   GANTRY DOCS — Custom Docusaurus CSS
+   Matches the Gantry landing page aesthetic
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ============================================================
+   LIGHT MODE
+   ============================================================ */
+:root {
+  /* Primary / accent — matches website --blue */
+  --ifm-color-primary:          #007AFF;
+  --ifm-color-primary-dark:     #0066d6;
+  --ifm-color-primary-darker:   #005ec7;
+  --ifm-color-primary-darkest:  #004da3;
+  --ifm-color-primary-light:    #1a88ff;
+  --ifm-color-primary-lighter:  #2d94ff;
+  --ifm-color-primary-lightest: #59abff;
+
+  /* Typography — matches website */
+  --ifm-font-family-base:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --ifm-font-size-base:        15px;
+  --ifm-line-height-base:      1.7;
+
+  /* Heading weight + spacing — matches website */
+  --ifm-heading-font-weight:    800;
+  --ifm-heading-letter-spacing: -0.03em;
+  --ifm-h1-font-size:           2.4rem;
+  --ifm-h2-font-size:           1.8rem;
+  --ifm-h3-font-size:           1.35rem;
+
+  /* Page background — matches website --bg */
+  --ifm-background-color:         #f0f0f0;
+  --ifm-background-surface-color: #ffffff;
+
+  /* Navbar — always dark like website nav */
+  --ifm-navbar-background-color: #1c1c1e;
+  --ifm-navbar-shadow:           none;
+  --ifm-navbar-link-color:       rgba(255, 255, 255, 0.6);
+  --ifm-navbar-link-hover-color: #ffffff;
+  --ifm-navbar-link-active-color: #ffffff;
+
+  /* Borders — matches website --border */
+  --ifm-color-emphasis-300: rgba(0, 0, 0, 0.08);
+  --ifm-hr-border-color:    rgba(0, 0, 0, 0.08);
+  --ifm-toc-border-color:   rgba(0, 0, 0, 0.08);
+
+  /* Code */
+  --ifm-code-font-size: 87.5%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 122, 255, 0.07);
+}
+
+/* ============================================================
+   DARK MODE
+   ============================================================ */
+[data-theme='dark'] {
+  --ifm-color-primary:          #59abff;
+  --ifm-color-primary-dark:     #3a9aff;
+  --ifm-color-primary-darker:   #2b92ff;
+  --ifm-color-primary-darkest:  #007AFF;
+  --ifm-color-primary-light:    #78bcff;
+  --ifm-color-primary-lighter:  #8fc7ff;
+  --ifm-color-primary-lightest: #b8dbff;
+
+  /* Matches website --bg-code and --bg-dark */
+  --ifm-background-color:         #111113;
+  --ifm-background-surface-color: #1c1c1e;
+
+  /* Navbar */
+  --ifm-navbar-background-color: #1c1c1e;
+  --ifm-navbar-shadow:           none;
+  --ifm-navbar-link-color:       rgba(255, 255, 255, 0.6);
+  --ifm-navbar-link-hover-color: #ffffff;
+
+  /* Borders */
+  --ifm-color-emphasis-300: rgba(255, 255, 255, 0.1);
+  --ifm-hr-border-color:    rgba(255, 255, 255, 0.08);
+  --ifm-toc-border-color:   rgba(255, 255, 255, 0.08);
+
+  --docusaurus-highlighted-code-line-bg: rgba(89, 171, 255, 0.08);
+}
+
+/* ============================================================
+   NAVBAR — always dark (matches website)
+   ============================================================ */
+.navbar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 0 24px;
+}
+
+.navbar__title {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-size: 17px;
+  color: #ffffff;
+}
+
+.navbar__logo {
+  filter: brightness(10);
+}
+
+/* Keep logo visible in dark mode too */
+[data-theme='dark'] .navbar__logo {
+  filter: brightness(10);
+}
+
+.navbar__link {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.navbar__link:hover,
+.navbar__link--active {
+  color: #ffffff;
+}
+
+/* Color mode toggle icon — make it visible on dark navbar */
+.navbar__items button[class*='colorModeToggle'] {
+  color: rgba(255, 255, 255, 0.6);
+}
+.navbar__items button[class*='colorModeToggle']:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Search bar on dark navbar */
+.navbar [class*='searchBox'] input {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+.menu__link {
+  font-size: 13.5px;
+  border-radius: 8px;
+}
+
+.menu__link--active {
+  font-weight: 600;
+}
+
+/* ============================================================
+   MARKDOWN / DOC CONTENT
+   ============================================================ */
+.markdown h1 {
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.markdown h2 {
+  letter-spacing: -0.03em;
+  font-weight: 800;
+  margin-top: 2.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ifm-hr-border-color);
+}
+
+.markdown h3 {
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  margin-top: 1.75rem;
+}
+
+/* ============================================================
+   CODE BLOCKS — matches website terminal / code-block style
+   ============================================================ */
+.theme-code-block {
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+/* Light mode code block: dark like website's --bg-code */
+[data-theme='light'] .theme-code-block,
+[data-theme='light'] pre {
+  background: #0d0d0f !important;
+}
+
+/* Dark mode code block */
+[data-theme='dark'] .theme-code-block,
+[data-theme='dark'] pre {
+  background: #0d0d0f !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+pre code {
+  font-size: 13px !important;
+  line-height: 1.85 !important;
+}
+
+/* Inline code */
+code {
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 87.5%;
+  font-family: var(--ifm-font-family-monospace);
+}
+
+[data-theme='light'] code:not([class*='codeBlock']) {
+  background: rgba(0, 0, 0, 0.05);
+  color: #111111;
+}
+
+[data-theme='dark'] code:not([class*='codeBlock']) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ============================================================
+   ADMONITIONS
+   ============================================================ */
+.admonition {
+  border-radius: 10px;
+  border-left-width: 3px;
+}
+
+/* ============================================================
+   CARDS (DocCard)
+   ============================================================ */
+.card {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.07) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05) !important;
+  transition: box-shadow 0.25s, transform 0.25s;
+}
+
+.card:hover {
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.09) !important;
+  transform: translateY(-2px);
+}
+
+[data-theme='dark'] .card {
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: none !important;
+}
+
+/* ============================================================
+   FOOTER — matches website footer (dark #1c1c1e)
+   ============================================================ */
+.footer {
+  background: #1c1c1e;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.footer__title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.footer__link-item {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.15s;
+}
+
+.footer__link-item:hover {
+  color: #f5f5f7;
+}
+
+.footer__copyright {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* ============================================================
+   TABLE — matches website comparison table style
+   ============================================================ */
+table {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-300);
+}
+
+table th {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ============================================================
+   MISC
+   ============================================================ */
+
+/* Announcement bar */
+div[class*='announcementBar'] {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Pagination */
+.pagination-nav__link {
+  border-radius: 10px;
+}
+
+/* TOC */
+.table-of-contents__link {
+  font-size: 13px;
+}
+
+/* Breadcrumbs */
+.breadcrumbs__item--active .breadcrumbs__link {
+  font-weight: 600;
+}

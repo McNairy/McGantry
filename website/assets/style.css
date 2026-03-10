@@ -32,7 +32,7 @@
   --radius-md:       13px;
 }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: auto; } /* Lenis handles smooth scroll */
 
 body {
   font-family: var(--font);
@@ -57,9 +57,8 @@ a { text-decoration: none; color: inherit; }
    ============================================================ */
 .nav {
   position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 32px;
+  left: max(20px, calc((100vw - 1140px) / 2));
   z-index: 100;
   display: flex;
   align-items: center;
@@ -85,6 +84,7 @@ a { text-decoration: none; color: inherit; }
   color: rgba(255,255,255,0.8);
 }
 .nav-home:hover { background: rgba(255,255,255,0.13); color: #fff; }
+.nav-home.nav-home-active { background: #fff !important; color: #111 !important; }
 .nav-home svg { width: 16px; height: 16px; }
 
 .nav-sep {
@@ -107,12 +107,12 @@ a { text-decoration: none; color: inherit; }
   top: 0;
   left: 0;
   height: 100%;
-  background: rgba(255,255,255,0.1);
+  background: #fff;
   border-radius: 100px;
   pointer-events: none;
   opacity: 0;
-  transition: left 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-              width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+  transition: left 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.38s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.2s;
 }
 
@@ -122,24 +122,17 @@ a { text-decoration: none; color: inherit; }
   font-weight: 500;
   padding: 7px 14px;
   border-radius: 100px;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.25s;
+  position: relative; /* keep above the indicator */
+  z-index: 1;
 }
-.nav-link:hover { color: #fff; background: rgba(255,255,255,0.07); }
+.nav-link:hover { color: rgba(255,255,255,0.9); }
 
-.nav-cta {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 18px;
-  background: #fff;
-  color: #111;
-  font-size: 13.5px;
+/* "Get Started" — slightly bolder since it's the default pill position */
+.nav-link-cta {
   font-weight: 600;
-  border-radius: 100px;
-  transition: opacity 0.2s;
-  flex-shrink: 0;
-  margin-left: 4px;
+  padding: 7px 18px;
 }
-.nav-cta:hover { opacity: 0.85; }
 
 /* ============================================================
    BUTTONS
@@ -219,6 +212,8 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
   position: relative;
   overflow: hidden;
+  max-width: var(--container);
+  margin: 0 auto;
 }
 
 .hero-content {
@@ -351,15 +346,24 @@ a { text-decoration: none; color: inherit; }
    INTEGRATIONS RIBBON
    ============================================================ */
 .integrations-ribbon {
-  padding: 36px 0;
-  border-top: 1px solid rgba(0,0,0,0.06);
-  border-bottom: 1px solid rgba(0,0,0,0.06);
+  padding: 24px 20px 20px;
+}
+
+/* Features section — no white card, content sits directly on gray */
+#features .section-card {
+  background: transparent;
+  border-radius: 0;
 }
 
 .ribbon-inner {
   display: flex;
   align-items: center;
   gap: 40px;
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 22px 72px;
 }
 
 .ribbon-label {
@@ -390,7 +394,17 @@ a { text-decoration: none; color: inherit; }
 /* ============================================================
    SECTION COMMON
    ============================================================ */
-.section { padding: var(--section-py) 0; }
+.section {
+  padding: 20px 20px 40px;
+}
+
+.section-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: var(--section-py) 72px;
+}
 
 .section-label {
   font-size: 11px;
@@ -434,13 +448,15 @@ a { text-decoration: none; color: inherit; }
    DARK SECTION CARDS (How it Works, CTA)
    ============================================================ */
 .dark-section {
-  padding: 0 20px var(--section-py);
+  padding: 0 20px 40px;
 }
 
 .dark-section-card {
   background: var(--bg-dark);
   border-radius: var(--radius-xl);
   padding: var(--section-py) 72px;
+  max-width: var(--container);
+  margin: 0 auto;
 }
 
 .dark-section-card .section-label { color: rgba(255,255,255,0.35); }
@@ -451,8 +467,8 @@ a { text-decoration: none; color: inherit; }
 /* Steps inside dark card */
 .steps {
   display: grid;
-  gap: 36px;
-  max-width: 780px;
+  gap: 48px;
+  max-width: 860px;
   margin: 0 auto;
 }
 
@@ -494,11 +510,13 @@ a { text-decoration: none; color: inherit; }
   border-radius: 12px;
   padding: 16px 20px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.85;
   overflow-x: auto;
+  white-space: pre;        /* newlines in source = visible line breaks */
+  color: rgba(255,255,255,0.75);
 }
-.code-block span { display: block; }
+.code-block span { display: inline; } /* keywords stay inline within their line */
 .code-comment { color: rgba(255,255,255,0.22); }
 .code-key     { color: #7dcfff; }
 .code-string  { color: #9ece6a; }
@@ -655,7 +673,7 @@ a { text-decoration: none; color: inherit; }
    CTA SECTION (dark card)
    ============================================================ */
 .cta-section {
-  padding: 0 20px var(--section-py);
+  padding: 0 20px 40px;
 }
 
 .cta-inner-card {
@@ -667,6 +685,8 @@ a { text-decoration: none; color: inherit; }
   flex-direction: column;
   align-items: center;
   gap: 24px;
+  max-width: var(--container);
+  margin: 0 auto;
 }
 
 .cta-inner-card h2 {
@@ -698,6 +718,8 @@ a { text-decoration: none; color: inherit; }
   background: var(--bg-dark);
   border-radius: var(--radius-xl);
   padding: 56px 72px;
+  max-width: var(--container);
+  margin: 0 auto;
 }
 
 .footer-cols {
@@ -785,7 +807,7 @@ a { text-decoration: none; color: inherit; }
   .features-grid { grid-template-columns: repeat(2, 1fr); }
   .plugins-grid  { grid-template-columns: repeat(2, 1fr); }
   .footer-cols   { grid-template-columns: 1fr 1fr; }
-  .hero-card, .dark-section-card, .cta-inner-card, .footer-inner-card {
+  .hero-card, .dark-section-card, .cta-inner-card, .footer-inner-card, .section-card {
     padding-left: 48px;
     padding-right: 48px;
   }
@@ -795,11 +817,13 @@ a { text-decoration: none; color: inherit; }
   :root { --section-py: 72px; }
   .nav { max-width: calc(100% - 24px); }
   .nav-links { display: none; }
+  .nav-sep { display: none; }
   .hero { padding: 12px 12px 0; }
   .dark-section { padding-left: 12px; padding-right: 12px; }
   .cta-section  { padding-left: 12px; padding-right: 12px; }
   .footer       { padding-left: 12px; padding-right: 12px; }
-  .hero-card, .dark-section-card, .cta-inner-card, .footer-inner-card {
+  .section      { padding-left: 12px; padding-right: 12px; }
+  .hero-card, .dark-section-card, .cta-inner-card, .footer-inner-card, .section-card {
     border-radius: 24px;
     padding: 56px 28px;
   }
@@ -809,7 +833,7 @@ a { text-decoration: none; color: inherit; }
   .features-grid { grid-template-columns: 1fr; }
   .step { grid-template-columns: 1fr; gap: 10px; }
   .step-number { font-size: 32px; }
-  .ribbon-inner { flex-direction: column; gap: 16px; }
+  .ribbon-inner { flex-direction: column; gap: 16px; border-radius: 24px; padding: 22px 28px; }
   .ribbon-logos { gap: 18px; }
   .footer-cols { grid-template-columns: 1fr 1fr; }
 }

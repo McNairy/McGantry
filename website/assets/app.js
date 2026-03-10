@@ -2,33 +2,28 @@
    GANTRY LANDING PAGE — APP.JS
    ============================================================ */
 
-/* — Nav (no scroll class needed; pill is always styled) — */
-
-/* — Sliding nav section indicator — */
+/* — Sliding nav pill indicator — */
 (function () {
   const linksContainer = document.querySelector('.nav-links');
   if (!linksContainer) return;
 
-  // Inject sliding pill
+  // Create and inject the sliding pill
   const pill = document.createElement('div');
   pill.className = 'nav-indicator';
   linksContainer.appendChild(pill);
 
-  // Map anchor nav links → their target sections
+  const navHomeEl = document.querySelector('.nav-home');
+
+  // Section-linked nav items only (href="#...")
   const navItems = Array.from(document.querySelectorAll('.nav-link[href^="#"]')).map(link => ({
     link,
     section: document.getElementById(link.getAttribute('href').slice(1))
   })).filter(item => item.section);
 
-  let currentLink = null;
+  const allNavLinks = Array.from(document.querySelectorAll('.nav-link'));
+  let lastSectionLink = undefined; // undefined forces first render
 
-  function moveToLink(link) {
-    if (link === currentLink) return;
-    currentLink = link;
-    if (!link) {
-      pill.style.opacity = '0';
-      return;
-    }
+  function pillTo(link) {
     const cRect = linksContainer.getBoundingClientRect();
     const lRect = link.getBoundingClientRect();
     pill.style.left   = (lRect.left - cRect.left) + 'px';
@@ -38,20 +33,101 @@
     pill.style.opacity = '1';
   }
 
+  function moveToSection(sectionLink) {
+    if (sectionLink === lastSectionLink) return;
+    lastSectionLink = sectionLink;
+
+    allNavLinks.forEach(l => (l.style.color = ''));
+
+    if (sectionLink === null) {
+      // At top — hide pill, highlight the home icon
+      pill.style.opacity = '0';
+      if (navHomeEl) navHomeEl.classList.add('nav-home-active');
+      return;
+    }
+
+    if (navHomeEl) navHomeEl.classList.remove('nav-home-active');
+    pillTo(sectionLink);
+    sectionLink.style.color = '#111'; // dark text on white pill
+  }
+
   function onScroll() {
-    const scrollMid = window.scrollY + 140; // offset below fixed nav
+    // Activate when a section's top reaches 40% down the viewport.
+    // Using a viewport-relative threshold avoids dead zones caused by
+    // section bottom-padding pushing adjacent section starts further down.
+    const threshold = window.scrollY + window.innerHeight * 0.4;
     let active = null;
     for (const { link, section } of navItems) {
       const top = section.getBoundingClientRect().top + window.scrollY;
-      if (scrollMid >= top && scrollMid < top + section.offsetHeight) {
-        active = link;
-      }
+      if (threshold >= top) active = link;
     }
-    moveToLink(active);
+    moveToSection(active);
   }
+
+  // Re-measure on resize (no animation)
+  window.addEventListener('resize', () => {
+    pill.style.transition = 'none';
+    if (lastSectionLink) pillTo(lastSectionLink);
+    requestAnimationFrame(() => { pill.style.transition = ''; });
+  }, { passive: true });
+
+  // Init without animation — onScroll() below sets the true initial state
+  requestAnimationFrame(() => {
+    pill.style.transition = 'none';
+    if (lastSectionLink) pillTo(lastSectionLink);
+    requestAnimationFrame(() => { pill.style.transition = ''; });
+  });
 
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
+})();
+
+/* — Smooth scroll with lerp inertia — */
+(function () {
+  // Respect reduced-motion preference
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let target  = window.scrollY;
+  let current = window.scrollY;
+  let rafId   = null;
+  const EASE  = 0.09; // lower = more inertia / longer glide
+
+  function clamp(v) {
+    return Math.max(0, Math.min(document.documentElement.scrollHeight - window.innerHeight, v));
+  }
+
+  function tick() {
+    const diff = target - current;
+    if (Math.abs(diff) < 0.15) {
+      current = target;
+      window.scrollTo(0, current);
+      rafId = null;
+      return;
+    }
+    current += diff * EASE;
+    window.scrollTo(0, current);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // Intercept wheel — prevent native scroll, drive ours instead
+  window.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    target = clamp(target + e.deltaY);
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  }, { passive: false });
+
+  // Keyboard / programmatic scroll sync (arrow keys, Page Up/Down, etc.)
+  window.addEventListener('scroll', () => {
+    if (rafId) return; // ignore events we're generating via scrollTo
+    current = window.scrollY;
+    target  = window.scrollY;
+  }, { passive: true });
+
+  // Expose for nav anchor clicks
+  window._smoothScrollTo = function (el) {
+    target = clamp(el.getBoundingClientRect().top + current);
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  };
 })();
 
 /* — Scroll reveal — */
@@ -110,6 +186,9 @@ if (termEl) termObserver.observe(termEl);
 document.querySelectorAll('a[href^="#"]').forEach(a => {
   a.addEventListener('click', e => {
     const target = document.querySelector(a.getAttribute('href'));
-    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (!target) return;
+    e.preventDefault();
+    if (window._smoothScrollTo) window._smoothScrollTo(target);
+    else target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 });
