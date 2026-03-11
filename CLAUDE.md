@@ -134,3 +134,101 @@ Only these CSS custom properties are defined (do NOT use others):
 `--gantry-bg-primary`, `--gantry-bg-secondary`, `--gantry-bg-tertiary`, `--gantry-text-primary`, `--gantry-text-secondary`, `--gantry-border`, `--gantry-accent`, `--gantry-accent-hover`, `--gantry-danger`.
 
 For transparent accent backgrounds use `bg-[var(--gantry-accent)]/10` (Tailwind opacity modifier), NOT `bg-opacity-10`.
+
+## Creating Plugins
+
+Gantry plugins follow a consistent pattern. Every plugin touches up to 11 files. Use the status-monitor plugin as a reference implementation.
+
+### Plugin Anatomy — Files to Create or Modify
+
+| # | File | Action | Purpose |
+|---|------|--------|---------|
+| 1 | `internal/api/handlers/<plugin>.go` | **Create** | Backend handler(s) — business logic, external API calls, caching |
+| 2 | `internal/plugins/bundled/registry.json` | **Edit** | Add plugin metadata, config schema, entity panels, action types |
+| 3 | `internal/api/server.go` | **Edit** | Register API routes (must be BEFORE wildcard/SPA catch-all routes) |
+| 4 | `web/src/lib/types.ts` | **Edit** | Add TypeScript interfaces for API response types |
+| 5 | `web/src/lib/api.ts` | **Edit** | Add API client methods |
+| 6 | `web/src/pages/<PluginPage>.tsx` | **Create** | Full-page UI (if plugin has a sidebar entry) |
+| 7 | `web/src/App.tsx` | **Edit** | Add `<Route>` for the new page |
+| 8 | `web/src/components/Sidebar.tsx` | **Edit** | Add conditional nav item (check if plugin is enabled via API) |
+| 9 | `web/src/pages/Dashboard.tsx` | **Edit** | Add dashboard widget (label, default config, render case) |
+| 10 | `internal/api/handlers/dashboard.go` | **Edit** | Add widget ID to `knownWidgetIDs` map |
+| 11 | `web/src/components/<PluginTab>.tsx` | **Create** | Entity detail tab (if plugin adds entity panels) |
+
+### Step-by-Step
+
+**1. Backend Handler** (`internal/api/handlers/<plugin>.go`)
+- Handlers are methods on `*Handlers` struct: `func (h *Handlers) GetMyData(w http.ResponseWriter, r *http.Request)`
+- Always check plugin is installed and enabled first:
+  ```go
+  p, err := h.DB.GetPlugin(r.Context(), "my-plugin")
+  if err != nil || p == nil { writeError(w, 404, "plugin not installed"); return }
+  if !p.Enabled { writeError(w, 400, "plugin not enabled"); return }
+  ```
+- For external HTTP calls: always set `User-Agent` header (some APIs block default Go client), use `http.NewRequest` + `client.Do(req)` instead of `client.Get()`
+- For expensive operations: use an in-memory cache with `sync.RWMutex` and a TTL (e.g., 60s)
+- For concurrent work: use `sync.WaitGroup` + goroutines with a `sync.Mutex` to protect shared state
+- Read custom config from `p.Config` (it's a `map[string]any` parsed from JSON)
+
+**2. Registry Entry** (`internal/plugins/bundled/registry.json`)
+- Must include ALL fields: `name`, `title`, `description`, `longDescription`, `features`, `version`, `author`, `category`, `homepage`, `configSchema`
+- `configSchema` is a JSON Schema object — drives the config modal UI via `SchemaForm`
+- Optional: `entityPanels` (array of kind strings), `actionTypes` (array of action type strings)
+- Categories: `integration`, `widget`, `action-type`
+
+**3. Route Registration** (`internal/api/server.go`)
+- Add routes inside the `protected` group (requires auth)
+- Place BEFORE any wildcard or SPA catch-all routes
+- Pattern: `protected.Get("/plugins/<name>/<endpoint>", h.HandlerMethod)`
+
+**4. Frontend Types** (`web/src/lib/types.ts`)
+- Add interfaces for any new API response shapes
+- Export them so pages/components can import
+
+**5. API Client** (`web/src/lib/api.ts`)
+- Add methods to the `api` object: `getMyData: () => request<MyType>('GET', '/plugins/my-plugin/data')`
+- Import new types from `types.ts`
+
+**6. Plugin Page** (`web/src/pages/<PluginPage>.tsx`)
+- Standard page with loading state, error handling, auto-refresh
+- Use only `--gantry-*` CSS variables for colors
+- For text contrasting against accent background: use `text-[var(--gantry-bg-primary)]` (NOT `text-white`)
+- For category/filter pills: selected state = `bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)]`
+
+**7. Route** (`web/src/App.tsx`)
+- Add: `<Route path="/my-plugin" element={<MyPluginPage />} />`
+
+**8. Sidebar Entry** (`web/src/components/Sidebar.tsx`)
+- Add state: `const [myPluginEnabled, setMyPluginEnabled] = useState(false)`
+- Check on mount: `api.listPlugins().then(ps => setMyPluginEnabled(ps.some(p => p.name === 'my-plugin' && p.enabled)))`
+- Conditionally render nav item with a lucide-react icon
+
+**9. Dashboard Widget** (`web/src/pages/Dashboard.tsx`)
+- Add to `WIDGET_LABELS`: `my_widget: 'My Widget'`
+- Add to `DEFAULT_WIDGETS`: `{ id: 'my_widget', visible: true, order: N, width: 'full' }`
+- Add `case 'my_widget':` in `renderWidget()` switch
+- Add state + fetch in the main `useEffect` / `Promise.all`
+- Return `null` from render case if no data (plugin not enabled)
+
+**10. Backend Widget Validation** (`internal/api/handlers/dashboard.go`)
+- Add widget ID to the `knownWidgetIDs` map — without this, saving dashboard config will fail with "unknown widget id"
+
+### Common Pitfalls
+
+- **CSS variables:** only the 9 `--gantry-*` properties exist. Using others → invisible/transparent elements
+- **Tailwind opacity:** `bg-[var(--gantry-accent)]/10` not `bg-[var(--gantry-accent)] bg-opacity-10`
+- **Dark mode contrast:** never use `text-white` on accent backgrounds; use `text-[var(--gantry-bg-primary)]` which adapts
+- **Entity schemas:** all have `additionalProperties: false` — check allowed spec fields before adding new ones
+- **External HTTP APIs:** always set User-Agent header; some providers block the default Go HTTP client
+- **Widget ID validation:** forgetting to add the ID to `knownWidgetIDs` in `dashboard.go` causes save failures
+- **Route ordering:** plugin routes in `server.go` must come before wildcard routes
+- **Registry JSON:** missing `configSchema`, `entityPanels`, or `actionTypes` fields will cause parse errors
+
+### Verification Checklist
+
+```bash
+# After making changes, always verify:
+go build ./...              # Backend compiles
+cd web && npx tsc --noEmit  # Frontend type-checks
+cd web && npm run build     # Frontend builds
+```

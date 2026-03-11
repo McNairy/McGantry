@@ -105,3 +105,40 @@ cd web && npm run dev         # frontend dev server (proxies API to :8080)
 cd web && npx tsc --noEmit    # TypeScript type check
 golangci-lint run ./...       # lint Go
 ```
+
+## Creating Plugins
+
+Gantry plugins follow a consistent pattern across up to 11 files. Use `status-monitor` as a reference implementation.
+
+### Files to Create or Modify
+
+1. **`internal/api/handlers/<plugin>.go`** — Create backend handler(s) as methods on `*Handlers` struct. Check plugin installed+enabled via `h.DB.GetPlugin()`. For external HTTP calls, always set `User-Agent` header. Use in-memory cache (`sync.RWMutex` + TTL) for expensive operations.
+2. **`internal/plugins/bundled/registry.json`** — Add entry with ALL fields: `name`, `title`, `description`, `longDescription`, `features`, `version`, `author`, `category`, `homepage`, `configSchema` (JSON Schema), optional `entityPanels` and `actionTypes`.
+3. **`internal/api/server.go`** — Register routes in `protected` group, BEFORE wildcard/SPA routes.
+4. **`web/src/lib/types.ts`** — Add TypeScript interfaces for new API response types.
+5. **`web/src/lib/api.ts`** — Add API client methods to the `api` object.
+6. **`web/src/pages/<PluginPage>.tsx`** — Full-page UI if plugin has sidebar entry.
+7. **`web/src/App.tsx`** — Add `<Route>` for new page.
+8. **`web/src/components/Sidebar.tsx`** — Conditional nav item (check plugin enabled via `api.listPlugins()`).
+9. **`web/src/pages/Dashboard.tsx`** — Dashboard widget: add to `WIDGET_LABELS`, `DEFAULT_WIDGETS`, `renderWidget()` switch, and fetch data in `useEffect`.
+10. **`internal/api/handlers/dashboard.go`** — Add widget ID to `knownWidgetIDs` map (required for save validation).
+11. **`web/src/components/<PluginTab>.tsx`** — Entity detail tab if plugin adds entity panels.
+
+### Common Pitfalls
+
+- **CSS variables:** only 9 `--gantry-*` properties exist. Using undefined ones → invisible elements.
+- **Tailwind opacity:** use `bg-[var(--gantry-accent)]/10` NOT `bg-[var(--gantry-accent)] bg-opacity-10`.
+- **Dark mode contrast:** use `text-[var(--gantry-bg-primary)]` on accent backgrounds, NOT `text-white`.
+- **Entity schemas:** all have `additionalProperties: false` — check allowed spec fields first.
+- **External HTTP APIs:** set `User-Agent` header; some providers block default Go client.
+- **Widget ID validation:** missing ID in `knownWidgetIDs` causes dashboard save failures.
+- **Route ordering:** plugin routes must come before wildcard routes in `server.go`.
+- **Registry JSON:** missing `configSchema`/`entityPanels`/`actionTypes` fields cause parse errors.
+
+### Verify After Changes
+
+```bash
+go build ./...              # backend compiles
+cd web && npx tsc --noEmit  # frontend type-checks
+cd web && npm run build     # frontend builds
+```
