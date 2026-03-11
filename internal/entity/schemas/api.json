@@ -19,6 +19,16 @@
       "format": "uri",
       "description": "URL to the API definition document (e.g., OpenAPI spec)"
     },
+    "apiDocsUrl": {
+      "type": "string",
+      "title": "API Docs URL",
+      "description": "URL to Swagger UI, Redoc, or other API documentation page"
+    },
+    "healthCheckUrl": {
+      "type": "string",
+      "title": "Health Check URL",
+      "description": "URL to the API health endpoint (e.g., https://api.example.com/healthz)"
+    },
     "owner": {
       "type": "string",
       "description": "Team or individual that owns this API"

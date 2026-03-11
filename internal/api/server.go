@@ -154,6 +154,9 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// Audit log.
 			protected.Get("/audit", h.ListAuditEntries)
 
+			// Health check proxy (fetches external health URLs for the frontend).
+			protected.Get("/health-check", h.HealthCheckProxy)
+
 			// Plugin marketplace. Write endpoints require developer+.
 			protected.Get("/plugins", h.ListPlugins)
 			// Kubernetes-specific plugin endpoints (before generic {name} routes).

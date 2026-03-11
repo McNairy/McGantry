@@ -144,6 +144,10 @@ export const api = {
   refreshArgoCDApp: (appName: string, instance?: string) =>
     request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/refresh${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`, {}),
 
+  // Health check proxy
+  checkHealth: (url: string) =>
+    request<{ reachable: boolean; statusCode?: number; latencyMs: number; body?: string; error?: string }>('GET', `/health-check?url=${encodeURIComponent(url)}`),
+
   // Dashboard config
   getDashboardConfig: () => request<DashboardConfig>('GET', '/dashboard/config'),
   setDashboardConfig: (config: DashboardConfig) => request<DashboardConfig>('PUT', '/dashboard/config', config),

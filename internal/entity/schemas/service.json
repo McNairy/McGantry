@@ -28,6 +28,16 @@
       "title": "TechDocs Reference",
       "description": "Path or URL to this service's TechDocs (e.g., dir:., url:https://...)"
     },
+    "apiDocsUrl": {
+      "type": "string",
+      "title": "API Docs URL",
+      "description": "URL to Swagger UI, Redoc, or other API documentation page"
+    },
+    "healthCheckUrl": {
+      "type": "string",
+      "title": "Health Check URL",
+      "description": "URL to the service health endpoint (e.g., https://api.example.com/healthz)"
+    },
     "links": {
       "type": "array",
       "title": "Links",

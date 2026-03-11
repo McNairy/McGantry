@@ -9,6 +9,7 @@ import EntityGraph from '../components/EntityGraph';
 import KubernetesTab from '../components/KubernetesTab';
 import GitHubTab from '../components/GitHubTab';
 import ArgoCDTab from '../components/ArgoCDTab';
+import APIDocsTab from '../components/APIDocsTab';
 
 const ACTION_COLORS: Record<string, string> = {
   'entity.created': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
@@ -85,7 +86,7 @@ const LINK_ICONS: Record<string, React.ReactNode> = {
   other:     <CircleHelp className="h-3.5 w-3.5" />,
 };
 
-type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes' | 'github' | 'argocd';
+type Tab = 'overview' | 'yaml' | 'relationships' | 'activity' | 'kubernetes' | 'github' | 'argocd' | 'apidocs';
 
 export default function EntityDetail() {
   const { kind, name } = useParams<{ kind: string; name: string }>();
@@ -280,10 +281,14 @@ export default function EntityDetail() {
           entity.metadata.annotations?.['argocd.io/appNames'] ||
           entity.metadata.annotations?.['argocd.io/appName']
         );
+        const hasAPIDocs = !!(
+          entity.spec?.apiDocsUrl || entity.spec?.definition || entity.spec?.healthCheckUrl
+        ) && (entity.kind === 'Service' || entity.kind === 'API');
         const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
         if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure') && enabledPlugins.has('kubernetes')) tabs.splice(1, 0, 'kubernetes');
         if (hasGitHub && enabledPlugins.has('github')) tabs.splice(1, 0, 'github');
         if (hasArgoCD && entity.kind === 'Service' && enabledPlugins.has('argocd')) tabs.splice(1, 0, 'argocd');
+        if (hasAPIDocs) tabs.splice(1, 0, 'apidocs');
         return (
           <div className="mt-6 flex gap-1 border-b border-[var(--gantry-border)]">
             {tabs.map((t) => (
@@ -296,7 +301,7 @@ export default function EntityDetail() {
                     : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
                 }`}
               >
-                {t === 'relationships' ? 'Dependencies' : t === 'kubernetes' ? 'Kubernetes' : t === 'github' ? 'GitHub' : t === 'argocd' ? 'ArgoCD' : t}
+                {t === 'relationships' ? 'Dependencies' : t === 'kubernetes' ? 'Kubernetes' : t === 'github' ? 'GitHub' : t === 'argocd' ? 'ArgoCD' : t === 'apidocs' ? 'API Docs' : t}
                 {t === 'activity' && activity.length > 0 && (
                   <span className="ml-1.5 rounded-full bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs">
                     {activity.length}
@@ -686,6 +691,10 @@ export default function EntityDetail() {
 
         {tab === 'argocd' && (
           <ArgoCDTab entity={entity} />
+        )}
+
+        {tab === 'apidocs' && (
+          <APIDocsTab entity={entity} />
         )}
 
         {tab === 'relationships' && (
