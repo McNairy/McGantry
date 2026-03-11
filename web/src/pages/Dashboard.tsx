@@ -1265,13 +1265,13 @@ export default function Dashboard() {
       )}
 
       {/* Standard widgets — 2-column grid, each widget spans full or half */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-6 grid-flow-row-dense">
         {visibleWidgets.map((w) => {
           const ww = widthOf(w);
           const content = renderWidget(w.id, ww);
           if (!content) return null;
           return (
-            <div key={w.id} className={ww === 'half' ? 'col-span-1' : 'col-span-2'}>
+            <div key={w.id} className={`[&>*]:h-full ${ww === 'half' ? 'col-span-1' : 'col-span-2'}`}>
               {content}
             </div>
           );
