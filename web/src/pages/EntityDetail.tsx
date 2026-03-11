@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { ChevronRight, Pencil, Trash2, X, ExternalLink, LayoutDashboard, BookOpen, FileText, Github, MessageSquare, Bell, Activity, Cpu, CircleHelp } from 'lucide-react';
+import { ChevronRight, Pencil, Trash2, X, ExternalLink, LayoutDashboard, BookOpen, FileText, Github, MessageSquare, Bell, Activity, Cpu, CircleHelp, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
 import type { Entity, JsonSchema, AuditEntry, GraphData, EntityLink, PluginRegistryEntry } from '../lib/types';
@@ -107,6 +107,8 @@ export default function EntityDetail() {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
   const [enabledPlugins, setEnabledPlugins] = useState<Set<string>>(new Set());
+  const [health, setHealth] = useState<{ reachable: boolean; statusCode?: number; latencyMs: number; error?: string } | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
 
   useEffect(() => {
     if (!kind || !name) return;
@@ -130,6 +132,28 @@ export default function EntityDetail() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [kind, name, namespace]);
+
+  const healthCheckUrl = (entity?.spec?.healthCheckUrl as string) || '';
+
+  const checkHealth = useCallback(async () => {
+    if (!healthCheckUrl) return;
+    setHealthLoading(true);
+    try {
+      const result = await api.checkHealth(healthCheckUrl);
+      setHealth(result);
+    } catch (e: any) {
+      setHealth({ reachable: false, latencyMs: 0, error: e.message });
+    } finally {
+      setHealthLoading(false);
+    }
+  }, [healthCheckUrl]);
+
+  useEffect(() => {
+    if (!healthCheckUrl) return;
+    checkHealth();
+    const interval = setInterval(checkHealth, 30_000);
+    return () => clearInterval(interval);
+  }, [healthCheckUrl, checkHealth]);
 
   useEffect(() => {
     if (tab !== 'relationships' || !kind || !name || graphData) return;
@@ -281,9 +305,7 @@ export default function EntityDetail() {
           entity.metadata.annotations?.['argocd.io/appNames'] ||
           entity.metadata.annotations?.['argocd.io/appName']
         );
-        const hasAPIDocs = !!(
-          entity.spec?.apiDocsUrl || entity.spec?.definition || entity.spec?.healthCheckUrl
-        ) && (entity.kind === 'Service' || entity.kind === 'API');
+        const hasAPIDocs = !!(entity.spec?.apiDocsUrl) && (entity.kind === 'Service' || entity.kind === 'API');
         const tabs: Tab[] = ['overview', 'relationships', 'yaml', 'activity'];
         if (isK8sEntity && (entity.kind === 'Service' || entity.kind === 'Infrastructure') && enabledPlugins.has('kubernetes')) tabs.splice(1, 0, 'kubernetes');
         if (hasGitHub && enabledPlugins.has('github')) tabs.splice(1, 0, 'github');
@@ -423,6 +445,40 @@ export default function EntityDetail() {
                   )}
                 </dl>
               </div>
+
+              {/* Health Status — minimal inline card */}
+              {healthCheckUrl && (
+                <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--gantry-text-secondary)]">Health</h3>
+                    <button
+                      onClick={checkHealth}
+                      disabled={healthLoading}
+                      className="rounded p-0.5 text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] disabled:opacity-40"
+                      title="Check now"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${healthLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="mt-2">
+                    {health ? (
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${health.reachable ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className="text-sm text-[var(--gantry-text-primary)]">{health.reachable ? 'Healthy' : 'Unhealthy'}</span>
+                        {health.statusCode && <span className="text-xs text-[var(--gantry-text-secondary)]">· {health.statusCode}</span>}
+                        {health.latencyMs > 0 && <span className="ml-auto text-xs text-[var(--gantry-text-secondary)]">{health.latencyMs}ms</span>}
+                      </div>
+                    ) : healthLoading ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--gantry-accent)] border-t-transparent" />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-gray-400" />
+                        <span className="text-xs text-[var(--gantry-text-secondary)]">Not checked</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Kubernetes source info — shown only for k8s-synced entities */}
               {(() => {
