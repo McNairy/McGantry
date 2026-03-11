@@ -559,7 +559,7 @@ export default function Dashboard() {
     switch (id) {
       case 'entity_stats':
         return (
-          <div className={`grid gap-4 ${width === 'half' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6'}`}>
+          <div className={`grid gap-4 ${width === 'half' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'}`}>
             {kindCounts.map((kind) => {
               const Icon = iconMap[kind.icon] || Box;
               return (
@@ -1216,10 +1216,10 @@ export default function Dashboard() {
             Your internal developer platform overview
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => document.dispatchEvent(new Event('gantry:open-search'))}
-            className="flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm text-[var(--gantry-text-secondary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-text-primary)] sm:w-64"
+            className="flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm text-[var(--gantry-text-secondary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-text-primary)] w-48 lg:w-64"
           >
             <Search className="h-4 w-4 shrink-0" />
             <span className="flex-1 text-left">Search entities...</span>
@@ -1310,13 +1310,13 @@ export default function Dashboard() {
       )}
 
       {/* Standard widgets — 2-column grid, each widget spans full or half */}
-      <div className="grid grid-cols-2 gap-6 grid-flow-row-dense">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 grid-flow-row-dense">
         {visibleWidgets.map((w) => {
           const ww = widthOf(w);
           const content = renderWidget(w.id, ww);
           if (!content) return null;
           return (
-            <div key={w.id} className={`[&>*]:h-full ${ww === 'half' ? 'col-span-1' : 'col-span-2'}`}>
+            <div key={w.id} className={`[&>*]:h-full ${ww === 'half' ? 'col-span-1' : 'col-span-1 md:col-span-2'}`}>
               {content}
             </div>
           );

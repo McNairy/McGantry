@@ -17,6 +17,7 @@ import (
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
 	"github.com/go2engle/gantry/internal/gitops"
+	"github.com/go2engle/gantry/internal/plugins"
 	"github.com/go2engle/gantry/internal/search"
 	"github.com/spf13/cobra"
 )
@@ -98,6 +99,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Encrypt any plugin configs written before encryption was introduced.
 	if err := database.MigrateEncryptPluginConfigs(context.Background()); err != nil {
 		return fmt.Errorf("encrypting plugin configs: %w", err)
+	}
+
+	// Auto-register all bundled plugins in the DB (preserves existing config/enabled state).
+	registry, err := plugins.BundledRegistry()
+	if err != nil {
+		return fmt.Errorf("loading bundled plugin registry: %w", err)
+	}
+	if err := database.EnsureBundledPlugins(context.Background(), registry); err != nil {
+		return fmt.Errorf("registering bundled plugins: %w", err)
 	}
 
 	// Create core services.

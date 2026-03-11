@@ -1206,6 +1206,66 @@ func (d *DB) DeletePlugin(ctx context.Context, name string) error {
 	return err
 }
 
+// EnsureBundledPlugins creates DB records for any bundled registry entries that
+// don't yet exist. For plugins that already exist, it updates the version and
+// manifest but preserves the user's enabled state and config.
+func (d *DB) EnsureBundledPlugins(ctx context.Context, entries []plugins.RegistryEntry) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, entry := range entries {
+		manifest := &plugins.Manifest{
+			Name:         entry.Name,
+			Title:        entry.Title,
+			Description:  entry.Description,
+			Version:      entry.Version,
+			Author:       entry.Author,
+			Category:     entry.Category,
+			Homepage:     entry.Homepage,
+			ConfigSchema: entry.ConfigSchema,
+			EntityPanels: entry.EntityPanels,
+			ActionTypes:  entry.ActionTypes,
+		}
+		manifestJSON, err := json.Marshal(manifest)
+		if err != nil {
+			return fmt.Errorf("marshal manifest for %s: %w", entry.Name, err)
+		}
+
+		// Generate a short random ID for new records.
+		idBytes := make([]byte, 8)
+		if _, err := rand.Read(idBytes); err != nil {
+			return fmt.Errorf("generate id for %s: %w", entry.Name, err)
+		}
+		id := fmt.Sprintf("%x", idBytes)
+
+		// Encrypt an empty config for new records.
+		emptyConfig, err := json.Marshal(map[string]any{})
+		if err != nil {
+			return err
+		}
+		encryptedConfig, err := gantrycrypto.Encrypt(d.encKey, emptyConfig)
+		if err != nil {
+			return fmt.Errorf("encrypting empty config for %s: %w", entry.Name, err)
+		}
+
+		// INSERT if not exists; on conflict update only version and manifest.
+		_, err = d.exec(ctx, `
+			INSERT INTO plugins (id, name, version, enabled, config, manifest, installed_at, updated_at)
+			VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+			ON CONFLICT(name) DO UPDATE SET
+				version    = excluded.version,
+				manifest   = excluded.manifest,
+				updated_at = excluded.updated_at`,
+			id, entry.Name, entry.Version,
+			encryptedConfig,
+			string(manifestJSON),
+			now, now,
+		)
+		if err != nil {
+			return fmt.Errorf("ensure plugin %s: %w", entry.Name, err)
+		}
+	}
+	return nil
+}
+
 // UpdatePluginEnabled sets the enabled flag for a plugin.
 func (d *DB) UpdatePluginEnabled(ctx context.Context, name string, enabled bool) error {
 	_, err := d.exec(ctx,

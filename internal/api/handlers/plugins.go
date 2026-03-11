@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,70 +14,48 @@ import (
 	k8s "github.com/go2engle/gantry/internal/plugins/kubernetes"
 )
 
-// ListPlugins returns all plugins: registry entries merged with installed state.
+// ListPlugins returns all plugins from the DB (all bundled plugins are auto-registered on startup).
 func (h *Handlers) ListPlugins(w http.ResponseWriter, r *http.Request) {
-	// Load bundled registry.
+	// Load bundled registry for enriching with full metadata.
 	registry, err := plugins.BundledRegistry()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load plugin registry: "+err.Error())
 		return
 	}
+	registryMap := make(map[string]*plugins.RegistryEntry, len(registry))
+	for i := range registry {
+		registryMap[registry[i].Name] = &registry[i]
+	}
 
-	// Load installed plugins from DB.
-	installed, err := h.DB.ListPlugins(r.Context())
+	// All plugins are in the DB (auto-registered on startup).
+	dbPlugins, err := h.DB.ListPlugins(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Build a map of installed plugins by name for quick lookup.
-	installedMap := make(map[string]*plugins.Plugin, len(installed))
-	for i := range installed {
-		installedMap[installed[i].Name] = &installed[i]
-	}
-
 	type pluginListItem struct {
 		plugins.RegistryEntry
-		Installed   bool   `json:"installed"`
-		Enabled     bool   `json:"enabled"`
-		InstalledAt string `json:"installedAt,omitempty"`
+		Enabled bool `json:"enabled"`
 	}
 
-	items := make([]pluginListItem, 0, len(registry))
-	for _, entry := range registry {
-		item := pluginListItem{RegistryEntry: entry}
-		if p, ok := installedMap[entry.Name]; ok {
-			item.Installed = true
-			item.Enabled = p.Enabled
-			item.InstalledAt = p.InstalledAt
-		}
-		items = append(items, item)
-	}
-
-	// Also append any installed plugins not in the bundled registry (e.g. community).
-	for _, p := range installed {
-		found := false
-		for _, entry := range registry {
-			if entry.Name == p.Name {
-				found = true
-				break
+	items := make([]pluginListItem, 0, len(dbPlugins))
+	for _, p := range dbPlugins {
+		item := pluginListItem{Enabled: p.Enabled}
+		// Prefer registry metadata (always up to date with the binary).
+		if entry, ok := registryMap[p.Name]; ok {
+			item.RegistryEntry = *entry
+		} else if p.Manifest != nil {
+			item.RegistryEntry = plugins.RegistryEntry{
+				Name:        p.Manifest.Name,
+				Title:       p.Manifest.Title,
+				Description: p.Manifest.Description,
+				Version:     p.Manifest.Version,
+				Author:      p.Manifest.Author,
+				Category:    p.Manifest.Category,
 			}
 		}
-		if !found && p.Manifest != nil {
-			items = append(items, pluginListItem{
-				RegistryEntry: plugins.RegistryEntry{
-					Name:        p.Manifest.Name,
-					Title:       p.Manifest.Title,
-					Description: p.Manifest.Description,
-					Version:     p.Manifest.Version,
-					Author:      p.Manifest.Author,
-					Category:    p.Manifest.Category,
-				},
-				Installed:   true,
-				Enabled:     p.Enabled,
-				InstalledAt: p.InstalledAt,
-			})
-		}
+		items = append(items, item)
 	}
 
 	writeJSON(w, http.StatusOK, items)
@@ -94,67 +70,14 @@ func (h *Handlers) GetPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p == nil {
-		writeError(w, http.StatusNotFound, "plugin not installed")
+		writeError(w, http.StatusNotFound, "plugin not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
 }
 
-// InstallPlugin "installs" a plugin from the bundled registry into the DB.
-func (h *Handlers) InstallPlugin(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
-
-	// Look up in bundled registry.
-	entry, err := plugins.FindInRegistry(name)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if entry == nil {
-		writeError(w, http.StatusNotFound, "plugin not found in registry")
-		return
-	}
-
-	// Build a manifest from the registry entry.
-	manifest := &plugins.Manifest{
-		Name:         entry.Name,
-		Title:        entry.Title,
-		Description:  entry.Description,
-		Version:      entry.Version,
-		Author:       entry.Author,
-		Category:     entry.Category,
-		Homepage:     entry.Homepage,
-		ConfigSchema: entry.ConfigSchema,
-		EntityPanels: entry.EntityPanels,
-		ActionTypes:  entry.ActionTypes,
-	}
-
-	p := &plugins.Plugin{
-		ID:       newShortID(),
-		Name:     entry.Name,
-		Version:  entry.Version,
-		Enabled:  false,
-		Manifest: manifest,
-	}
-
-	if err := h.DB.UpsertPlugin(r.Context(), p); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, p)
-}
-
-// UninstallPlugin removes an installed plugin.
-func (h *Handlers) UninstallPlugin(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
-	if err := h.DB.DeletePlugin(r.Context(), name); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // EnablePlugin enables or disables a plugin.
+// When enabling, it validates that all required config fields are set.
 func (h *Handlers) EnablePlugin(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var body struct {
@@ -164,6 +87,38 @@ func (h *Handlers) EnablePlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	// When enabling, check that required config fields are populated.
+	if body.Enabled {
+		p, err := h.DB.GetPlugin(r.Context(), name)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if p == nil {
+			writeError(w, http.StatusNotFound, "plugin not found")
+			return
+		}
+
+		// Look up the config schema from the registry.
+		entry, _ := plugins.FindInRegistry(name)
+		if entry != nil && entry.ConfigSchema != nil {
+			if required, ok := entry.ConfigSchema["required"].([]any); ok && len(required) > 0 {
+				for _, r := range required {
+					field, _ := r.(string)
+					if field == "" {
+						continue
+					}
+					val, exists := p.Config[field]
+					if !exists || val == nil || val == "" {
+						writeError(w, http.StatusBadRequest, "required configuration fields must be set before enabling")
+						return
+					}
+				}
+			}
+		}
+	}
+
 	if err := h.DB.UpdatePluginEnabled(r.Context(), name, body.Enabled); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -180,7 +135,7 @@ func (h *Handlers) GetPluginConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p == nil {
-		writeError(w, http.StatusNotFound, "plugin not installed")
+		writeError(w, http.StatusNotFound, "plugin not found")
 		return
 	}
 
@@ -225,7 +180,7 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p == nil {
-		writeError(w, http.StatusNotFound, "plugin not installed")
+		writeError(w, http.StatusNotFound, "plugin not found")
 		return
 	}
 	if !p.Enabled {
@@ -289,7 +244,7 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) argoCDClientForInstance(r *http.Request) (*argocd.Client, error) {
 	p, err := h.DB.GetPlugin(r.Context(), "argocd")
 	if err != nil || p == nil {
-		return nil, fmt.Errorf("argocd plugin not installed")
+		return nil, fmt.Errorf("argocd plugin not found")
 	}
 	if !p.Enabled {
 		return nil, fmt.Errorf("argocd plugin is not enabled")
@@ -319,7 +274,7 @@ func (h *Handlers) GetArgoCDEntityApps(w http.ResponseWriter, r *http.Request) {
 
 	p, err := h.DB.GetPlugin(r.Context(), "argocd")
 	if err != nil || p == nil {
-		writeError(w, http.StatusNotFound, "argocd plugin not installed")
+		writeError(w, http.StatusNotFound, "argocd plugin not found")
 		return
 	}
 	if !p.Enabled {
@@ -521,7 +476,7 @@ func (h *Handlers) GetKubernetesWorkload(w http.ResponseWriter, r *http.Request)
 
 	p, err := h.DB.GetPlugin(r.Context(), "kubernetes")
 	if err != nil || p == nil {
-		writeError(w, http.StatusNotFound, "kubernetes plugin not installed")
+		writeError(w, http.StatusNotFound, "kubernetes plugin not found")
 		return
 	}
 	if !p.Enabled {
@@ -577,7 +532,7 @@ func (h *Handlers) StreamKubernetesPodLogs(w http.ResponseWriter, r *http.Reques
 
 	p, err := h.DB.GetPlugin(r.Context(), "kubernetes")
 	if err != nil || p == nil {
-		writeError(w, http.StatusNotFound, "kubernetes plugin not installed")
+		writeError(w, http.StatusNotFound, "kubernetes plugin not found")
 		return
 	}
 	if !p.Enabled {
@@ -609,9 +564,3 @@ func (h *Handlers) StreamKubernetesPodLogs(w http.ResponseWriter, r *http.Reques
 	client.StreamLogs(w, namespace, pod, container, 200)
 }
 
-// newShortID generates a short random ID for plugin records.
-func newShortID() string {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}

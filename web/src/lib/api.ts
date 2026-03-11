@@ -113,8 +113,6 @@ export const api = {
   // Plugin marketplace
   listPlugins: () => request<PluginRegistryEntry[]>('GET', '/plugins'),
   getPlugin: (name: string) => request<PluginDetail>('GET', `/plugins/${name}`),
-  installPlugin: (name: string) => request<PluginDetail>('POST', `/plugins/${name}/install`, {}),
-  uninstallPlugin: (name: string) => request<void>('DELETE', `/plugins/${name}`),
   enablePlugin: (name: string, enabled: boolean) =>
     request<void>('PUT', `/plugins/${name}/enable`, { enabled }),
   getPluginConfig: (name: string) => request<PluginConfig>('GET', `/plugins/${name}/config`),

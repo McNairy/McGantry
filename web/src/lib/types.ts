@@ -137,9 +137,7 @@ export interface PluginRegistryEntry {
   homepage?: string;
   entityPanels?: string[];
   actionTypes?: string[];
-  installed: boolean;
   enabled: boolean;
-  installedAt?: string;
 }
 
 export interface PluginDetail {
