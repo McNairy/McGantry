@@ -164,6 +164,9 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/plugins/kubernetes/pods/{namespace}/{pod}/containers/{container}/logs", h.StreamKubernetesPodLogs)
 			// GitHub-specific plugin endpoints.
 			protected.Get("/plugins/github/repo", h.GetGitHubRepo)
+			// Status Monitor plugin endpoints.
+			protected.Get("/plugins/status-monitor/statuses", h.GetStatusMonitorStatuses)
+			protected.Get("/plugins/status-monitor/providers", h.GetStatusMonitorProviders)
 			// ArgoCD-specific plugin endpoints.
 			protected.Get("/plugins/argocd/entity-apps", h.GetArgoCDEntityApps)
 			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)

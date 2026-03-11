@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -19,8 +19,10 @@ import {
   ClipboardList,
   UserCog,
   Puzzle,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { api } from '../lib/api';
 import ThemeToggle from './ThemeToggle';
 import { ENTITY_KINDS } from '../lib/types';
 
@@ -60,8 +62,17 @@ const navItems: NavItem[] = [
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [statusMonitorEnabled, setStatusMonitorEnabled] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
+
+  // Check if the status-monitor plugin is enabled (once on mount).
+  useEffect(() => {
+    api.listPlugins().then((plugins) => {
+      const sm = plugins.find((p) => p.name === 'status-monitor');
+      if (sm?.enabled) setStatusMonitorEnabled(true);
+    }).catch(() => {});
+  }, []);
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -157,6 +168,23 @@ export default function Sidebar() {
               </li>
             );
           })}
+          {/* Status Monitor (visible when plugin enabled) */}
+          {statusMonitorEnabled && (
+            <li>
+              <Link
+                to="/status"
+                className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive('/status')
+                    ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
+                    : 'text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
+                }`}
+                title={collapsed ? 'Status' : undefined}
+              >
+                <Activity className="h-5 w-5 shrink-0" />
+                {!collapsed && <span className="truncate">Status</span>}
+              </Link>
+            </li>
+          )}
           {/* Developer+: Plugins */}
           {(user?.role === 'developer' || user?.role === 'admin') && (
             <li>

@@ -18,6 +18,7 @@ var knownWidgetIDs = map[string]bool{
 	"quick_links":       true,
 	"pinned_entities":   true,
 	"recently_browsed":  true,
+	"status_monitor":    true,
 }
 
 // GetDashboardConfig handles GET /api/v1/dashboard/config.

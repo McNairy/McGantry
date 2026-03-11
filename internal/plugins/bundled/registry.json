@@ -436,5 +436,54 @@
     },
     "entityPanels": ["Infrastructure"],
     "actionTypes": ["terraform-plan", "terraform-apply"]
+  },
+  {
+    "name": "status-monitor",
+    "title": "Status Monitor",
+    "description": "Monitor the health of external services and cloud providers your team depends on, with a live dashboard and sidebar page.",
+    "longDescription": "The Status Monitor plugin acts as a built-in down detector for the services your platform depends on. It ships with 30+ pre-configured providers — GitHub, Cloudflare, Datadog, Vercel, Stripe, and more — that are checked automatically via their public status-page APIs.\n\nOnce installed and enabled, a new Status page appears in the sidebar showing live operational status for every monitored service. A compact dashboard widget highlights any providers currently experiencing issues so your team is aware of upstream problems without leaving Gantry.\n\nYou can also add custom providers by entering any Atlassian Statuspage-compatible URL (or any HTTP endpoint) in the plugin configuration.",
+    "features": [
+      "30+ pre-configured providers with automatic status checking",
+      "Live status page in the sidebar with category and status filters",
+      "Dashboard widget showing services with active incidents",
+      "Custom provider support — add any Atlassian Statuspage URL or HTTP endpoint",
+      "Concurrent status checks with 60-second server-side caching",
+      "Zero configuration required — works immediately after install and enable"
+    ],
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "widget",
+    "homepage": "https://github.com/go2engle/gantry/tree/main/internal/plugins/statusmonitor",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "customProviders": {
+          "type": "array",
+          "title": "Custom Providers",
+          "description": "Add your own status pages to monitor alongside the built-in providers.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Provider Name",
+                "description": "Display name for this provider (e.g. My Internal API)"
+              },
+              "statusUrl": {
+                "type": "string",
+                "title": "Status Page URL",
+                "description": "Atlassian Statuspage base URL or any HTTP(S) endpoint to check"
+              },
+              "homepageUrl": {
+                "type": "string",
+                "title": "Homepage URL",
+                "description": "Link to the provider's main website (optional)"
+              }
+            },
+            "required": ["name", "statusUrl"]
+          }
+        }
+      }
+    }
   }
 ]

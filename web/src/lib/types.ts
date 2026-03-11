@@ -387,6 +387,20 @@ export interface HistoryEntry {
   viewedAt: string;
 }
 
+// ─── Status Monitor ──────────────────────────────────────────────────────
+
+export interface StatusMonitorResult {
+  name: string;
+  title: string;
+  category: string;
+  status: 'operational' | 'degraded' | 'partial' | 'major' | 'maintenance' | 'unknown' | string;
+  description: string;
+  statusUrl: string;
+  homepage: string;
+  updatedAt?: string;
+  custom?: boolean;
+}
+
 export interface DashboardConfig {
   announcements: DashboardAnnouncement[];
   quickLinks: DashboardQuickLink[];

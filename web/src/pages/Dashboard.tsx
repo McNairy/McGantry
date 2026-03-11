@@ -54,6 +54,7 @@ import type {
   DashboardSeverity,
   DashboardLinkIcon,
   HistoryEntry,
+  StatusMonitorResult,
 } from '../lib/types';
 import { ENTITY_KINDS } from '../lib/types';
 
@@ -100,6 +101,7 @@ const WIDGET_LABELS: Record<string, string> = {
   entity_stats: 'Entity Stats',
   quick_links: 'Quick Links',
   pinned_entities: 'Pinned Entities',
+  status_monitor: 'Status Monitor',
   recent_activity: 'Recent Activity',
   action_runs: 'Action Runs',
   my_entities: 'My Entities',
@@ -111,11 +113,12 @@ const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
   { id: 'entity_stats', visible: true, order: 0, width: 'full' },
   { id: 'quick_links', visible: true, order: 1, width: 'full' },
   { id: 'pinned_entities', visible: true, order: 2, width: 'full' },
-  { id: 'recent_activity', visible: true, order: 3, width: 'half' },
-  { id: 'action_runs', visible: true, order: 4, width: 'half' },
-  { id: 'my_entities', visible: true, order: 5, width: 'half' },
-  { id: 'recently_updated', visible: true, order: 6, width: 'half' },
-  { id: 'recently_browsed', visible: true, order: 7, width: 'half' },
+  { id: 'status_monitor', visible: true, order: 3, width: 'full' },
+  { id: 'recent_activity', visible: true, order: 4, width: 'half' },
+  { id: 'action_runs', visible: true, order: 5, width: 'half' },
+  { id: 'my_entities', visible: true, order: 6, width: 'half' },
+  { id: 'recently_updated', visible: true, order: 7, width: 'half' },
+  { id: 'recently_browsed', visible: true, order: 8, width: 'half' },
 ];
 
 interface KindCount {
@@ -279,6 +282,7 @@ export default function Dashboard() {
   const [activity, setActivity] = useState<AuditEntry[]>([]);
   const [actionRuns, setActionRuns] = useState<ActionRun[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [statusMonitor, setStatusMonitor] = useState<StatusMonitorResult[]>([]);
   const [config, setConfig] = useState<DashboardConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -304,12 +308,14 @@ export default function Dashboard() {
       api.listAllActionRuns(5).catch(() => [] as ActionRun[]),
       api.getDashboardConfig().catch(() => null),
       api.getHistory(5).catch(() => [] as HistoryEntry[]),
+      api.getStatusMonitorStatuses().catch(() => [] as StatusMonitorResult[]),
     ])
-      .then(([ents, audit, runs, cfg, hist]) => {
+      .then(([ents, audit, runs, cfg, hist, sm]) => {
         setEntities(ents || []);
         setActivity(audit || []);
         setActionRuns(runs || []);
         setHistory(hist || []);
+        setStatusMonitor(sm || []);
         setConfig(cfg || { announcements: [], quickLinks: [], pinnedEntities: [], widgets: DEFAULT_WIDGETS });
       })
       .catch((err) => setError(err.message))
@@ -335,18 +341,30 @@ export default function Dashboard() {
     ? entities.filter((e) => e.metadata.owner === user.username).slice(0, 5)
     : [];
 
+  // Merge saved widgets with defaults so newly added widgets appear automatically.
+  function mergeWidgets(saved: DashboardWidgetConfig[] | undefined): DashboardWidgetConfig[] {
+    if (!saved || saved.length === 0) return DEFAULT_WIDGETS;
+    const ids = new Set(saved.map((w) => w.id));
+    const maxOrder = Math.max(...saved.map((w) => w.order), 0);
+    const missing = DEFAULT_WIDGETS.filter((d) => !ids.has(d.id)).map((d, i) => ({ ...d, order: maxOrder + 1 + i }));
+    return [...saved, ...missing];
+  }
+
   // Sorted visible widgets for view mode
-  const visibleWidgets = (config?.widgets ?? DEFAULT_WIDGETS)
+  const visibleWidgets = mergeWidgets(config?.widgets)
     .filter((w) => w.visible)
     .sort((a, b) => a.order - b.order);
 
-  // Sorted all widgets for edit mode
+  // Sorted all widgets for edit mode — use editConfig.widgets directly
+  // (enterEditMode pre-merges so editConfig always has the full list).
   const sortedEditWidgets = (editConfig?.widgets ?? DEFAULT_WIDGETS)
     .slice()
     .sort((a, b) => a.order - b.order);
 
   function enterEditMode() {
-    setEditConfig(JSON.parse(JSON.stringify(config)));
+    const clone: DashboardConfig = JSON.parse(JSON.stringify(config));
+    clone.widgets = mergeWidgets(clone.widgets);
+    setEditConfig(clone);
     setSaveError('');
     setEditMode(true);
   }
@@ -794,6 +812,70 @@ export default function Dashboard() {
             )}
           </div>
         );
+
+      case 'status_monitor': {
+        // Only render if we have status data (plugin enabled and responding).
+        if (statusMonitor.length === 0) return null;
+        const smIssues = statusMonitor.filter((s) => s.status !== 'operational' && s.status !== 'unknown');
+        const smOperational = statusMonitor.filter((s) => s.status === 'operational').length;
+        const STATUS_DOT: Record<string, string> = {
+          operational: 'bg-green-500',
+          degraded: 'bg-yellow-500',
+          partial: 'bg-orange-500',
+          major: 'bg-red-500',
+          maintenance: 'bg-blue-500',
+          unknown: 'bg-gray-400',
+        };
+        const STATUS_BADGE: Record<string, string> = {
+          degraded: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+          partial: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+          major: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+          maintenance: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+        };
+        return (
+          <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]">
+            <div className="flex items-center justify-between border-b border-[var(--gantry-border)] px-6 py-4">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-[var(--gantry-text-secondary)]" />
+                <h2 className="text-base font-semibold text-[var(--gantry-text-primary)]">Service Status</h2>
+              </div>
+              <Link to="/status" className="flex items-center gap-1 text-sm text-[var(--gantry-accent)] hover:opacity-75">
+                View all <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+            {smIssues.length === 0 ? (
+              <div className="flex items-center gap-3 px-6 py-4">
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
+                <div>
+                  <p className="text-sm font-medium text-[var(--gantry-text-primary)]">All systems operational</p>
+                  <p className="text-xs text-[var(--gantry-text-secondary)]">{smOperational} of {statusMonitor.length} monitored services</p>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 py-3 space-y-1.5">
+                <div className="flex items-center gap-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{smIssues.length} {smIssues.length === 1 ? 'service' : 'services'} reporting issues</span>
+                </div>
+                {smIssues.slice(0, 5).map((s) => (
+                  <div key={s.name} className="flex items-center gap-2.5 rounded-lg px-3 py-1.5">
+                    <div className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[s.status] || STATUS_DOT.unknown}`} />
+                    <a href={s.statusUrl} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-sm text-[var(--gantry-text-primary)] hover:text-[var(--gantry-accent)] hover:underline">{s.title}</a>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE[s.status] || 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400'}`}>
+                      {s.status === 'degraded' ? 'Degraded' : s.status === 'partial' ? 'Partial Outage' : s.status === 'major' ? 'Major Outage' : s.status === 'maintenance' ? 'Maintenance' : s.status}
+                    </span>
+                  </div>
+                ))}
+                {smIssues.length > 5 && (
+                  <div className="px-3 pt-1 text-xs text-[var(--gantry-text-secondary)]">
+                    +{smIssues.length - 5} more
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
 
       default:
         return null;

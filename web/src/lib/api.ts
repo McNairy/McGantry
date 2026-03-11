@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig, HistoryEntry } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig, HistoryEntry, StatusMonitorResult } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -143,6 +143,10 @@ export const api = {
 
   refreshArgoCDApp: (appName: string, instance?: string) =>
     request<ArgoCDAppStatus>('POST', `/plugins/argocd/apps/${encodeURIComponent(appName)}/refresh${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`, {}),
+
+  // Status Monitor
+  getStatusMonitorStatuses: () =>
+    request<StatusMonitorResult[]>('GET', '/plugins/status-monitor/statuses'),
 
   // Health check proxy
   checkHealth: (url: string) =>
