@@ -20,6 +20,7 @@ import {
   UserCog,
   Puzzle,
   Activity,
+  GitBranch,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
@@ -63,6 +64,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [statusMonitorEnabled, setStatusMonitorEnabled] = useState(false);
+  const [gitopsEnabled, setGitopsEnabled] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
 
@@ -71,6 +73,8 @@ export default function Sidebar() {
     api.listPlugins().then((plugins) => {
       const sm = plugins.find((p) => p.name === 'status-monitor');
       if (sm?.enabled) setStatusMonitorEnabled(true);
+      const gops = plugins.find((p) => p.name === 'gitops');
+      if (gops?.enabled) setGitopsEnabled(true);
     }).catch(() => {});
   }, []);
 
@@ -182,6 +186,23 @@ export default function Sidebar() {
               >
                 <Activity className="h-5 w-5 shrink-0" />
                 {!collapsed && <span className="truncate">Status</span>}
+              </Link>
+            </li>
+          )}
+          {/* GitOps (visible when plugin enabled) */}
+          {gitopsEnabled && (
+            <li>
+              <Link
+                to="/gitops"
+                className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive('/gitops')
+                    ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
+                    : 'text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
+                }`}
+                title={collapsed ? 'GitOps' : undefined}
+              >
+                <GitBranch className="h-5 w-5 shrink-0" />
+                {!collapsed && <span className="truncate">GitOps</span>}
               </Link>
             </li>
           )}

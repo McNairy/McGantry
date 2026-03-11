@@ -16,6 +16,7 @@ import (
 	"github.com/go2engle/gantry/internal/db"
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/gitops"
 	"github.com/go2engle/gantry/internal/search"
 	"github.com/spf13/cobra"
 )
@@ -119,8 +120,64 @@ func runServe(cmd *cobra.Command, args []string) error {
 		wsHub.Broadcast(event)
 	})
 
+	// Initialize GitOps service if the plugin is installed and enabled.
+	var gitopsSvc *gitops.Service
+	if p, err := database.GetPlugin(context.Background(), "gitops"); err == nil && p != nil && p.Enabled {
+		gopsCfg := gitops.ConfigFromPlugin(p.Config, cfg.DataDir)
+		if svc, err := gitops.New(gopsCfg, database); err == nil {
+			gitopsSvc = svc
+			// Start periodic pull if configured.
+			if gopsCfg.SyncInterval != "" {
+				if interval, err := time.ParseDuration(gopsCfg.SyncInterval); err == nil && interval > 0 {
+					gitopsSvc.StartPullLoop(interval)
+				}
+			}
+			fmt.Println("  GitOps:   enabled")
+		} else {
+			fmt.Printf("  GitOps:   init error: %v\n", err)
+		}
+	}
+
+	// Wire entity events to GitOps push (skip events originating from gitops itself).
+	eventBus.Subscribe(events.EntityCreated, func(event events.Event) {
+		if gitopsSvc == nil {
+			return
+		}
+		if src, _ := event.Data["source"].(string); src == "gitops" {
+			return
+		}
+		kind, _ := event.Data["kind"].(string)
+		name, _ := event.Data["name"].(string)
+		namespace, _ := event.Data["namespace"].(string)
+		gitopsSvc.QueueChange(kind, namespace, name, "write")
+	})
+	eventBus.Subscribe(events.EntityUpdated, func(event events.Event) {
+		if gitopsSvc == nil {
+			return
+		}
+		if src, _ := event.Data["source"].(string); src == "gitops" {
+			return
+		}
+		kind, _ := event.Data["kind"].(string)
+		name, _ := event.Data["name"].(string)
+		namespace, _ := event.Data["namespace"].(string)
+		gitopsSvc.QueueChange(kind, namespace, name, "write")
+	})
+	eventBus.Subscribe(events.EntityDeleted, func(event events.Event) {
+		if gitopsSvc == nil {
+			return
+		}
+		if src, _ := event.Data["source"].(string); src == "gitops" {
+			return
+		}
+		kind, _ := event.Data["kind"].(string)
+		name, _ := event.Data["name"].(string)
+		namespace, _ := event.Data["namespace"].(string)
+		gitopsSvc.QueueChange(kind, namespace, name, "delete")
+	})
+
 	// Create the API server.
-	srv := api.NewServer(cfg, database, authService, eventBus, validator, searchService, wsHub)
+	srv := api.NewServer(cfg, database, authService, eventBus, validator, searchService, wsHub, gitopsSvc)
 
 	// Print startup banner.
 	printBanner(cfg, tlsCert != "")
@@ -154,6 +211,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	case sig := <-shutdown:
 		fmt.Printf("\n  Received %v, shutting down gracefully...\n", sig)
+
+		if gitopsSvc != nil {
+			gitopsSvc.Stop()
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

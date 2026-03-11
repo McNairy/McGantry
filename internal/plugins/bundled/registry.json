@@ -485,5 +485,76 @@
         }
       }
     }
+  },
+  {
+    "name": "gitops",
+    "title": "GitOps",
+    "description": "Automatically sync your entity catalog to a Git repository with bidirectional push and pull.",
+    "longDescription": "The GitOps plugin maintains a Git repository as a declarative mirror of your Gantry catalog. Every entity change (create, update, delete) is automatically committed and pushed to the configured repository as clean YAML files.\n\nPull-based reconciliation works in the other direction: changes committed directly to the Git repo (e.g. via a pull request) can be detected and applied to Gantry on demand or on a configurable interval.\n\nThe repo layout matches the `gantry apply` format, so files can be edited by hand or by automation.",
+    "features": [
+      "Automatic push: entity changes committed and pushed to Git in near-real-time",
+      "Pull reconciliation: detect and apply changes made directly in the Git repo",
+      "Clean YAML output compatible with gantry apply CLI",
+      "Configurable sync interval for automatic pull reconciliation",
+      "Batched commits: rapid changes are grouped into a single commit",
+      "Full sync: push entire catalog to Git on demand",
+      "Sync history and status dashboard"
+    ],
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "integration",
+    "homepage": "https://github.com/go2engle/gantry",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "repoUrl": {
+          "type": "string",
+          "title": "Repository URL",
+          "description": "Git repository URL (HTTPS). Example: https://github.com/org/gantry-catalog.git"
+        },
+        "branch": {
+          "type": "string",
+          "title": "Branch",
+          "description": "Git branch to sync with.",
+          "default": "main"
+        },
+        "authToken": {
+          "type": "string",
+          "title": "Personal Access Token",
+          "description": "Personal Access Token for HTTPS authentication. Required for private repos."
+        },
+        "basePath": {
+          "type": "string",
+          "title": "Base Path",
+          "description": "Directory within the repo to store entity files. Leave empty for repo root.",
+          "default": ""
+        },
+        "autoPush": {
+          "type": "boolean",
+          "title": "Auto-Push",
+          "description": "Automatically push entity changes to the remote repository.",
+          "default": true
+        },
+        "commitAuthorName": {
+          "type": "string",
+          "title": "Commit Author Name",
+          "description": "Name used for Git commits.",
+          "default": "Gantry GitOps"
+        },
+        "commitAuthorEmail": {
+          "type": "string",
+          "title": "Commit Author Email",
+          "description": "Email used for Git commits.",
+          "default": "gantry@localhost"
+        },
+        "syncInterval": {
+          "type": "string",
+          "title": "Pull Sync Interval",
+          "description": "How often to automatically pull changes from Git (e.g. 5m, 1h). Leave empty for manual-only pull.",
+          "default": ""
+        }
+      },
+      "required": ["repoUrl"]
+    }
   }
 ]

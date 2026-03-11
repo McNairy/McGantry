@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig, HistoryEntry, StatusMonitorResult } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig, HistoryEntry, StatusMonitorResult, GitOpsStatus, GitOpsSyncEntry, GitOpsFileEntry } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -160,4 +160,11 @@ export const api = {
   getHistory: (limit = 5) => request<HistoryEntry[]>('GET', `/history?limit=${limit}`),
   recordView: (kind: string, name: string, namespace?: string) =>
     request<void>('POST', '/history', { kind, name, namespace: namespace || 'default' }),
+
+  // GitOps
+  getGitOpsStatus: () => request<GitOpsStatus>('GET', '/plugins/gitops/status'),
+  getGitOpsHistory: () => request<GitOpsSyncEntry[]>('GET', '/plugins/gitops/history'),
+  getGitOpsFiles: () => request<GitOpsFileEntry[]>('GET', '/plugins/gitops/files'),
+  triggerGitOpsSync: () => request<{ message: string }>('POST', '/plugins/gitops/sync'),
+  triggerGitOpsPull: () => request<{ message: string }>('POST', '/plugins/gitops/pull'),
 };

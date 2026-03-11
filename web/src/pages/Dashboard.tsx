@@ -55,6 +55,7 @@ import type {
   DashboardLinkIcon,
   HistoryEntry,
   StatusMonitorResult,
+  GitOpsStatus,
 } from '../lib/types';
 import { ENTITY_KINDS } from '../lib/types';
 
@@ -107,6 +108,7 @@ const WIDGET_LABELS: Record<string, string> = {
   my_entities: 'My Entities',
   recently_updated: 'Recently Updated',
   recently_browsed: 'Recently Browsed',
+  gitops_status: 'GitOps Status',
 };
 
 const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
@@ -119,6 +121,7 @@ const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
   { id: 'my_entities', visible: true, order: 6, width: 'half' },
   { id: 'recently_updated', visible: true, order: 7, width: 'half' },
   { id: 'recently_browsed', visible: true, order: 8, width: 'half' },
+  { id: 'gitops_status', visible: true, order: 9, width: 'half' },
 ];
 
 interface KindCount {
@@ -283,6 +286,7 @@ export default function Dashboard() {
   const [actionRuns, setActionRuns] = useState<ActionRun[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [statusMonitor, setStatusMonitor] = useState<StatusMonitorResult[]>([]);
+  const [gitopsStatus, setGitopsStatus] = useState<GitOpsStatus | null>(null);
   const [config, setConfig] = useState<DashboardConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -309,13 +313,15 @@ export default function Dashboard() {
       api.getDashboardConfig().catch(() => null),
       api.getHistory(5).catch(() => [] as HistoryEntry[]),
       api.getStatusMonitorStatuses().catch(() => [] as StatusMonitorResult[]),
+      api.getGitOpsStatus().catch(() => null as GitOpsStatus | null),
     ])
-      .then(([ents, audit, runs, cfg, hist, sm]) => {
+      .then(([ents, audit, runs, cfg, hist, sm, gops]) => {
         setEntities(ents || []);
         setActivity(audit || []);
         setActionRuns(runs || []);
         setHistory(hist || []);
         setStatusMonitor(sm || []);
+        setGitopsStatus(gops || null);
         setConfig(cfg || { announcements: [], quickLinks: [], pinnedEntities: [], widgets: DEFAULT_WIDGETS });
       })
       .catch((err) => setError(err.message))
@@ -873,6 +879,45 @@ export default function Dashboard() {
                 )}
               </div>
             )}
+          </div>
+        );
+      }
+
+      case 'gitops_status': {
+        if (!gitopsStatus) return null;
+        return (
+          <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]">
+            <div className="flex items-center justify-between border-b border-[var(--gantry-border)] px-6 py-4">
+              <div className="flex items-center gap-2">
+                <GitBranch className="h-4 w-4 text-[var(--gantry-text-secondary)]" />
+                <h2 className="text-base font-semibold text-[var(--gantry-text-primary)]">GitOps</h2>
+              </div>
+              <Link to="/gitops" className="flex items-center gap-1 text-sm text-[var(--gantry-accent)] hover:opacity-75">
+                Manage <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className={`h-2.5 w-2.5 rounded-full ${gitopsStatus.connected ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span className="text-sm font-medium text-[var(--gantry-text-primary)]">
+                  {gitopsStatus.connected ? 'Connected' : 'Disconnected'}
+                </span>
+                {gitopsStatus.branch && (
+                  <span className="rounded bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 text-xs text-[var(--gantry-text-secondary)]">
+                    {gitopsStatus.branch}
+                  </span>
+                )}
+              </div>
+              {gitopsStatus.lastError && (
+                <p className="text-xs text-[var(--gantry-danger)] truncate" title={gitopsStatus.lastError}>
+                  {gitopsStatus.lastError}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2 text-xs text-[var(--gantry-text-secondary)]">
+                <div>Last push: {gitopsStatus.lastPushAt ? new Date(gitopsStatus.lastPushAt).toLocaleString() : 'Never'}</div>
+                <div>Last pull: {gitopsStatus.lastPullAt ? new Date(gitopsStatus.lastPullAt).toLocaleString() : 'Never'}</div>
+              </div>
+            </div>
           </div>
         );
       }

@@ -409,3 +409,34 @@ export interface DashboardConfig {
   updatedAt?: string;
   updatedBy?: string;
 }
+
+// ─── GitOps ──────────────────────────────────────────────────────────────
+
+export interface GitOpsStatus {
+  connected: boolean;
+  repoUrl?: string;
+  branch?: string;
+  lastCommit?: string;
+  lastCommitAt?: string;
+  lastPushAt?: string;
+  lastPullAt?: string;
+  lastError?: string;
+  pendingFiles: number;
+}
+
+export interface GitOpsSyncEntry {
+  id: string;
+  timestamp: string;
+  direction: 'push' | 'pull';
+  commit?: string;
+  message: string;
+  files: number;
+  error?: string;
+}
+
+export interface GitOpsFileEntry {
+  path: string;
+  kind: string;
+  namespace: string;
+  name: string;
+}

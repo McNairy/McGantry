@@ -20,6 +20,7 @@ import (
 	"github.com/go2engle/gantry/internal/dispatcher"
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/gitops"
 	"github.com/go2engle/gantry/internal/metrics"
 	"github.com/go2engle/gantry/internal/search"
 )
@@ -32,7 +33,7 @@ type Server struct {
 }
 
 // NewServer creates a new Gantry API server with all routes configured.
-func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, eventBus *events.Bus, validator *entity.SchemaValidator, searchSvc *search.Service, wsHub *websocket.Hub) *Server {
+func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, eventBus *events.Bus, validator *entity.SchemaValidator, searchSvc *search.Service, wsHub *websocket.Hub, gitopsSvc *gitops.Service) *Server {
 	r := chi.NewRouter()
 
 	// Core middleware.
@@ -70,6 +71,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 		Validator:  validator,
 		SearchSvc:  searchSvc,
 		Dispatcher: dispatcher.New(database, eventBus),
+		GitOps:     gitopsSvc,
 	}
 
 	// Health check routes (public).
@@ -167,6 +169,12 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// Status Monitor plugin endpoints.
 			protected.Get("/plugins/status-monitor/statuses", h.GetStatusMonitorStatuses)
 			protected.Get("/plugins/status-monitor/providers", h.GetStatusMonitorProviders)
+			// GitOps plugin endpoints.
+			protected.Get("/plugins/gitops/status", h.GetGitOpsStatus)
+			protected.Get("/plugins/gitops/history", h.GetGitOpsHistory)
+			protected.Get("/plugins/gitops/files", h.GetGitOpsFiles)
+			protected.With(middleware.RequireRole("developer")).Post("/plugins/gitops/sync", h.TriggerGitOpsSync)
+			protected.With(middleware.RequireRole("developer")).Post("/plugins/gitops/pull", h.TriggerGitOpsPull)
 			// ArgoCD-specific plugin endpoints.
 			protected.Get("/plugins/argocd/entity-apps", h.GetArgoCDEntityApps)
 			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)

@@ -1,0 +1,794 @@
+package gitops
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go2engle/gantry/internal/db"
+	"github.com/go2engle/gantry/internal/entity"
+)
+
+// Config holds the configuration for the GitOps service.
+type Config struct {
+	RepoURL           string
+	Branch            string
+	AuthToken         string
+	BasePath          string
+	AutoPush          bool
+	CommitAuthorName  string
+	CommitAuthorEmail string
+	SyncInterval      string
+	DataDir           string
+}
+
+// SyncStatus represents the current state of the GitOps sync.
+type SyncStatus struct {
+	Connected    bool   `json:"connected"`
+	RepoURL      string `json:"repoUrl,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+	LastCommit   string `json:"lastCommit,omitempty"`
+	LastCommitAt string `json:"lastCommitAt,omitempty"`
+	LastPushAt   string `json:"lastPushAt,omitempty"`
+	LastPullAt   string `json:"lastPullAt,omitempty"`
+	LastError    string `json:"lastError,omitempty"`
+	PendingFiles int    `json:"pendingFiles"`
+}
+
+// SyncHistoryEntry records a single sync operation.
+type SyncHistoryEntry struct {
+	ID        string `json:"id"`
+	Timestamp string `json:"timestamp"`
+	Direction string `json:"direction"` // "push" or "pull"
+	Commit    string `json:"commit,omitempty"`
+	Message   string `json:"message"`
+	Files     int    `json:"files"`
+	Error     string `json:"error,omitempty"`
+}
+
+// FileEntry represents an entity file tracked in the Git repo.
+type FileEntry struct {
+	Path      string `json:"path"`
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
+// PullResult holds the result of a pull + reconcile operation.
+type PullResult struct {
+	Created int `json:"created"`
+	Updated int `json:"updated"`
+	Deleted int `json:"deleted"`
+	Errors  int `json:"errors"`
+}
+
+type batchItem struct {
+	Kind      string
+	Namespace string
+	Name      string
+	Action    string // "write" or "delete"
+}
+
+const (
+	maxHistory    = 100
+	batchDelay    = 2 * time.Second
+	defaultBranch = "main"
+)
+
+// Service manages bidirectional Git synchronization for Gantry entities.
+type Service struct {
+	config Config
+	repo   *git.Repository
+	db     *db.DB
+
+	mu     sync.Mutex // serializes all git operations
+	status SyncStatus
+
+	historyMu sync.Mutex
+	history   []SyncHistoryEntry
+
+	batchMu    sync.Mutex
+	batchTimer *time.Timer
+	batchItems map[string]batchItem // keyed by kind/ns/name to deduplicate
+
+	syncing  bool // true during pull reconciliation to suppress push
+	stopCh   chan struct{}
+	stopOnce sync.Once
+}
+
+// ConfigFromPlugin extracts a gitops Config from a plugin's config map.
+func ConfigFromPlugin(pluginConfig map[string]any, dataDir string) Config {
+	getString := func(key, def string) string {
+		if v, ok := pluginConfig[key].(string); ok && v != "" {
+			return v
+		}
+		return def
+	}
+	getBool := func(key string, def bool) bool {
+		if v, ok := pluginConfig[key].(bool); ok {
+			return v
+		}
+		return def
+	}
+
+	return Config{
+		RepoURL:           getString("repoUrl", ""),
+		Branch:            getString("branch", defaultBranch),
+		AuthToken:         getString("authToken", ""),
+		BasePath:          strings.TrimSuffix(getString("basePath", ""), "/"),
+		AutoPush:          getBool("autoPush", true),
+		CommitAuthorName:  getString("commitAuthorName", "Gantry GitOps"),
+		CommitAuthorEmail: getString("commitAuthorEmail", "gantry@localhost"),
+		SyncInterval:      getString("syncInterval", ""),
+		DataDir:           filepath.Join(dataDir, "gitops"),
+	}
+}
+
+// New creates a new GitOps service. It clones the repo if not already present
+// or opens an existing local clone.
+func New(cfg Config, database *db.DB) (*Service, error) {
+	if cfg.RepoURL == "" {
+		return nil, fmt.Errorf("gitops: repository URL is required")
+	}
+	if cfg.Branch == "" {
+		cfg.Branch = defaultBranch
+	}
+
+	s := &Service{
+		config:     cfg,
+		db:         database,
+		batchItems: make(map[string]batchItem),
+		stopCh:     make(chan struct{}),
+		status: SyncStatus{
+			RepoURL: cfg.RepoURL,
+			Branch:  cfg.Branch,
+		},
+	}
+
+	if err := s.ensureRepo(); err != nil {
+		s.status.LastError = err.Error()
+		return s, nil // return service even on clone failure so status is visible
+	}
+
+	s.status.Connected = true
+	s.updateLastCommit()
+
+	return s, nil
+}
+
+// ensureRepo clones the repo or opens an existing clone.
+func (s *Service) ensureRepo() error {
+	if err := os.MkdirAll(s.config.DataDir, 0o755); err != nil {
+		return fmt.Errorf("creating data dir: %w", err)
+	}
+
+	repoPath := filepath.Join(s.config.DataDir, "repo")
+
+	// Try opening existing repo first.
+	repo, err := git.PlainOpen(repoPath)
+	if err == nil {
+		s.repo = repo
+		return s.pullLatest()
+	}
+
+	// Clone fresh.
+	opts := &git.CloneOptions{
+		URL:           s.config.RepoURL,
+		ReferenceName: plumbing.NewBranchReferenceName(s.config.Branch),
+		SingleBranch:  true,
+		Auth:          s.authMethod(),
+	}
+
+	repo, err = git.PlainClone(repoPath, false, opts)
+	if err != nil {
+		return fmt.Errorf("cloning repository: %w", err)
+	}
+
+	s.repo = repo
+	return nil
+}
+
+func (s *Service) authMethod() *http.BasicAuth {
+	if s.config.AuthToken == "" {
+		return nil
+	}
+	return &http.BasicAuth{
+		Username: "gantry", // username is ignored for PAT auth
+		Password: s.config.AuthToken,
+	}
+}
+
+// pullLatest fetches and merges the latest changes from the remote.
+func (s *Service) pullLatest() error {
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("getting worktree: %w", err)
+	}
+
+	err = w.Pull(&git.PullOptions{
+		RemoteName:    "origin",
+		ReferenceName: plumbing.NewBranchReferenceName(s.config.Branch),
+		Auth:          s.authMethod(),
+		Force:         true,
+	})
+
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("pulling from remote: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) push() error {
+	if !s.config.AutoPush {
+		return nil
+	}
+
+	err := s.repo.Push(&git.PushOptions{
+		RemoteName: "origin",
+		Auth:       s.authMethod(),
+		RefSpecs: []gitconfig.RefSpec{
+			gitconfig.RefSpec("refs/heads/" + s.config.Branch + ":refs/heads/" + s.config.Branch),
+		},
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("pushing to remote: %w", err)
+	}
+
+	s.status.LastPushAt = time.Now().UTC().Format(time.RFC3339)
+	return nil
+}
+
+func (s *Service) updateLastCommit() {
+	if s.repo == nil {
+		return
+	}
+	ref, err := s.repo.Head()
+	if err != nil {
+		return
+	}
+	commit, err := s.repo.CommitObject(ref.Hash())
+	if err != nil {
+		return
+	}
+	s.status.LastCommit = ref.Hash().String()[:12]
+	s.status.LastCommitAt = commit.Author.When.UTC().Format(time.RFC3339)
+}
+
+// WriteEntity serializes an entity and writes it to the local repo.
+func (s *Service) WriteEntity(e *entity.Entity) error {
+	data, err := SerializeEntity(e)
+	if err != nil {
+		return err
+	}
+
+	relPath := EntityFilePath(s.config.BasePath, e.Kind, e.Metadata.Namespace, e.Metadata.Name)
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("getting worktree: %w", err)
+	}
+
+	absPath := filepath.Join(w.Filesystem.Root(), relPath)
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		return fmt.Errorf("creating directories: %w", err)
+	}
+
+	if err := os.WriteFile(absPath, data, 0o644); err != nil {
+		return fmt.Errorf("writing file: %w", err)
+	}
+
+	if _, err := w.Add(relPath); err != nil {
+		return fmt.Errorf("staging file: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteEntityFile removes an entity's YAML file from the local repo.
+func (s *Service) DeleteEntityFile(kind, namespace, name string) error {
+	relPath := EntityFilePath(s.config.BasePath, kind, namespace, name)
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("getting worktree: %w", err)
+	}
+
+	absPath := filepath.Join(w.Filesystem.Root(), relPath)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return nil // already gone
+	}
+
+	if err := os.Remove(absPath); err != nil {
+		return fmt.Errorf("removing file: %w", err)
+	}
+
+	if _, err := w.Add(relPath); err != nil {
+		return fmt.Errorf("staging removal: %w", err)
+	}
+
+	return nil
+}
+
+// commitAndPush creates a commit with the given message and pushes if configured.
+func (s *Service) commitAndPush(message string) (string, error) {
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("getting worktree: %w", err)
+	}
+
+	status, err := w.Status()
+	if err != nil {
+		return "", fmt.Errorf("getting status: %w", err)
+	}
+
+	if status.IsClean() {
+		return "", nil // nothing to commit
+	}
+
+	hash, err := w.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  s.config.CommitAuthorName,
+			Email: s.config.CommitAuthorEmail,
+			When:  time.Now().UTC(),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("committing: %w", err)
+	}
+
+	commitHash := hash.String()[:12]
+	s.status.LastCommit = commitHash
+	s.status.LastCommitAt = time.Now().UTC().Format(time.RFC3339)
+
+	if err := s.push(); err != nil {
+		return commitHash, err
+	}
+
+	return commitHash, nil
+}
+
+// QueueChange adds an entity change to the batch. After a 2-second debounce window,
+// all queued changes are flushed in a single commit.
+// This is called from event bus subscribers.
+func (s *Service) QueueChange(kind, namespace, name, action string) {
+	if s.syncing {
+		return // suppress push during pull reconciliation
+	}
+
+	key := kind + "/" + namespace + "/" + name
+	s.batchMu.Lock()
+	defer s.batchMu.Unlock()
+
+	s.batchItems[key] = batchItem{
+		Kind:      kind,
+		Namespace: namespace,
+		Name:      name,
+		Action:    action,
+	}
+	s.status.PendingFiles = len(s.batchItems)
+
+	if s.batchTimer != nil {
+		s.batchTimer.Stop()
+	}
+	s.batchTimer = time.AfterFunc(batchDelay, s.flushBatch)
+}
+
+// flushBatch processes all queued entity changes.
+func (s *Service) flushBatch() {
+	s.batchMu.Lock()
+	items := make(map[string]batchItem, len(s.batchItems))
+	for k, v := range s.batchItems {
+		items[k] = v
+	}
+	s.batchItems = make(map[string]batchItem)
+	s.status.PendingFiles = 0
+	s.batchMu.Unlock()
+
+	if len(items) == 0 {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.status.Connected || s.repo == nil {
+		return
+	}
+
+	ctx := context.Background()
+	var messages []string
+	fileCount := 0
+
+	for _, item := range items {
+		switch item.Action {
+		case "write":
+			e, err := s.db.GetEntity(ctx, item.Kind, item.Namespace, item.Name)
+			if err != nil || e == nil {
+				continue // entity may have been deleted already
+			}
+			if err := s.WriteEntity(e); err != nil {
+				s.setError(fmt.Sprintf("write %s/%s/%s: %v", item.Kind, item.Namespace, item.Name, err))
+				continue
+			}
+			messages = append(messages, fmt.Sprintf("update %s/%s", item.Kind, item.Name))
+			fileCount++
+
+		case "delete":
+			if err := s.DeleteEntityFile(item.Kind, item.Namespace, item.Name); err != nil {
+				s.setError(fmt.Sprintf("delete %s/%s/%s: %v", item.Kind, item.Namespace, item.Name, err))
+				continue
+			}
+			messages = append(messages, fmt.Sprintf("delete %s/%s", item.Kind, item.Name))
+			fileCount++
+		}
+	}
+
+	if fileCount == 0 {
+		return
+	}
+
+	msg := "gantry: " + strings.Join(messages, ", ")
+	if len(msg) > 200 {
+		msg = fmt.Sprintf("gantry: sync %d entities", fileCount)
+	}
+
+	commitHash, err := s.commitAndPush(msg)
+	entry := SyncHistoryEntry{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Direction: "push",
+		Commit:    commitHash,
+		Message:   msg,
+		Files:     fileCount,
+	}
+	if err != nil {
+		entry.Error = err.Error()
+		s.setError(err.Error())
+	} else {
+		s.status.LastError = ""
+	}
+	s.addHistory(entry)
+}
+
+// FullSync exports all entities from the database to the Git repo.
+func (s *Service) FullSync() (*SyncHistoryEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.status.Connected || s.repo == nil {
+		return nil, fmt.Errorf("not connected to repository")
+	}
+
+	// Pull latest before pushing to reduce conflicts.
+	if err := s.pullLatest(); err != nil {
+		s.setError(err.Error())
+		// continue anyway — we'll push our state
+	}
+
+	ctx := context.Background()
+	entities, err := s.db.ListEntities(ctx, "", "")
+	if err != nil {
+		return nil, fmt.Errorf("listing entities: %w", err)
+	}
+
+	fileCount := 0
+	for _, e := range entities {
+		if err := s.WriteEntity(e); err != nil {
+			s.setError(fmt.Sprintf("write %s/%s: %v", e.Kind, e.Metadata.Name, err))
+			continue
+		}
+		fileCount++
+	}
+
+	msg := fmt.Sprintf("gantry: full sync — %d entities", fileCount)
+	commitHash, err := s.commitAndPush(msg)
+
+	entry := SyncHistoryEntry{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Direction: "push",
+		Commit:    commitHash,
+		Message:   msg,
+		Files:     fileCount,
+	}
+	if err != nil {
+		entry.Error = err.Error()
+		s.setError(err.Error())
+	} else {
+		s.status.LastError = ""
+	}
+	s.addHistory(entry)
+	return &entry, err
+}
+
+// Pull fetches changes from the remote and reconciles with the database.
+func (s *Service) Pull() (*PullResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.status.Connected || s.repo == nil {
+		return nil, fmt.Errorf("not connected to repository")
+	}
+
+	s.syncing = true
+	defer func() { s.syncing = false }()
+
+	if err := s.pullLatest(); err != nil {
+		s.setError(err.Error())
+		return nil, err
+	}
+	s.status.LastPullAt = time.Now().UTC().Format(time.RFC3339)
+
+	// Walk the repo and reconcile all entity files.
+	result, err := s.reconcileFromRepo()
+
+	entry := SyncHistoryEntry{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Direction: "pull",
+		Message:   fmt.Sprintf("gantry: pull — %d created, %d updated, %d deleted", result.Created, result.Updated, result.Deleted),
+		Files:     result.Created + result.Updated + result.Deleted,
+	}
+	if err != nil {
+		entry.Error = err.Error()
+		s.setError(err.Error())
+	} else {
+		s.status.LastError = ""
+	}
+
+	s.updateLastCommit()
+	s.addHistory(entry)
+	return result, err
+}
+
+// reconcileFromRepo walks the repo tree and syncs entities to the database.
+func (s *Service) reconcileFromRepo() (*PullResult, error) {
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("getting worktree: %w", err)
+	}
+
+	result := &PullResult{}
+	ctx := context.Background()
+	repoRoot := w.Filesystem.Root()
+
+	// Walk the repo tree looking for YAML files.
+	walkRoot := repoRoot
+	if s.config.BasePath != "" {
+		walkRoot = filepath.Join(repoRoot, s.config.BasePath)
+	}
+
+	if _, err := os.Stat(walkRoot); os.IsNotExist(err) {
+		return result, nil // base path doesn't exist yet
+	}
+
+	err = filepath.Walk(walkRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries
+		}
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".yaml") {
+			return nil
+		}
+
+		// Get the relative path from repo root.
+		relPath, _ := filepath.Rel(repoRoot, path)
+		kind, namespace, name := ParseEntityPath(s.config.BasePath, relPath)
+		if kind == "" {
+			return nil // not a valid entity path
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			result.Errors++
+			return nil
+		}
+
+		repoEntity, err := DeserializeEntity(data)
+		if err != nil {
+			result.Errors++
+			return nil
+		}
+
+		// Check current DB state.
+		existing, err := s.db.GetEntity(ctx, kind, namespace, name)
+		if err != nil {
+			result.Errors++
+			return nil
+		}
+
+		if existing == nil {
+			// Create new entity.
+			repoEntity.Metadata.CreatedBy = "gitops"
+			if err := s.db.CreateEntity(ctx, repoEntity); err != nil {
+				result.Errors++
+			} else {
+				result.Created++
+			}
+		} else {
+			// Update existing entity — merge spec and metadata from repo.
+			existing.Spec = repoEntity.Spec
+			existing.Metadata.Title = repoEntity.Metadata.Title
+			existing.Metadata.Description = repoEntity.Metadata.Description
+			existing.Metadata.Owner = repoEntity.Metadata.Owner
+			existing.Metadata.Tags = repoEntity.Metadata.Tags
+			existing.Metadata.Annotations = repoEntity.Metadata.Annotations
+			existing.Metadata.Labels = repoEntity.Metadata.Labels
+
+			if err := s.db.UpdateEntity(ctx, existing); err != nil {
+				result.Errors++
+			} else {
+				result.Updated++
+			}
+		}
+
+		return nil
+	})
+
+	return result, err
+}
+
+// ListFiles returns all entity files tracked in the repo.
+func (s *Service) ListFiles() ([]FileEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.repo == nil {
+		return nil, fmt.Errorf("not connected to repository")
+	}
+
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("getting worktree: %w", err)
+	}
+
+	var files []FileEntry
+	repoRoot := w.Filesystem.Root()
+	walkRoot := repoRoot
+	if s.config.BasePath != "" {
+		walkRoot = filepath.Join(repoRoot, s.config.BasePath)
+	}
+
+	if _, err := os.Stat(walkRoot); os.IsNotExist(err) {
+		return files, nil
+	}
+
+	filepath.Walk(walkRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".yaml") {
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(repoRoot, path)
+		kind, namespace, name := ParseEntityPath(s.config.BasePath, relPath)
+		if kind == "" {
+			return nil
+		}
+
+		files = append(files, FileEntry{
+			Path:      relPath,
+			Kind:      kind,
+			Namespace: namespace,
+			Name:      name,
+		})
+		return nil
+	})
+
+	return files, nil
+}
+
+// Status returns the current sync status.
+func (s *Service) Status() SyncStatus {
+	s.batchMu.Lock()
+	s.status.PendingFiles = len(s.batchItems)
+	s.batchMu.Unlock()
+	return s.status
+}
+
+// History returns recent sync operations.
+func (s *Service) History() []SyncHistoryEntry {
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+
+	result := make([]SyncHistoryEntry, len(s.history))
+	copy(result, s.history)
+	return result
+}
+
+func (s *Service) addHistory(entry SyncHistoryEntry) {
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+
+	s.history = append([]SyncHistoryEntry{entry}, s.history...)
+	if len(s.history) > maxHistory {
+		s.history = s.history[:maxHistory]
+	}
+}
+
+func (s *Service) setError(msg string) {
+	s.status.LastError = msg
+}
+
+// StartPullLoop starts a background goroutine that periodically pulls from the remote.
+func (s *Service) StartPullLoop(interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-s.stopCh:
+				return
+			case <-ticker.C:
+				s.Pull()
+			}
+		}
+	}()
+}
+
+// Stop shuts down the service, flushing any pending batch.
+func (s *Service) Stop() {
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+
+		s.batchMu.Lock()
+		if s.batchTimer != nil {
+			s.batchTimer.Stop()
+		}
+		s.batchMu.Unlock()
+
+		// Flush remaining items.
+		s.flushBatch()
+	})
+}
+
+// Reinit re-initializes the service with new config. Used when plugin config changes.
+func (s *Service) Reinit(cfg Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.config = cfg
+	s.status = SyncStatus{
+		RepoURL: cfg.RepoURL,
+		Branch:  cfg.Branch,
+	}
+
+	// If URL changed, remove old clone and re-clone.
+	repoPath := filepath.Join(cfg.DataDir, "repo")
+	if s.repo != nil {
+		// Check if remote URL changed.
+		remotes, err := s.repo.Remotes()
+		urlChanged := err != nil || len(remotes) == 0
+		if !urlChanged {
+			for _, r := range remotes {
+				if r.Config().Name == "origin" {
+					urls := r.Config().URLs
+					if len(urls) == 0 || urls[0] != cfg.RepoURL {
+						urlChanged = true
+					}
+					break
+				}
+			}
+		}
+
+		if urlChanged {
+			os.RemoveAll(repoPath)
+			s.repo = nil
+		}
+	}
+
+	if err := s.ensureRepo(); err != nil {
+		s.status.LastError = err.Error()
+		return err
+	}
+
+	s.status.Connected = true
+	s.updateLastCommit()
+	return nil
+}

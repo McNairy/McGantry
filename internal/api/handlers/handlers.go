@@ -10,6 +10,7 @@ import (
 	"github.com/go2engle/gantry/internal/dispatcher"
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
+	"github.com/go2engle/gantry/internal/gitops"
 	"github.com/go2engle/gantry/internal/search"
 )
 
@@ -21,6 +22,7 @@ type Handlers struct {
 	Validator  *entity.SchemaValidator
 	SearchSvc  *search.Service
 	Dispatcher *dispatcher.Manager
+	GitOps     *gitops.Service
 }
 
 // writeJSON serializes v as JSON and writes it to the response with the given
