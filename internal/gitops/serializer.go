@@ -2,6 +2,7 @@
 package gitops
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -53,11 +54,14 @@ func SerializeEntity(e *entity.Entity) ([]byte, error) {
 		ye.Metadata.Namespace = ""
 	}
 
-	data, err := yaml.Marshal(ye)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(ye); err != nil {
 		return nil, fmt.Errorf("marshaling entity to YAML: %w", err)
 	}
-	return data, nil
+	enc.Close()
+	return buf.Bytes(), nil
 }
 
 // DeserializeEntity parses YAML data into an entity.
