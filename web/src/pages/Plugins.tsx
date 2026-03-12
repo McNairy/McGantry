@@ -815,12 +815,15 @@ function PluginCard({
   const canSync = plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
 
   return (
-    <div className="bg-[var(--gantry-bg-secondary)] rounded-xl border border-[var(--gantry-border)] flex flex-col hover:border-[var(--gantry-accent)] transition-colors">
+    <div className="group flex flex-col rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] transition-shadow hover:shadow-md">
+      {/* Card top accent strip */}
+      <div className="h-1 w-full rounded-t-xl bg-[var(--gantry-accent)]/20" />
+
       {/* Clickable top area → opens detail overlay */}
       <button
         type="button"
         onClick={() => onOpenDetail('overview')}
-        className="flex flex-col gap-3 p-5 text-left flex-1 min-h-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gantry-accent)] rounded-t-xl"
+        className="flex flex-col gap-3 p-5 text-left flex-1 min-h-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gantry-accent)]"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -987,23 +990,23 @@ export default function Plugins() {
     : null;
 
   return (
-    <div className="flex-1 flex flex-col overflow-auto bg-[var(--gantry-bg-primary)]">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="px-8 pt-8 pb-4">
-        <div className="flex items-center justify-between mb-1">
+      <div className="flex items-start justify-between gap-4">
+        <div>
           <h1 className="text-2xl font-bold text-[var(--gantry-text-primary)]">Plugins</h1>
-          <div className="flex items-center gap-4 text-sm text-[var(--gantry-text-secondary)]">
-            <span>{plugins.length} available</span>
-            <span>{enabledCount} enabled</span>
-          </div>
+          <p className="mt-1 text-sm text-[var(--gantry-text-secondary)]">
+            Browse and manage plugins to extend Gantry with integrations, widgets, and more.
+          </p>
         </div>
-        <p className="text-sm text-[var(--gantry-text-secondary)]">
-          Browse and manage plugins to extend Gantry with integrations, widgets, and more.
-        </p>
+        <div className="flex items-center gap-4 text-sm text-[var(--gantry-text-secondary)]">
+          <span>{plugins.length} available</span>
+          <span>{enabledCount} enabled</span>
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="px-8 border-b border-[var(--gantry-border)]">
+      <div className="border-b border-[var(--gantry-border)]">
         <div className="flex gap-6">
           {(['browse', 'installed'] as const).map((t) => (
             <button
@@ -1022,7 +1025,7 @@ export default function Plugins() {
       </div>
 
       {/* Filters */}
-      <div className="px-8 py-4 flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-shrink-0">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--gantry-text-secondary)]" />
           <input
@@ -1030,10 +1033,10 @@ export default function Plugins() {
             placeholder="Search plugins…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 pr-4 py-2 text-sm rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] text-[var(--gantry-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--gantry-accent)] w-52"
+            className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] pl-8 pr-4 py-2 text-sm text-[var(--gantry-text-primary)] placeholder-[var(--gantry-text-secondary)] focus:border-[var(--gantry-accent)] focus:outline-none sm:w-52"
           />
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-1.5">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.id}
@@ -1041,7 +1044,7 @@ export default function Plugins() {
               className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
                 category === cat.id
                   ? 'bg-[var(--gantry-accent)] text-[var(--gantry-bg-primary)]'
-                  : 'bg-[var(--gantry-bg-secondary)] border border-[var(--gantry-border)] text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
+                  : 'bg-[var(--gantry-bg-secondary)] text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
               }`}
             >
               {cat.label}
@@ -1051,37 +1054,37 @@ export default function Plugins() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 px-8 pb-8">
-        {loading ? (
-          <div className="flex items-center justify-center py-24 text-[var(--gantry-text-secondary)]">
-            <Package size={24} className="animate-pulse mr-3" />
-            Loading plugins…
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--gantry-accent)] border-t-transparent" />
+        </div>
+      ) : error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          {error}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--gantry-border)] py-20">
+          <div className="rounded-xl bg-[var(--gantry-bg-primary)] p-4">
+            <Package size={32} className="text-[var(--gantry-text-secondary)]" />
           </div>
-        ) : error ? (
-          <div className="flex items-center justify-center py-24">
-            <p className="text-sm text-red-500">{error}</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3 text-[var(--gantry-text-secondary)]">
-            <Package size={32} />
-            <p className="text-sm">No plugins found.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filtered.map((plugin) => (
-              <PluginCard
-                key={plugin.name}
-                plugin={plugin}
-                syncing={syncingPlugins.has(plugin.name)}
-                syncResult={syncResults[plugin.name] ?? null}
-                onAction={(action) => handleAction(plugin, action)}
-                onSync={() => handleSync(plugin.name)}
-                onOpenDetail={(t) => setDetail({ plugin, tab: t })}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+          <p className="mt-4 text-sm font-medium text-[var(--gantry-text-primary)]">No plugins found</p>
+          <p className="mt-1 text-sm text-[var(--gantry-text-secondary)]">Try adjusting your search or filters.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map((plugin) => (
+            <PluginCard
+              key={plugin.name}
+              plugin={plugin}
+              syncing={syncingPlugins.has(plugin.name)}
+              syncResult={syncResults[plugin.name] ?? null}
+              onAction={(action) => handleAction(plugin, action)}
+              onSync={() => handleSync(plugin.name)}
+              onOpenDetail={(t) => setDetail({ plugin, tab: t })}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Detail modal */}
       {detail && detailPlugin && (
