@@ -178,8 +178,8 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/history", h.GetHistory)
 			protected.Post("/history", h.RecordHistory)
 
-			// Audit log.
-			protected.Get("/audit", h.ListAuditEntries)
+			// Audit log (admin only).
+			protected.With(middleware.RequireRole("admin")).Get("/audit", h.ListAuditEntries)
 
 			// Health check proxy (fetches external health URLs for the frontend).
 			protected.Get("/health-check", h.HealthCheckProxy)

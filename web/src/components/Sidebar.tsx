@@ -57,7 +57,6 @@ const navItems: NavItem[] = [
     })),
   },
   { label: 'Actions', path: '/actions', icon: Zap },
-  { label: 'Audit Log', path: '/audit', icon: ClipboardList },
   { label: 'Settings', path: '/settings', icon: Settings },
 ];
 
@@ -221,6 +220,23 @@ export default function Sidebar() {
               >
                 <Puzzle className="h-5 w-5 shrink-0" />
                 {!collapsed && <span className="truncate">Plugins</span>}
+              </Link>
+            </li>
+          )}
+          {/* Admin-only: Audit Log */}
+          {(user?.effectiveRole || user?.role) === 'admin' && (
+            <li>
+              <Link
+                to="/audit"
+                className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive('/audit')
+                    ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
+                    : 'text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
+                }`}
+                title={collapsed ? 'Audit Log' : undefined}
+              >
+                <ClipboardList className="h-5 w-5 shrink-0" />
+                {!collapsed && <span className="truncate">Audit Log</span>}
               </Link>
             </li>
           )}
