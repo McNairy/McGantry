@@ -19,7 +19,15 @@ const (
 	ActionRunUpdated EventType = "action.run.updated"
 	ActionCompleted EventType = "action.completed"
 	ActionFailed    EventType = "action.failed"
-	UserLogin       EventType = "user.login"
+	UserLogin        EventType = "user.login"
+	GroupCreated     EventType = "group.created"
+	GroupUpdated     EventType = "group.updated"
+	GroupDeleted     EventType = "group.deleted"
+	RBACRuleCreated  EventType = "rbac.rule.created"
+	RBACRuleDeleted  EventType = "rbac.rule.deleted"
+	RoleCreated      EventType = "rbac.role.created"
+	RoleUpdated      EventType = "rbac.role.updated"
+	RoleDeleted      EventType = "rbac.role.deleted"
 )
 
 // Event represents a single occurrence in the system.

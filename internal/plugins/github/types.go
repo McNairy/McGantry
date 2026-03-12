@@ -88,6 +88,17 @@ type RepoInfo struct {
 	LatestRelease *Release      `json:"latestRelease,omitempty"`
 }
 
+// GitHubTeam represents a GitHub organization team.
+type GitHubTeam struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	Description  string `json:"description"`
+	Organization struct {
+		Login string `json:"login"`
+	} `json:"organization"`
+}
+
 // SyncResult summarizes what happened during a GitHub entity enrichment sync.
 type SyncResult struct {
 	Scanned  int      `json:"scanned"`

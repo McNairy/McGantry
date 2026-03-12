@@ -21,6 +21,7 @@ import {
   Puzzle,
   Activity,
   GitBranch,
+  Shield,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
@@ -189,8 +190,8 @@ export default function Sidebar() {
               </Link>
             </li>
           )}
-          {/* GitOps (visible when plugin enabled) */}
-          {gitopsEnabled && (
+          {/* GitOps (admin only, visible when plugin enabled) */}
+          {gitopsEnabled && (user?.effectiveRole || user?.role) === 'admin' && (
             <li>
               <Link
                 to="/gitops"
@@ -206,8 +207,8 @@ export default function Sidebar() {
               </Link>
             </li>
           )}
-          {/* Developer+: Plugins */}
-          {(user?.role === 'developer' || user?.role === 'admin') && (
+          {/* Developer+: Plugins (uses effectiveRole to account for group elevation) */}
+          {(['developer', 'platform-engineer', 'admin'].includes(user?.effectiveRole || user?.role || '')) && (
             <li>
               <Link
                 to="/plugins"
@@ -224,7 +225,7 @@ export default function Sidebar() {
             </li>
           )}
           {/* Admin-only: Users */}
-          {user?.role === 'admin' && (
+          {(user?.effectiveRole || user?.role) === 'admin' && (
             <li>
               <Link
                 to="/users"
@@ -237,6 +238,23 @@ export default function Sidebar() {
               >
                 <UserCog className="h-5 w-5 shrink-0" />
                 {!collapsed && <span className="truncate">Users</span>}
+              </Link>
+            </li>
+          )}
+          {/* Admin-only: Access Control */}
+          {(user?.effectiveRole || user?.role) === 'admin' && (
+            <li>
+              <Link
+                to="/rbac"
+                className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive('/rbac')
+                    ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
+                    : 'text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
+                }`}
+                title={collapsed ? 'Access Control' : undefined}
+              >
+                <Shield className="h-5 w-5 shrink-0" />
+                {!collapsed && <span className="truncate">Access Control</span>}
               </Link>
             </li>
           )}

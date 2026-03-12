@@ -117,6 +117,31 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Post("/auth/apikeys", h.CreateAPIKey)
 			protected.Delete("/auth/apikeys/{id}", h.RevokeAPIKey)
 
+			// Groups. Read: platform-engineer+. Write: admin only.
+			protected.With(middleware.RequireRole("platform-engineer")).Get("/groups", h.ListGroups)
+			protected.With(middleware.RequireRole("admin")).Post("/groups", h.CreateGroup)
+			protected.With(middleware.RequireRole("platform-engineer")).Get("/groups/{id}", h.GetGroupDetail)
+			protected.With(middleware.RequireRole("admin")).Put("/groups/{id}", h.UpdateGroup)
+			protected.With(middleware.RequireRole("admin")).Delete("/groups/{id}", h.DeleteGroup)
+			protected.With(middleware.RequireRole("platform-engineer")).Get("/groups/{id}/members", h.ListGroupMembers)
+			protected.With(middleware.RequireRole("admin")).Post("/groups/{id}/members", h.AddGroupMember)
+			protected.With(middleware.RequireRole("admin")).Delete("/groups/{id}/members/{userId}", h.RemoveGroupMember)
+
+			// RBAC roles. Admin only.
+			protected.With(middleware.RequireRole("admin")).Get("/rbac/roles", h.ListRoles)
+			protected.With(middleware.RequireRole("admin")).Post("/rbac/roles", h.CreateRole)
+			protected.With(middleware.RequireRole("admin")).Get("/rbac/roles/{id}", h.GetRoleByID)
+			protected.With(middleware.RequireRole("admin")).Put("/rbac/roles/{id}", h.UpdateRole)
+			protected.With(middleware.RequireRole("admin")).Delete("/rbac/roles/{id}", h.DeleteRole)
+
+			// RBAC rules. Admin only (except effective permissions for self).
+			protected.With(middleware.RequireRole("admin")).Get("/rbac/rules", h.ListPermissionRules)
+			protected.With(middleware.RequireRole("admin")).Post("/rbac/rules", h.CreatePermissionRule)
+			protected.With(middleware.RequireRole("admin")).Delete("/rbac/rules/{id}", h.DeletePermissionRule)
+			protected.Get("/rbac/effective/{userId}", h.GetEffectivePermissions)
+			protected.With(middleware.RequireRole("admin")).Get("/rbac/export", h.ExportRBACConfig)
+			protected.With(middleware.RequireRole("admin")).Post("/rbac/import", h.ImportRBACConfig)
+
 			// Entity CRUD. Read: any authenticated user. Write: developer+.
 			protected.Get("/entities", h.ListEntities)
 			protected.Get("/entities/{kind}", h.ListEntitiesByKind)
@@ -169,12 +194,12 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// Status Monitor plugin endpoints.
 			protected.Get("/plugins/status-monitor/statuses", h.GetStatusMonitorStatuses)
 			protected.Get("/plugins/status-monitor/providers", h.GetStatusMonitorProviders)
-			// GitOps plugin endpoints.
-			protected.Get("/plugins/gitops/status", h.GetGitOpsStatus)
-			protected.Get("/plugins/gitops/history", h.GetGitOpsHistory)
-			protected.Get("/plugins/gitops/files", h.GetGitOpsFiles)
-			protected.With(middleware.RequireRole("developer")).Post("/plugins/gitops/sync", h.TriggerGitOpsSync)
-			protected.With(middleware.RequireRole("developer")).Post("/plugins/gitops/pull", h.TriggerGitOpsPull)
+			// GitOps plugin endpoints (admin only).
+			protected.With(middleware.RequireRole("admin")).Get("/plugins/gitops/status", h.GetGitOpsStatus)
+			protected.With(middleware.RequireRole("admin")).Get("/plugins/gitops/history", h.GetGitOpsHistory)
+			protected.With(middleware.RequireRole("admin")).Get("/plugins/gitops/files", h.GetGitOpsFiles)
+			protected.With(middleware.RequireRole("admin")).Post("/plugins/gitops/sync", h.TriggerGitOpsSync)
+			protected.With(middleware.RequireRole("admin")).Post("/plugins/gitops/pull", h.TriggerGitOpsPull)
 			// ArgoCD-specific plugin endpoints.
 			protected.Get("/plugins/argocd/entity-apps", h.GetArgoCDEntityApps)
 			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)

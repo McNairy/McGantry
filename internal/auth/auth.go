@@ -64,9 +64,10 @@ type User struct {
 // Claims holds the JWT claims for an authenticated session.
 type Claims struct {
 	jwt.RegisteredClaims
-	UserID   string `json:"userId"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	UserID   string   `json:"userId"`
+	Username string   `json:"username"`
+	Role     string   `json:"role"`
+	Groups   []string `json:"groups,omitempty"`
 }
 
 // Service provides authentication operations including password hashing

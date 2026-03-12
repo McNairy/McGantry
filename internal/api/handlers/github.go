@@ -71,7 +71,7 @@ func (h *Handlers) GitHubOAuthBegin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authURL := fmt.Sprintf(
-		"https://github.com/login/oauth/authorize?client_id=%s&state=%s&scope=read:user+user:email",
+		"https://github.com/login/oauth/authorize?client_id=%s&state=%s&scope=read:user+user:email+read:org",
 		clientID, state,
 	)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
@@ -128,12 +128,43 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find existing Gantry user by GitHub login convention (username = "github:<login>").
+	// Find existing Gantry user by GitHub login convention (username = "github:<login>"),
+	// then fall back to matching by email address.
+	ctx := r.Context()
 	username := "github:" + ghUser.Login
-	gantryUser, _ := h.DB.GetUserByUsername(r.Context(), username)
+	gantryUser, _ := h.DB.GetUserByUsername(ctx, username)
+
+	if gantryUser == nil && ghUser.Email != "" {
+		gantryUser, _ = h.DB.GetUserByEmail(ctx, ghUser.Email)
+	}
+
+	// Determine the return URL for redirects (including error redirects).
+	returnTo := ""
+	if c, err := r.Cookie("gh_oauth_return_to"); err == nil && c.Value != "" {
+		if u, err := url.Parse(c.Value); err == nil && u.Hostname() == requestHostname(r) {
+			returnTo = c.Value
+		}
+		http.SetCookie(w, &http.Cookie{Name: "gh_oauth_return_to", Value: "", Path: "/", MaxAge: -1})
+	}
 
 	if gantryUser == nil {
-		// Create a new Gantry user for this GitHub identity.
+		// Check if auto-provisioning is enabled (default: false).
+		autoProvision := false
+		if v, ok := p.Config["autoProvision"].(bool); ok {
+			autoProvision = v
+		}
+
+		if !autoProvision {
+			// User not pre-authorized — redirect to login with error.
+			errorURL := "/login?error=sso_not_authorized"
+			if returnTo != "" {
+				errorURL = returnTo + "/login?error=sso_not_authorized"
+			}
+			http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
+			return
+		}
+
+		// Auto-provision a new Gantry user for this GitHub identity.
 		displayName := ghUser.Name
 		if displayName == "" {
 			displayName = ghUser.Login
@@ -145,9 +176,9 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 			Email:        ghUser.Email,
 			Role:         defaultRole,
 		}
-		if err := h.DB.CreateUser(r.Context(), newUser); err != nil {
+		if err := h.DB.CreateUser(ctx, newUser); err != nil {
 			// If username already exists (race), try to fetch again.
-			gantryUser, _ = h.DB.GetUserByUsername(r.Context(), username)
+			gantryUser, _ = h.DB.GetUserByUsername(ctx, username)
 			if gantryUser == nil {
 				writeError(w, http.StatusInternalServerError, "failed to create user: "+err.Error())
 				return
@@ -155,6 +186,13 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		} else {
 			gantryUser = newUser
 		}
+	}
+
+	// Sync GitHub teams → Gantry groups (if enabled).
+	syncTeams, _ := p.Config["syncTeams"].(bool)
+	orgName, _ := p.Config["orgName"].(string)
+	if syncTeams && orgName != "" {
+		h.syncGitHubTeams(r, accessToken, orgName, p.Config, gantryUser)
 	}
 
 	// Issue a Gantry JWT.
@@ -171,14 +209,8 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Redirect to the SPA with the token as a query param.
 	// The frontend reads this param on load, stores it, and cleans the URL.
 	redirectURL := "/?github_token=" + token
-	if c, err := r.Cookie("gh_oauth_return_to"); err == nil && c.Value != "" {
-		// Only honor return_to if it shares the same hostname as the server.
-		// This allows a Vite dev proxy on a different port (e.g. :3000 vs :8080)
-		// while blocking open-redirect attacks to foreign hosts.
-		if u, err := url.Parse(c.Value); err == nil && u.Hostname() == requestHostname(r) {
-			redirectURL = c.Value + "/?github_token=" + token
-		}
-		http.SetCookie(w, &http.Cookie{Name: "gh_oauth_return_to", Value: "", Path: "/", MaxAge: -1})
+	if returnTo != "" {
+		redirectURL = returnTo + "/?github_token=" + token
 	}
 	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
@@ -262,4 +294,71 @@ func randomHex16() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// syncGitHubTeams fetches the user's GitHub teams and syncs them as Gantry groups.
+func (h *Handlers) syncGitHubTeams(r *http.Request, accessToken, orgName string, pluginConfig map[string]any, user *db.User) {
+	teams, err := ghplugin.FetchUserTeams(accessToken, orgName)
+	if err != nil {
+		// Best effort — don't fail the login flow.
+		return
+	}
+
+	// Build team→role mapping from plugin config.
+	teamRoleMap := make(map[string]string)
+	if mappings, ok := pluginConfig["teamRoleMappings"].([]any); ok {
+		for _, m := range mappings {
+			if entry, ok := m.(map[string]any); ok {
+				name, _ := entry["name"].(string)
+				role, _ := entry["role"].(string)
+				if name != "" && role != "" {
+					teamRoleMap[name] = role
+				}
+			}
+		}
+	}
+
+	defaultRole, _ := pluginConfig["defaultRole"].(string)
+	if defaultRole == "" {
+		defaultRole = "viewer"
+	}
+
+	ctx := r.Context()
+	var groupIDs []string
+
+	for _, team := range teams {
+		sourceID := orgName + "/" + team.Slug
+
+		// Find or create the group.
+		g, err := h.DB.GetGroupByName(ctx, sourceID)
+		if err != nil {
+			// Group doesn't exist — create it.
+			role := defaultRole
+			if mapped, ok := teamRoleMap[team.Slug]; ok {
+				role = mapped
+			}
+			g = &db.Group{
+				Name:        sourceID,
+				DisplayName: team.Name,
+				Description: team.Description,
+				Source:      "github",
+				SourceID:    sourceID,
+				Role:        role,
+			}
+			if err := h.DB.CreateGroup(ctx, g); err != nil {
+				continue
+			}
+		} else {
+			// Update role from mapping if configured.
+			if mapped, ok := teamRoleMap[team.Slug]; ok && g.Role != mapped {
+				g.Role = mapped
+				_ = h.DB.UpdateGroup(ctx, g)
+			}
+		}
+
+		groupIDs = append(groupIDs, g.ID)
+	}
+
+	// Sync user's group memberships — replace all with current teams.
+	_ = h.DB.SyncUserGroups(ctx, user.ID, groupIDs)
 }

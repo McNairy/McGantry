@@ -749,6 +749,32 @@ func (d *DB) UpdateUserPassword(ctx context.Context, userID, passwordHash string
 	return err
 }
 
+// GetUserByEmail retrieves a user by their email address.
+func (d *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	row := d.queryRow(ctx,
+		`SELECT id, username, password_hash, display_name, email, role, created_at, updated_at
+		 FROM users WHERE email = ? LIMIT 1`, email)
+	u := &User{}
+	var displayName, emailVal sql.NullString
+	var createdAt, updatedAt sql.NullTime
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &displayName, &emailVal, &u.Role, &createdAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("user with email %q: %w", email, entity.ErrEntityNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying user by email: %w", err)
+	}
+	u.DisplayName = displayName.String
+	u.Email = emailVal.String
+	if createdAt.Valid {
+		u.CreatedAt = createdAt.Time
+	}
+	if updatedAt.Valid {
+		u.UpdatedAt = updatedAt.Time
+	}
+	return u, nil
+}
+
 // DeleteUser removes a user by ID.
 func (d *DB) DeleteUser(ctx context.Context, id string) error {
 	_, err := d.exec(ctx, `DELETE FROM users WHERE id = ?`, id)
@@ -1550,4 +1576,725 @@ func (d *DB) GetUserHistory(ctx context.Context, username string, limit int) ([]
 		entries = []HistoryEntry{}
 	}
 	return entries, rows.Err()
+}
+
+// ---------------------------------------------------------------------------
+// Group types and queries
+// ---------------------------------------------------------------------------
+
+// Group represents a Gantry group (local or SSO-synced).
+type Group struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"displayName,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Source      string    `json:"source"`
+	SourceID    string    `json:"sourceId,omitempty"`
+	Role        string    `json:"role"`
+	MemberCount int       `json:"memberCount,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// PermissionRule is a fine-grained allow/deny rule.
+type PermissionRule struct {
+	ID             string    `json:"id"`
+	SubjectType    string    `json:"subjectType"`
+	SubjectID      string    `json:"subjectId"`
+	SubjectName    string    `json:"subjectName,omitempty"`
+	ResourceType   string    `json:"resourceType"`
+	ResourceFilter string    `json:"resourceFilter,omitempty"`
+	Action         string    `json:"action"`
+	Effect         string    `json:"effect"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// CreateGroup inserts a new group.
+func (d *DB) CreateGroup(ctx context.Context, g *Group) error {
+	g.ID = newUUID()
+	now := time.Now().UTC()
+	g.CreatedAt = now
+	g.UpdatedAt = now
+	_, err := d.exec(ctx,
+		`INSERT INTO groups (id, name, display_name, description, source, source_id, role, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.ID, g.Name, g.DisplayName, g.Description, g.Source, g.SourceID, g.Role, g.CreatedAt, g.UpdatedAt)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("group %q already exists", g.Name)
+		}
+		return err
+	}
+	return nil
+}
+
+// GetGroup retrieves a group by ID with its member count.
+func (d *DB) GetGroup(ctx context.Context, id string) (*Group, error) {
+	row := d.queryRow(ctx,
+		`SELECT g.id, g.name, g.display_name, g.description, g.source, g.source_id, g.role,
+			g.created_at, g.updated_at, COUNT(ug.user_id) as member_count
+		 FROM groups g
+		 LEFT JOIN user_groups ug ON g.id = ug.group_id
+		 WHERE g.id = ?
+		 GROUP BY g.id`, id)
+	return scanGroup(row)
+}
+
+// GetGroupByName retrieves a group by its unique name.
+func (d *DB) GetGroupByName(ctx context.Context, name string) (*Group, error) {
+	row := d.queryRow(ctx,
+		`SELECT g.id, g.name, g.display_name, g.description, g.source, g.source_id, g.role,
+			g.created_at, g.updated_at, COUNT(ug.user_id) as member_count
+		 FROM groups g
+		 LEFT JOIN user_groups ug ON g.id = ug.group_id
+		 WHERE g.name = ?
+		 GROUP BY g.id`, name)
+	return scanGroup(row)
+}
+
+// ListGroups returns all groups with member counts.
+func (d *DB) ListGroups(ctx context.Context) ([]*Group, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT g.id, g.name, g.display_name, g.description, g.source, g.source_id, g.role,
+			g.created_at, g.updated_at, COUNT(ug.user_id) as member_count
+		 FROM groups g
+		 LEFT JOIN user_groups ug ON g.id = ug.group_id
+		 GROUP BY g.id
+		 ORDER BY g.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var groups []*Group
+	for rows.Next() {
+		g := &Group{}
+		var displayName, description, sourceID sql.NullString
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&g.ID, &g.Name, &displayName, &description,
+			&g.Source, &sourceID, &g.Role,
+			&createdAt, &updatedAt, &g.MemberCount); err != nil {
+			return nil, err
+		}
+		if displayName.Valid {
+			g.DisplayName = displayName.String
+		}
+		if description.Valid {
+			g.Description = description.String
+		}
+		if sourceID.Valid {
+			g.SourceID = sourceID.String
+		}
+		if createdAt.Valid {
+			g.CreatedAt = createdAt.Time.UTC()
+		}
+		if updatedAt.Valid {
+			g.UpdatedAt = updatedAt.Time.UTC()
+		}
+		groups = append(groups, g)
+	}
+	if groups == nil {
+		groups = []*Group{}
+	}
+	return groups, rows.Err()
+}
+
+// UpdateGroup updates a group's mutable fields.
+func (d *DB) UpdateGroup(ctx context.Context, g *Group) error {
+	g.UpdatedAt = time.Now().UTC()
+	res, err := d.exec(ctx,
+		`UPDATE groups SET display_name = ?, description = ?, role = ?, updated_at = ?
+		 WHERE id = ?`,
+		g.DisplayName, g.Description, g.Role, g.UpdatedAt, g.ID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return entity.ErrEntityNotFound
+	}
+	return nil
+}
+
+// DeleteGroup removes a group and all its memberships.
+func (d *DB) DeleteGroup(ctx context.Context, id string) error {
+	_, _ = d.exec(ctx, `DELETE FROM user_groups WHERE group_id = ?`, id)
+	_, _ = d.exec(ctx, `DELETE FROM permission_rules WHERE subject_type = 'group' AND subject_id = ?`, id)
+	res, err := d.exec(ctx, `DELETE FROM groups WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return entity.ErrEntityNotFound
+	}
+	return nil
+}
+
+// SeedDefaultGroups creates the built-in system groups if they don't already exist.
+// These groups mirror the role hierarchy and give admins a clear starting point.
+func (d *DB) SeedDefaultGroups(ctx context.Context) error {
+	defaults := []struct {
+		name, displayName, role string
+	}{
+		{"admins", "Admins", "admin"},
+		{"platform-engineers", "Platform Engineers", "platform-engineer"},
+		{"developers", "Developers", "developer"},
+	}
+	for _, dg := range defaults {
+		_, err := d.GetGroupByName(ctx, dg.name)
+		if err == nil {
+			continue // already exists
+		}
+		g := &Group{
+			Name:        dg.name,
+			DisplayName: dg.displayName,
+			Source:      "system",
+			Role:        dg.role,
+		}
+		if err := d.CreateGroup(ctx, g); err != nil {
+			// Ignore unique constraint errors (race condition).
+			if !isUniqueViolation(err) {
+				return fmt.Errorf("seeding group %q: %w", dg.name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// AddUserToGroupByName adds a user to a group, looking up the group by name.
+// Used for bootstrap (e.g. adding admin to "admins" group).
+func (d *DB) AddUserToGroupByName(ctx context.Context, userID, groupName string) error {
+	g, err := d.GetGroupByName(ctx, groupName)
+	if err != nil {
+		return fmt.Errorf("group %q not found: %w", groupName, err)
+	}
+	return d.AddUserToGroup(ctx, userID, g.ID)
+}
+
+// scanGroup scans a group row including member count.
+func scanGroup(row *sql.Row) (*Group, error) {
+	g := &Group{}
+	var displayName, description, sourceID sql.NullString
+	var createdAt, updatedAt sql.NullTime
+	err := row.Scan(&g.ID, &g.Name, &displayName, &description,
+		&g.Source, &sourceID, &g.Role,
+		&createdAt, &updatedAt, &g.MemberCount)
+	if err == sql.ErrNoRows {
+		return nil, entity.ErrEntityNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if displayName.Valid {
+		g.DisplayName = displayName.String
+	}
+	if description.Valid {
+		g.Description = description.String
+	}
+	if sourceID.Valid {
+		g.SourceID = sourceID.String
+	}
+	if createdAt.Valid {
+		g.CreatedAt = createdAt.Time.UTC()
+	}
+	if updatedAt.Valid {
+		g.UpdatedAt = updatedAt.Time.UTC()
+	}
+	return g, nil
+}
+
+// ---------------------------------------------------------------------------
+// User-Group membership queries
+// ---------------------------------------------------------------------------
+
+// AddUserToGroup creates a membership.
+func (d *DB) AddUserToGroup(ctx context.Context, userID, groupID string) error {
+	_, err := d.exec(ctx,
+		`INSERT OR IGNORE INTO user_groups (user_id, group_id, added_at)
+		 VALUES (?, ?, ?)`, userID, groupID, time.Now().UTC())
+	return err
+}
+
+// RemoveUserFromGroup deletes a membership.
+func (d *DB) RemoveUserFromGroup(ctx context.Context, userID, groupID string) error {
+	res, err := d.exec(ctx, `DELETE FROM user_groups WHERE user_id = ? AND group_id = ?`, userID, groupID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return entity.ErrEntityNotFound
+	}
+	return nil
+}
+
+// ListUserGroups returns all groups a user belongs to.
+func (d *DB) ListUserGroups(ctx context.Context, userID string) ([]*Group, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT g.id, g.name, g.display_name, g.description, g.source, g.source_id, g.role,
+			g.created_at, g.updated_at, 0 as member_count
+		 FROM groups g
+		 JOIN user_groups ug ON g.id = ug.group_id
+		 WHERE ug.user_id = ?
+		 ORDER BY g.name`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var groups []*Group
+	for rows.Next() {
+		g := &Group{}
+		var displayName, description, sourceID sql.NullString
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&g.ID, &g.Name, &displayName, &description,
+			&g.Source, &sourceID, &g.Role,
+			&createdAt, &updatedAt, &g.MemberCount); err != nil {
+			return nil, err
+		}
+		if displayName.Valid {
+			g.DisplayName = displayName.String
+		}
+		if description.Valid {
+			g.Description = description.String
+		}
+		if sourceID.Valid {
+			g.SourceID = sourceID.String
+		}
+		if createdAt.Valid {
+			g.CreatedAt = createdAt.Time.UTC()
+		}
+		if updatedAt.Valid {
+			g.UpdatedAt = updatedAt.Time.UTC()
+		}
+		groups = append(groups, g)
+	}
+	if groups == nil {
+		groups = []*Group{}
+	}
+	return groups, rows.Err()
+}
+
+// ListGroupMembers returns all users in a group.
+func (d *DB) ListGroupMembers(ctx context.Context, groupID string) ([]*User, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT u.id, u.username, u.password_hash, u.display_name, u.email, u.role, u.created_at, u.updated_at
+		 FROM users u
+		 JOIN user_groups ug ON u.id = ug.user_id
+		 WHERE ug.group_id = ?
+		 ORDER BY u.username`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []*User
+	for rows.Next() {
+		u := &User{}
+		var displayName, email sql.NullString
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash,
+			&displayName, &email, &u.Role, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		if displayName.Valid {
+			u.DisplayName = displayName.String
+		}
+		if email.Valid {
+			u.Email = email.String
+		}
+		if createdAt.Valid {
+			u.CreatedAt = createdAt.Time.UTC()
+		}
+		if updatedAt.Valid {
+			u.UpdatedAt = updatedAt.Time.UTC()
+		}
+		users = append(users, u)
+	}
+	if users == nil {
+		users = []*User{}
+	}
+	return users, rows.Err()
+}
+
+// SyncUserGroups replaces all group memberships for a user with the given group IDs.
+// Used during SSO login to reconcile group memberships.
+func (d *DB) SyncUserGroups(ctx context.Context, userID string, groupIDs []string) error {
+	_, err := d.exec(ctx, `DELETE FROM user_groups WHERE user_id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, gid := range groupIDs {
+		_, err := d.exec(ctx,
+			`INSERT INTO user_groups (user_id, group_id, added_at) VALUES (?, ?, ?)`,
+			userID, gid, now)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Permission rule queries
+// ---------------------------------------------------------------------------
+
+// CreatePermissionRule inserts a new permission rule.
+func (d *DB) CreatePermissionRule(ctx context.Context, r *PermissionRule) error {
+	r.ID = newUUID()
+	now := time.Now().UTC()
+	r.CreatedAt = now
+	r.UpdatedAt = now
+	_, err := d.exec(ctx,
+		`INSERT INTO permission_rules (id, subject_type, subject_id, resource_type, resource_filter, action, effect, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.SubjectType, r.SubjectID, r.ResourceType, r.ResourceFilter, r.Action, r.Effect, r.CreatedAt, r.UpdatedAt)
+	return err
+}
+
+// ListPermissionRules returns all permission rules.
+func (d *DB) ListPermissionRules(ctx context.Context) ([]*PermissionRule, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT id, subject_type, subject_id, resource_type, resource_filter, action, effect, created_at, updated_at
+		 FROM permission_rules ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var rules []*PermissionRule
+	for rows.Next() {
+		r := &PermissionRule{}
+		var resourceFilter sql.NullString
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&r.ID, &r.SubjectType, &r.SubjectID,
+			&r.ResourceType, &resourceFilter, &r.Action, &r.Effect,
+			&createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		if resourceFilter.Valid {
+			r.ResourceFilter = resourceFilter.String
+		}
+		if createdAt.Valid {
+			r.CreatedAt = createdAt.Time.UTC()
+		}
+		if updatedAt.Valid {
+			r.UpdatedAt = updatedAt.Time.UTC()
+		}
+		rules = append(rules, r)
+	}
+	if rules == nil {
+		rules = []*PermissionRule{}
+	}
+	return rules, rows.Err()
+}
+
+// ListPermissionRulesForSubject returns rules for a specific user or group.
+func (d *DB) ListPermissionRulesForSubject(ctx context.Context, subjectType, subjectID string) ([]*PermissionRule, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT id, subject_type, subject_id, resource_type, resource_filter, action, effect, created_at, updated_at
+		 FROM permission_rules WHERE subject_type = ? AND subject_id = ?
+		 ORDER BY created_at`, subjectType, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var rules []*PermissionRule
+	for rows.Next() {
+		r := &PermissionRule{}
+		var resourceFilter sql.NullString
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&r.ID, &r.SubjectType, &r.SubjectID,
+			&r.ResourceType, &resourceFilter, &r.Action, &r.Effect,
+			&createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		if resourceFilter.Valid {
+			r.ResourceFilter = resourceFilter.String
+		}
+		if createdAt.Valid {
+			r.CreatedAt = createdAt.Time.UTC()
+		}
+		if updatedAt.Valid {
+			r.UpdatedAt = updatedAt.Time.UTC()
+		}
+		rules = append(rules, r)
+	}
+	if rules == nil {
+		rules = []*PermissionRule{}
+	}
+	return rules, rows.Err()
+}
+
+// DeletePermissionRule removes a rule by ID.
+func (d *DB) DeletePermissionRule(ctx context.Context, id string) error {
+	res, err := d.exec(ctx, `DELETE FROM permission_rules WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return entity.ErrEntityNotFound
+	}
+	return nil
+}
+
+// DeleteAllPermissionRules removes all permission rules. Used during RBAC import.
+func (d *DB) DeleteAllPermissionRules(ctx context.Context) error {
+	_, err := d.exec(ctx, `DELETE FROM permission_rules`)
+	return err
+}
+
+// GetEffectiveRules returns all permission rules that apply to a user,
+// including rules assigned to the user directly and to all their groups.
+func (d *DB) GetEffectiveRules(ctx context.Context, userID string) ([]*PermissionRule, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT pr.id, pr.subject_type, pr.subject_id, pr.resource_type, pr.resource_filter, pr.action, pr.effect, pr.created_at, pr.updated_at
+		 FROM permission_rules pr
+		 WHERE (pr.subject_type = 'user' AND pr.subject_id = ?)
+		    OR (pr.subject_type = 'group' AND pr.subject_id IN (
+		        SELECT group_id FROM user_groups WHERE user_id = ?
+		    ))
+		 ORDER BY pr.created_at`, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var rules []*PermissionRule
+	for rows.Next() {
+		r := &PermissionRule{}
+		var resourceFilter sql.NullString
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&r.ID, &r.SubjectType, &r.SubjectID,
+			&r.ResourceType, &resourceFilter, &r.Action, &r.Effect,
+			&createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		if resourceFilter.Valid {
+			r.ResourceFilter = resourceFilter.String
+		}
+		if createdAt.Valid {
+			r.CreatedAt = createdAt.Time.UTC()
+		}
+		if updatedAt.Valid {
+			r.UpdatedAt = updatedAt.Time.UTC()
+		}
+		rules = append(rules, r)
+	}
+	if rules == nil {
+		rules = []*PermissionRule{}
+	}
+	return rules, rows.Err()
+}
+
+// ---------------------------------------------------------------------------
+// Role types and queries
+// ---------------------------------------------------------------------------
+
+// Role represents a configurable role definition with permission grants.
+type Role struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	DisplayName string          `json:"displayName,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Level       int             `json:"level"`
+	BuiltIn     bool            `json:"builtIn"`
+	Permissions map[string]bool `json:"permissions"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
+}
+
+// SeedDefaultRoles creates the built-in roles if they don't already exist.
+func (d *DB) SeedDefaultRoles(ctx context.Context) error {
+	defaults := []struct {
+		name, displayName, description string
+		level                          int
+		permissions                    map[string]bool
+	}{
+		{"viewer", "Viewer", "Read-only access to all resources", 1,
+			map[string]bool{"read": true, "write": false, "execute": false, "delete": false, "admin": false}},
+		{"developer", "Developer", "Can create, update, and execute resources", 2,
+			map[string]bool{"read": true, "write": true, "execute": true, "delete": true, "admin": false}},
+		{"platform-engineer", "Platform Engineer", "Can manage infrastructure and environments", 3,
+			map[string]bool{"read": true, "write": true, "execute": true, "delete": true, "admin": false}},
+		{"admin", "Administrator", "Full access including user and role management", 4,
+			map[string]bool{"read": true, "write": true, "execute": true, "delete": true, "admin": true}},
+	}
+	for _, dr := range defaults {
+		_, err := d.GetRoleByName(ctx, dr.name)
+		if err == nil {
+			continue
+		}
+		permsJSON, _ := json.Marshal(dr.permissions)
+		id := newUUID()
+		now := time.Now().UTC()
+		_, err = d.exec(ctx,
+			`INSERT INTO roles (id, name, display_name, description, level, built_in, permissions, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+			id, dr.name, dr.displayName, dr.description, dr.level, string(permsJSON), now, now)
+		if err != nil && !isUniqueViolation(err) {
+			return fmt.Errorf("seeding role %q: %w", dr.name, err)
+		}
+	}
+	return nil
+}
+
+// ListRoles returns all roles ordered by level.
+func (d *DB) ListRoles(ctx context.Context) ([]*Role, error) {
+	rows, err := d.queryRows(ctx,
+		`SELECT id, name, display_name, description, level, built_in, permissions, created_at, updated_at
+		 FROM roles ORDER BY level, name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var roles []*Role
+	for rows.Next() {
+		r, err := scanRole(rows)
+		if err != nil {
+			return nil, err
+		}
+		roles = append(roles, r)
+	}
+	if roles == nil {
+		roles = []*Role{}
+	}
+	return roles, rows.Err()
+}
+
+// GetRole retrieves a role by ID.
+func (d *DB) GetRole(ctx context.Context, id string) (*Role, error) {
+	row := d.queryRow(ctx,
+		`SELECT id, name, display_name, description, level, built_in, permissions, created_at, updated_at
+		 FROM roles WHERE id = ?`, id)
+	return scanRoleSingle(row)
+}
+
+// GetRoleByName retrieves a role by its unique name.
+func (d *DB) GetRoleByName(ctx context.Context, name string) (*Role, error) {
+	row := d.queryRow(ctx,
+		`SELECT id, name, display_name, description, level, built_in, permissions, created_at, updated_at
+		 FROM roles WHERE name = ?`, name)
+	return scanRoleSingle(row)
+}
+
+// CreateRole inserts a new custom role.
+func (d *DB) CreateRole(ctx context.Context, r *Role) error {
+	r.ID = newUUID()
+	now := time.Now().UTC()
+	r.CreatedAt = now
+	r.UpdatedAt = now
+	permsJSON, _ := json.Marshal(r.Permissions)
+	builtIn := 0
+	if r.BuiltIn {
+		builtIn = 1
+	}
+	_, err := d.exec(ctx,
+		`INSERT INTO roles (id, name, display_name, description, level, built_in, permissions, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.Name, r.DisplayName, r.Description, r.Level, builtIn, string(permsJSON), r.CreatedAt, r.UpdatedAt)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("role %q already exists", r.Name)
+		}
+		return err
+	}
+	return nil
+}
+
+// UpdateRole updates a role's mutable fields.
+func (d *DB) UpdateRole(ctx context.Context, r *Role) error {
+	r.UpdatedAt = time.Now().UTC()
+	permsJSON, _ := json.Marshal(r.Permissions)
+	res, err := d.exec(ctx,
+		`UPDATE roles SET display_name = ?, description = ?, level = ?, permissions = ?, updated_at = ?
+		 WHERE id = ?`,
+		r.DisplayName, r.Description, r.Level, string(permsJSON), r.UpdatedAt, r.ID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return entity.ErrEntityNotFound
+	}
+	return nil
+}
+
+// DeleteRole removes a role by ID. Returns an error if the role is built-in.
+func (d *DB) DeleteRole(ctx context.Context, id string) error {
+	res, err := d.exec(ctx, `DELETE FROM roles WHERE id = ? AND built_in = 0`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("role not found or is built-in")
+	}
+	return nil
+}
+
+// IsRoleInUse checks if any users or groups reference the given role name.
+func (d *DB) IsRoleInUse(ctx context.Context, roleName string) (bool, error) {
+	row := d.queryRow(ctx,
+		`SELECT COUNT(*) FROM (
+			SELECT 1 FROM users WHERE role = ?
+			UNION ALL
+			SELECT 1 FROM groups WHERE role = ?
+		)`, roleName, roleName)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func scanRole(rows *sql.Rows) (*Role, error) {
+	r := &Role{}
+	var displayName, description sql.NullString
+	var builtIn int
+	var permsJSON string
+	var createdAt, updatedAt sql.NullTime
+	if err := rows.Scan(&r.ID, &r.Name, &displayName, &description,
+		&r.Level, &builtIn, &permsJSON, &createdAt, &updatedAt); err != nil {
+		return nil, err
+	}
+	r.DisplayName = displayName.String
+	r.Description = description.String
+	r.BuiltIn = builtIn == 1
+	r.Permissions = make(map[string]bool)
+	_ = json.Unmarshal([]byte(permsJSON), &r.Permissions)
+	if createdAt.Valid {
+		r.CreatedAt = createdAt.Time.UTC()
+	}
+	if updatedAt.Valid {
+		r.UpdatedAt = updatedAt.Time.UTC()
+	}
+	return r, nil
+}
+
+func scanRoleSingle(row *sql.Row) (*Role, error) {
+	r := &Role{}
+	var displayName, description sql.NullString
+	var builtIn int
+	var permsJSON string
+	var createdAt, updatedAt sql.NullTime
+	err := row.Scan(&r.ID, &r.Name, &displayName, &description,
+		&r.Level, &builtIn, &permsJSON, &createdAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, entity.ErrEntityNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.DisplayName = displayName.String
+	r.Description = description.String
+	r.BuiltIn = builtIn == 1
+	r.Permissions = make(map[string]bool)
+	_ = json.Unmarshal([]byte(permsJSON), &r.Permissions)
+	if createdAt.Valid {
+		r.CreatedAt = createdAt.Time.UTC()
+	}
+	if updatedAt.Valid {
+		r.UpdatedAt = updatedAt.Time.UTC()
+	}
+	return r, nil
 }

@@ -25,6 +25,8 @@ export interface User {
   displayName?: string;
   email?: string;
   role: string;
+  effectiveRole?: string;
+  groups?: string[];
 }
 
 export interface SearchResult {
@@ -437,4 +439,71 @@ export interface GitOpsFileEntry {
   kind: string;
   namespace: string;
   name: string;
+}
+
+// ─── Groups & RBAC ────────────────────────────────────────────────────────
+
+export interface Group {
+  id: string;
+  name: string;
+  displayName?: string;
+  description?: string;
+  source: 'local' | 'github' | string;
+  sourceId?: string;
+  role: string;
+  memberCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupDetail {
+  group: Group;
+  members: User[];
+}
+
+export interface PermissionRule {
+  id: string;
+  subjectType: 'user' | 'group';
+  subjectId: string;
+  subjectName?: string;
+  resourceType: 'entity' | 'action' | 'plugin' | '*';
+  resourceFilter?: string;
+  action: 'read' | 'write' | 'delete' | 'execute' | 'admin' | '*';
+  effect: 'allow' | 'deny';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EffectivePermissions {
+  userId: string;
+  username: string;
+  directRole: string;
+  effectiveRole: string;
+  groups: string[];
+  rules: PermissionRule[];
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  displayName?: string;
+  description?: string;
+  level: number;
+  builtIn: boolean;
+  permissions: Record<string, boolean>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RBACConfig {
+  groups: { name: string; displayName?: string; description?: string; role: string }[];
+  groupMemberships: { group: string; users: string[] }[];
+  permissionRules: {
+    subjectType: string;
+    subjectName: string;
+    resourceType: string;
+    resourceFilter?: string;
+    action: string;
+    effect: string;
+  }[];
 }

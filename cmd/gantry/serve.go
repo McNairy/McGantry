@@ -95,6 +95,29 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("running database migrations: %w", err)
 	}
 
+	// Seed default groups (Admins, Developers, Platform Engineers).
+	if err := database.SeedDefaultGroups(context.Background()); err != nil {
+		return fmt.Errorf("seeding default groups: %w", err)
+	}
+
+	// Add the bootstrap admin user to the "admins" group (idempotent).
+	const adminUserID = "00000000-0000-0000-0000-000000000001"
+	_ = database.AddUserToGroupByName(context.Background(), adminUserID, "admins")
+
+	// Seed default roles (viewer, developer, platform-engineer, admin).
+	if err := database.SeedDefaultRoles(context.Background()); err != nil {
+		return fmt.Errorf("seeding default roles: %w", err)
+	}
+
+	// Load roles into in-memory cache for fast hierarchy lookups.
+	if roles, err := database.ListRoles(context.Background()); err == nil {
+		roleData := make([]auth.RoleData, len(roles))
+		for i, r := range roles {
+			roleData[i] = auth.RoleData{Name: r.Name, Level: r.Level, Permissions: r.Permissions}
+		}
+		auth.InitRoleStore(roleData)
+	}
+
 	// Encrypt any plugin configs written before encryption was introduced.
 	if err := database.MigrateEncryptPluginConfigs(context.Background()); err != nil {
 		return fmt.Errorf("encrypting plugin configs: %w", err)
@@ -173,6 +196,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 		namespace, _ := event.Data["namespace"].(string)
 		srv.Handlers.GitOps.QueueChange(kind, namespace, name, "delete")
 	})
+
+	// Wire RBAC events to GitOps push — any group or rule change triggers a config file write.
+	rbacEventHandler := func(event events.Event) {
+		if srv.Handlers.GitOps == nil {
+			return
+		}
+		srv.Handlers.GitOps.QueueChange("_config", "rbac", "rbac", "write")
+	}
+	eventBus.Subscribe(events.GroupCreated, rbacEventHandler)
+	eventBus.Subscribe(events.GroupUpdated, rbacEventHandler)
+	eventBus.Subscribe(events.GroupDeleted, rbacEventHandler)
+	eventBus.Subscribe(events.RBACRuleCreated, rbacEventHandler)
+	eventBus.Subscribe(events.RBACRuleDeleted, rbacEventHandler)
+	eventBus.Subscribe(events.RoleCreated, rbacEventHandler)
+	eventBus.Subscribe(events.RoleUpdated, rbacEventHandler)
+	eventBus.Subscribe(events.RoleDeleted, rbacEventHandler)
 
 	// Print startup banner.
 	printBanner(cfg, tlsCert != "")

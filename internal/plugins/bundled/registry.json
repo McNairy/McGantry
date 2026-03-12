@@ -61,12 +61,48 @@
           "title": "OAuth App Client Secret",
           "description": "Client secret from your GitHub OAuth App. Required when ssoEnabled=true."
         },
+        "autoProvision": {
+          "type": "boolean",
+          "title": "Auto-Provision Users",
+          "description": "Automatically create Gantry accounts for new SSO users. When disabled, users must be pre-created in the Users page before they can log in via SSO.",
+          "default": false
+        },
         "defaultRole": {
           "type": "string",
           "title": "Default SSO User Role",
-          "description": "Role assigned to new users who sign in via GitHub SSO.",
+          "description": "Role assigned to auto-provisioned users who sign in via GitHub SSO.",
           "enum": ["viewer", "developer", "admin"],
           "default": "viewer"
+        },
+        "syncTeams": {
+          "type": "boolean",
+          "title": "Sync GitHub Teams",
+          "description": "Automatically create groups from GitHub org teams and assign users during SSO login."
+        },
+        "orgName": {
+          "type": "string",
+          "title": "Organization Name",
+          "description": "GitHub org name for team sync. Required when syncTeams is enabled."
+        },
+        "teamRoleMappings": {
+          "type": "array",
+          "title": "Team Role Mappings",
+          "description": "Map GitHub team slugs to Gantry roles. Teams not listed get the default SSO role.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Team Slug"
+              },
+              "role": {
+                "type": "string",
+                "title": "Gantry Role",
+                "enum": ["viewer", "developer", "platform-engineer", "admin"]
+              }
+            },
+            "required": ["name", "role"]
+          }
         }
       }
     },

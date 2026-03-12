@@ -387,6 +387,110 @@ func (s *Service) WriteEntity(e *entity.Entity) error {
 	return nil
 }
 
+// WriteRBACConfig exports the current RBAC configuration as a JSON file in the Git repo.
+func (s *Service) WriteRBACConfig() error {
+	ctx := context.Background()
+
+	groups, err := s.db.ListGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("listing groups: %w", err)
+	}
+
+	type rbacGroup struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName,omitempty"`
+		Description string `json:"description,omitempty"`
+		Role        string `json:"role"`
+	}
+	type rbacMembership struct {
+		Group string   `json:"group"`
+		Users []string `json:"users"`
+	}
+	type rbacRule struct {
+		SubjectType    string `json:"subjectType"`
+		SubjectName    string `json:"subjectName"`
+		ResourceType   string `json:"resourceType"`
+		ResourceFilter string `json:"resourceFilter,omitempty"`
+		Action         string `json:"action"`
+		Effect         string `json:"effect"`
+	}
+	type rbacConfig struct {
+		Groups           []rbacGroup      `json:"groups"`
+		GroupMemberships []rbacMembership `json:"groupMemberships"`
+		PermissionRules  []rbacRule       `json:"permissionRules"`
+	}
+
+	var cfg rbacConfig
+	for _, g := range groups {
+		cfg.Groups = append(cfg.Groups, rbacGroup{
+			Name:        g.Name,
+			DisplayName: g.DisplayName,
+			Description: g.Description,
+			Role:        g.Role,
+		})
+		members, err := s.db.ListGroupMembers(ctx, g.ID)
+		if err == nil && len(members) > 0 {
+			usernames := make([]string, len(members))
+			for i, m := range members {
+				usernames[i] = m.Username
+			}
+			cfg.GroupMemberships = append(cfg.GroupMemberships, rbacMembership{
+				Group: g.Name,
+				Users: usernames,
+			})
+		}
+	}
+
+	rules, err := s.db.ListPermissionRules(ctx)
+	if err != nil {
+		return fmt.Errorf("listing rules: %w", err)
+	}
+	for _, r := range rules {
+		subjectName := r.SubjectID
+		if r.SubjectType == "user" {
+			if u, err := s.db.GetUserByID(ctx, r.SubjectID); err == nil {
+				subjectName = u.Username
+			}
+		} else if r.SubjectType == "group" {
+			if g, err := s.db.GetGroup(ctx, r.SubjectID); err == nil {
+				subjectName = g.Name
+			}
+		}
+		cfg.PermissionRules = append(cfg.PermissionRules, rbacRule{
+			SubjectType:    r.SubjectType,
+			SubjectName:    subjectName,
+			ResourceType:   r.ResourceType,
+			ResourceFilter: r.ResourceFilter,
+			Action:         r.Action,
+			Effect:         r.Effect,
+		})
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal rbac config: %w", err)
+	}
+
+	relPath := filepath.Join(s.config.BasePath, "_config", "rbac.json")
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("getting worktree: %w", err)
+	}
+
+	absPath := filepath.Join(w.Filesystem.Root(), relPath)
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		return fmt.Errorf("creating directories: %w", err)
+	}
+	if err := os.WriteFile(absPath, data, 0o644); err != nil {
+		return fmt.Errorf("writing file: %w", err)
+	}
+	if _, err := w.Add(relPath); err != nil {
+		return fmt.Errorf("staging file: %w", err)
+	}
+
+	return nil
+}
+
 // DeleteEntityFile removes an entity's YAML file from the local repo.
 func (s *Service) DeleteEntityFile(kind, namespace, name string) error {
 	relPath := EntityFilePath(s.config.BasePath, kind, namespace, name)
@@ -502,6 +606,17 @@ func (s *Service) flushBatch() {
 	fileCount := 0
 
 	for _, item := range items {
+		// Handle RBAC config as a special case (not an entity).
+		if item.Kind == "_config" {
+			if err := s.WriteRBACConfig(); err != nil {
+				s.setError(fmt.Sprintf("write rbac config: %v", err))
+				continue
+			}
+			messages = append(messages, "update rbac config")
+			fileCount++
+			continue
+		}
+
 		switch item.Action {
 		case "write":
 			e, err := s.db.GetEntity(ctx, item.Kind, item.Namespace, item.Name)

@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Plus, Trash2, Shield, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Trash2, Shield, Users, Info } from 'lucide-react';
 import { api } from '../lib/api';
 import type { User } from '../lib/types';
 
-const ROLES = ['viewer', 'developer', 'platform-engineer', 'admin'] as const;
-
-const ROLE_DESCRIPTIONS: Record<string, string> = {
-  viewer: 'Read-only access to all resources',
-  developer: 'Can create and update entities',
-  'platform-engineer': 'Can manage infrastructure and environments',
-  admin: 'Full access including user management',
+const ROLE_COLORS: Record<string, string> = {
+  admin: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  'platform-engineer': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  developer: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  viewer: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 };
 
 export default function UsersPage() {
@@ -24,7 +23,6 @@ export default function UsersPage() {
   const [newPassword, setNewPassword] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<string>('viewer');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -45,27 +43,16 @@ export default function UsersPage() {
         newPassword.trim(),
         newDisplayName.trim() || undefined,
         newEmail.trim() || undefined,
-        newRole,
       );
       setUsers((prev) => [...prev, created]);
       setNewUsername('');
       setNewPassword('');
       setNewDisplayName('');
       setNewEmail('');
-      setNewRole('viewer');
     } catch (e: any) {
       setCreateError(e.message);
     } finally {
       setCreating(false);
-    }
-  };
-
-  const handleRoleChange = async (id: string, role: string) => {
-    try {
-      const updated = await api.updateUser(id, { role });
-      setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
-    } catch {
-      // silently ignore
     }
   };
 
@@ -84,7 +71,11 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-[var(--gantry-text-primary)]">Users</h1>
           <p className="mt-1 text-sm text-[var(--gantry-text-secondary)]">
-            Manage user accounts and access levels
+            Manage user accounts. Roles are assigned via{' '}
+            <Link to="/rbac" className="text-[var(--gantry-accent)] hover:underline">
+              Access Control
+            </Link>{' '}
+            groups.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2">
@@ -154,21 +145,6 @@ export default function UsersPage() {
                   className="mt-1 w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] placeholder-[var(--gantry-text-secondary)] outline-none focus:border-[var(--gantry-accent)]"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-[var(--gantry-text-secondary)]">Role</label>
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] outline-none focus:border-[var(--gantry-accent)]"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-[var(--gantry-text-secondary)]">
-                  {ROLE_DESCRIPTIONS[newRole]}
-                </p>
-              </div>
             </div>
 
             {createError && (
@@ -185,20 +161,34 @@ export default function UsersPage() {
             </button>
           </div>
 
-          {/* Role reference */}
+          {/* SSO hint */}
+          <div className="mt-4 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-5">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--gantry-text-primary)]">
+              <Info className="h-4 w-4 text-[var(--gantry-text-secondary)]" />
+              SSO Users
+            </h3>
+            <p className="mt-2 text-xs text-[var(--gantry-text-secondary)]">
+              For users who will sign in via GitHub SSO, create their account with the username{' '}
+              <code className="rounded bg-[var(--gantry-bg-tertiary)] px-1 py-0.5 text-[var(--gantry-text-primary)]">
+                github:&lt;username&gt;
+              </code>{' '}
+              or use the same email address as their GitHub account. The password can be any value — SSO users authenticate through GitHub.
+            </p>
+          </div>
+
+          {/* Manage roles hint */}
           <div className="mt-4 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--gantry-text-primary)]">
               <Shield className="h-4 w-4 text-[var(--gantry-text-secondary)]" />
-              Role Reference
+              Managing Roles
             </h3>
-            <ul className="mt-3 space-y-3">
-              {ROLES.map((r) => (
-                <li key={r}>
-                  <span className="text-xs font-semibold text-[var(--gantry-text-primary)]">{r}</span>
-                  <p className="text-xs text-[var(--gantry-text-secondary)]">{ROLE_DESCRIPTIONS[r]}</p>
-                </li>
-              ))}
-            </ul>
+            <p className="mt-2 text-xs text-[var(--gantry-text-secondary)]">
+              New users start as <strong>viewer</strong>. To grant higher access, add them to a group in{' '}
+              <Link to="/rbac" className="text-[var(--gantry-accent)] hover:underline">
+                Access Control
+              </Link>
+              . Default groups: Admins, Platform Engineers, Developers.
+            </p>
           </div>
         </div>
 
@@ -220,7 +210,8 @@ export default function UsersPage() {
                   <tr className="border-b border-[var(--gantry-border)]">
                     <th className="px-4 py-3 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">User</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Role</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Groups</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Effective Role</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
@@ -247,16 +238,25 @@ export default function UsersPage() {
                         {u.email || <span className="text-[var(--gantry-text-secondary)]/40">—</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <select
-                          value={u.role}
-                          onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                          disabled={u.id === me?.id}
-                          className="rounded border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2 py-1 text-xs text-[var(--gantry-text-primary)] outline-none focus:border-[var(--gantry-accent)] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
-                        </select>
+                        <div className="flex flex-wrap gap-1">
+                          {u.groups && u.groups.length > 0 ? (
+                            u.groups.map((g) => (
+                              <span
+                                key={g}
+                                className="inline-flex rounded-full bg-[var(--gantry-accent)]/10 px-2 py-0.5 text-xs font-medium text-[var(--gantry-accent)]"
+                              >
+                                {g}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-[var(--gantry-text-secondary)]/40">—</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS[u.effectiveRole || u.role] || ROLE_COLORS.viewer}`}>
+                          {u.effectiveRole || u.role}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button

@@ -88,7 +88,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetMe handles GET /auth/me. It returns the currently authenticated user's
-// information from the JWT claims stored in the request context.
+// information from the JWT claims stored in the request context, including
+// their effective role (accounting for group memberships) and group names.
 func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r.Context())
 	if claims == nil {
@@ -96,10 +97,27 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	effectiveRole := middleware.GetEffectiveRole(r.Context())
+
+	var groupNames []string
+	if claims.UserID != "" {
+		groups, err := h.DB.ListUserGroups(r.Context(), claims.UserID)
+		if err == nil {
+			for _, g := range groups {
+				groupNames = append(groupNames, g.Name)
+			}
+		}
+	}
+	if groupNames == nil {
+		groupNames = []string{}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"userId":   claims.UserID,
-		"username": claims.Username,
-		"role":     claims.Role,
+		"userId":        claims.UserID,
+		"username":      claims.Username,
+		"role":          claims.Role,
+		"effectiveRole": effectiveRole,
+		"groups":        groupNames,
 	})
 }
 
@@ -123,17 +141,14 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role := req.Role
-	if role == "" {
-		role = "viewer"
-	}
-
+	// All new users start as viewer. Role elevation is managed through
+	// groups in Access Control, not per-user assignment.
 	user := &db.User{
 		Username:     req.Username,
 		PasswordHash: hash,
 		DisplayName:  req.DisplayName,
 		Email:        req.Email,
-		Role:         role,
+		Role:         "viewer",
 	}
 
 	if err := h.DB.CreateUser(r.Context(), user); err != nil {
@@ -144,14 +159,39 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, user)
 }
 
-// ListUsers handles GET /auth/users. Returns all users (admin only).
+// userWithGroups extends a user with their group memberships and effective role.
+type userWithGroups struct {
+	*db.User
+	Groups        []string `json:"groups"`
+	EffectiveRole string   `json:"effectiveRole"`
+}
+
+// ListUsers handles GET /auth/users. Returns all users with their group
+// memberships and computed effective roles (admin only).
 func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.DB.ListUsers(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list users")
 		return
 	}
-	writeJSON(w, http.StatusOK, users)
+
+	result := make([]userWithGroups, 0, len(users))
+	for _, u := range users {
+		groups, _ := h.DB.ListUserGroups(r.Context(), u.ID)
+		groupNames := make([]string, 0, len(groups))
+		groupRoles := make([]string, 0, len(groups))
+		for _, g := range groups {
+			groupNames = append(groupNames, g.Name)
+			groupRoles = append(groupRoles, g.Role)
+		}
+		effectiveRole := auth.EffectiveRole(u.Role, groupRoles)
+		result = append(result, userWithGroups{
+			User:          u,
+			Groups:        groupNames,
+			EffectiveRole: effectiveRole,
+		})
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // updateUserRequest is the body for admin user updates.

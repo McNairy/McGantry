@@ -15,6 +15,7 @@ import UsersPage from './pages/Users';
 import Plugins from './pages/Plugins';
 import StatusMonitor from './pages/StatusMonitor';
 import GitOps from './pages/GitOps';
+import RBAC from './pages/RBAC';
 
 function AuthenticatedLayout() {
   return (
@@ -34,6 +35,7 @@ function AuthenticatedLayout() {
               <Route path="/plugins" element={<Plugins />} />
               <Route path="/status" element={<StatusMonitor />} />
               <Route path="/gitops" element={<GitOps />} />
+              <Route path="/rbac" element={<RBAC />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </ErrorBoundary>

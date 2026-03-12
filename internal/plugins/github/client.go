@@ -254,6 +254,48 @@ func FetchUserWithToken(accessToken string) (*GitHubUser, error) {
 	return &user, nil
 }
 
+// FetchUserTeams fetches the GitHub teams the authenticated user belongs to.
+// Requires the read:org OAuth scope. Optionally filters to a specific org.
+func FetchUserTeams(accessToken, orgFilter string) ([]GitHubTeam, error) {
+	req, err := http.NewRequest(http.MethodGet, apiBase+"/user/teams?per_page=100", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch user teams: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		body, _ := io.ReadAll(res.Body)
+		return nil, fmt.Errorf("github teams API: HTTP %d: %s", res.StatusCode, string(body))
+	}
+
+	var teams []GitHubTeam
+	if err := json.NewDecoder(res.Body).Decode(&teams); err != nil {
+		return nil, fmt.Errorf("decode teams response: %w", err)
+	}
+
+	// Filter to specific org if provided.
+	if orgFilter != "" {
+		var filtered []GitHubTeam
+		for _, t := range teams {
+			if strings.EqualFold(t.Organization.Login, orgFilter) {
+				filtered = append(filtered, t)
+			}
+		}
+		return filtered, nil
+	}
+
+	return teams, nil
+}
+
 // appInstallationToken creates a GitHub App installation access token by:
 // 1. Signing a short-lived JWT with the App's RSA private key
 // 2. Exchanging it for an installation token via the GitHub API

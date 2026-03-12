@@ -16,6 +16,14 @@ export default function Login() {
     api.getGitHubSSOConfig()
       .then((cfg) => setSsoEnabled(cfg.ssoEnabled))
       .catch(() => {}); // SSO check is non-critical
+
+    // Check for SSO error in URL params (e.g. redirected back from OAuth callback).
+    const params = new URLSearchParams(window.location.search);
+    const ssoError = params.get('error');
+    if (ssoError === 'sso_not_authorized') {
+      setError('Your GitHub account is not authorized for Gantry. Ask an administrator to create your account first.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

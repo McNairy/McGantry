@@ -12,19 +12,12 @@ import (
 type contextKey string
 
 const claimsKey contextKey = "claims"
-
-// roleHierarchy defines the authorization level for each role.
-// Higher values imply greater privilege.
-var roleHierarchy = map[string]int{
-	"viewer":            1,
-	"developer":         2,
-	"platform-engineer": 3,
-	"admin":             4,
-}
+const effectiveRoleKey contextKey = "effectiveRole"
 
 // RequireAuth returns middleware that validates the Bearer token in the
 // Authorization header. It accepts both JWT tokens and long-lived API keys
 // (tokens prefixed with "gantry_"). Claims are stored in the request context.
+// The effective role (accounting for group memberships) is also computed and stored.
 func RequireAuth(authSvc *auth.Service, database *db.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,17 +60,31 @@ func RequireAuth(authSvc *auth.Service, database *db.DB) func(http.Handler) http
 				}
 			}
 
+			// Compute effective role from user's direct role + group roles.
+			effectiveRole := claims.Role
+			if claims.UserID != "" {
+				groups, err := database.ListUserGroups(r.Context(), claims.UserID)
+				if err == nil && len(groups) > 0 {
+					groupRoles := make([]string, len(groups))
+					for i, g := range groups {
+						groupRoles[i] = g.Role
+					}
+					effectiveRole = auth.EffectiveRole(claims.Role, groupRoles)
+				}
+			}
+
 			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			ctx = context.WithValue(ctx, effectiveRoleKey, effectiveRole)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 // RequireRole returns middleware that checks whether the authenticated user's
-// role meets the minimum required role according to the hierarchy:
-// admin > platform-engineer > developer > viewer.
+// effective role (accounting for group memberships) meets the minimum required
+// role according to the hierarchy: admin > platform-engineer > developer > viewer.
 func RequireRole(role string) func(http.Handler) http.Handler {
-	requiredLevel := roleHierarchy[role]
+	requiredLevel := auth.RoleLevel(role)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +94,8 @@ func RequireRole(role string) func(http.Handler) http.Handler {
 				return
 			}
 
-			userLevel := roleHierarchy[claims.Role]
+			effective := GetEffectiveRole(r.Context())
+			userLevel := auth.RoleLevel(effective)
 			if userLevel < requiredLevel {
 				http.Error(w, `{"error":"insufficient permissions"}`, http.StatusForbidden)
 				return
@@ -103,4 +111,16 @@ func RequireRole(role string) func(http.Handler) http.Handler {
 func GetClaims(ctx context.Context) *auth.Claims {
 	claims, _ := ctx.Value(claimsKey).(*auth.Claims)
 	return claims
+}
+
+// GetEffectiveRole returns the effective role from the request context.
+// Falls back to the claims role if no effective role is set.
+func GetEffectiveRole(ctx context.Context) string {
+	if role, ok := ctx.Value(effectiveRoleKey).(string); ok && role != "" {
+		return role
+	}
+	if claims := GetClaims(ctx); claims != nil {
+		return claims.Role
+	}
+	return ""
 }

@@ -134,6 +134,69 @@ func allMigrations(dbType string) []string {
 		`CREATE INDEX IF NOT EXISTS idx_user_history_username ON user_history(username, viewed_at DESC)`,
 
 		// ------------------------------------------------------------------
+		// Table: groups
+		// Groups can be created locally or synced from SSO providers.
+		// ------------------------------------------------------------------
+		`CREATE TABLE IF NOT EXISTS groups (
+			id           TEXT PRIMARY KEY,
+			name         TEXT UNIQUE NOT NULL,
+			display_name TEXT,
+			description  TEXT,
+			source       TEXT NOT NULL DEFAULT 'local',
+			source_id    TEXT,
+			role         TEXT NOT NULL DEFAULT 'viewer',
+			created_at   TIMESTAMP,
+			updated_at   TIMESTAMP
+		)`,
+
+		// ------------------------------------------------------------------
+		// Table: user_groups
+		// Many-to-many relationship between users and groups.
+		// ------------------------------------------------------------------
+		`CREATE TABLE IF NOT EXISTS user_groups (
+			user_id  TEXT NOT NULL,
+			group_id TEXT NOT NULL,
+			added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, group_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_groups_user  ON user_groups(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_groups_group ON user_groups(group_id)`,
+
+		// ------------------------------------------------------------------
+		// Table: permission_rules
+		// Fine-grained allow/deny rules layered on top of role hierarchy.
+		// ------------------------------------------------------------------
+		`CREATE TABLE IF NOT EXISTS permission_rules (
+			id              TEXT PRIMARY KEY,
+			subject_type    TEXT NOT NULL,
+			subject_id      TEXT NOT NULL,
+			resource_type   TEXT NOT NULL,
+			resource_filter TEXT DEFAULT '',
+			action          TEXT NOT NULL,
+			effect          TEXT NOT NULL DEFAULT 'allow',
+			created_at      TIMESTAMP,
+			updated_at      TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_permission_rules_subject ON permission_rules(subject_type, subject_id)`,
+
+		// ------------------------------------------------------------------
+		// Table: roles
+		// Configurable role definitions with permission grants.
+		// ------------------------------------------------------------------
+		`CREATE TABLE IF NOT EXISTS roles (
+			id           TEXT PRIMARY KEY,
+			name         TEXT UNIQUE NOT NULL,
+			display_name TEXT,
+			description  TEXT,
+			level        INTEGER NOT NULL,
+			built_in     INTEGER NOT NULL DEFAULT 0,
+			permissions  TEXT NOT NULL DEFAULT '{}',
+			created_at   TIMESTAMP,
+			updated_at   TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name)`,
+
+		// ------------------------------------------------------------------
 		// Table: dashboard_config
 		// Single-row global dashboard configuration (id is always 1).
 		// ------------------------------------------------------------------

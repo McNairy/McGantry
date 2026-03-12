@@ -1,4 +1,4 @@
-import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig, HistoryEntry, StatusMonitorResult, GitOpsStatus, GitOpsSyncEntry, GitOpsFileEntry } from './types';
+import type { Entity, User, SearchResult, ActionRun, AuditEntry, APIKey, GraphData, PluginRegistryEntry, PluginDetail, PluginConfig, PluginSyncResult, K8sWorkloadInfo, GitHubRepoInfo, ArgoCDAppStatus, ArgoCDAppWithInstance, GitHubWorkflow, ActionInputDef, DashboardConfig, HistoryEntry, StatusMonitorResult, GitOpsStatus, GitOpsSyncEntry, GitOpsFileEntry, Group, GroupDetail, PermissionRule, EffectivePermissions, RBACConfig, Role } from './types';
 
 let authToken: string | null = localStorage.getItem('gantry_token');
 
@@ -165,4 +165,36 @@ export const api = {
   getGitOpsFiles: () => request<GitOpsFileEntry[]>('GET', '/plugins/gitops/files'),
   triggerGitOpsSync: () => request<{ message: string }>('POST', '/plugins/gitops/sync'),
   triggerGitOpsPull: () => request<{ message: string }>('POST', '/plugins/gitops/pull'),
+
+  // Groups
+  listGroups: () => request<Group[]>('GET', '/groups'),
+  createGroup: (data: { name: string; displayName?: string; description?: string; role?: string }) =>
+    request<Group>('POST', '/groups', data),
+  getGroup: (id: string) => request<GroupDetail>('GET', `/groups/${id}`),
+  updateGroup: (id: string, data: { displayName?: string; description?: string; role?: string }) =>
+    request<Group>('PUT', `/groups/${id}`, data),
+  deleteGroup: (id: string) => request<void>('DELETE', `/groups/${id}`),
+  listGroupMembers: (id: string) => request<User[]>('GET', `/groups/${id}/members`),
+  addGroupMember: (groupId: string, userId: string) =>
+    request<void>('POST', `/groups/${groupId}/members`, { userId }),
+  removeGroupMember: (groupId: string, userId: string) =>
+    request<void>('DELETE', `/groups/${groupId}/members/${userId}`),
+
+  // Roles
+  listRoles: () => request<Role[]>('GET', '/rbac/roles'),
+  createRole: (data: { name: string; displayName?: string; description?: string; level: number; permissions: Record<string, boolean> }) =>
+    request<Role>('POST', '/rbac/roles', data),
+  updateRole: (id: string, data: { displayName?: string; description?: string; level?: number; permissions?: Record<string, boolean> }) =>
+    request<Role>('PUT', `/rbac/roles/${id}`, data),
+  deleteRole: (id: string) => request<void>('DELETE', `/rbac/roles/${id}`),
+
+  // RBAC
+  listPermissionRules: () => request<PermissionRule[]>('GET', '/rbac/rules'),
+  createPermissionRule: (rule: Omit<PermissionRule, 'id' | 'createdAt' | 'updatedAt' | 'subjectName'>) =>
+    request<PermissionRule>('POST', '/rbac/rules', rule),
+  deletePermissionRule: (id: string) => request<void>('DELETE', `/rbac/rules/${id}`),
+  getEffectivePermissions: (userId: string) =>
+    request<EffectivePermissions>('GET', `/rbac/effective/${userId}`),
+  exportRBACConfig: () => request<RBACConfig>('GET', '/rbac/export'),
+  importRBACConfig: (config: RBACConfig) => request<{ groupsCreated: number; groupsUpdated: number; rulesImported: number }>('POST', '/rbac/import', config),
 };
