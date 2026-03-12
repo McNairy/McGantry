@@ -10,6 +10,10 @@ import type { PluginRegistryEntry, PluginConfig, PluginSyncResult } from '../lib
 // Plugins that expose a server-side sync operation.
 const SYNCABLE_PLUGINS = new Set(['kubernetes', 'github', 'argocd']);
 
+// Plugins with full backend + frontend implementations.
+// Anything not in this set is shown as "Coming Soon" and cannot be enabled.
+const IMPLEMENTED_PLUGINS = new Set(['github', 'kubernetes', 'argocd', 'status-monitor', 'gitops']);
+
 const CATEGORIES = [
   { id: 'all', label: 'All' },
   { id: 'integration', label: 'Integrations' },
@@ -549,9 +553,10 @@ function PluginDetailModal({
     }
   }
 
+  const comingSoon = !IMPLEMENTED_PLUGINS.has(plugin.name);
   const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
   const iconBg = CATEGORY_ICON_BG[plugin.category] ?? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]';
-  const canSync = plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
+  const canSync = !comingSoon && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
   const configHasFields = config && Object.keys(config.schema?.properties ?? {}).length > 0;
 
   // Parse longDescription paragraphs
@@ -575,11 +580,13 @@ function PluginDetailModal({
                 {CATEGORIES.find((c) => c.id === plugin.category)?.label ?? plugin.category}
               </span>
               <span className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                plugin.enabled
+                comingSoon
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                  : plugin.enabled
                   ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                   : 'bg-gray-100 text-gray-500 dark:bg-gray-800/30 dark:text-gray-400'
               }`}>
-                {plugin.enabled ? <><CheckCircle size={10} /> Active</> : <><Circle size={10} /> Disabled</>}
+                {comingSoon ? 'Coming Soon' : plugin.enabled ? <><CheckCircle size={10} /> Active</> : <><Circle size={10} /> Disabled</>}
               </span>
             </div>
             <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
@@ -599,16 +606,18 @@ function PluginDetailModal({
                 Sync
               </button>
             )}
-            <button
-              onClick={() => onAction(plugin.enabled ? 'disable' : 'enable')}
-              className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 ${
-                plugin.enabled
-                  ? 'border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]'
-                  : 'border-[var(--gantry-accent)] text-[var(--gantry-accent)] hover:bg-[var(--gantry-accent)]/10'
-              }`}
-            >
-              {plugin.enabled ? <><Circle size={12} /> Disable</> : <><CheckCircle size={12} /> Enable</>}
-            </button>
+            {!comingSoon && (
+              <button
+                onClick={() => onAction(plugin.enabled ? 'disable' : 'enable')}
+                className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 ${
+                  plugin.enabled
+                    ? 'border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]'
+                    : 'border-[var(--gantry-accent)] text-[var(--gantry-accent)] hover:bg-[var(--gantry-accent)]/10'
+                }`}
+              >
+                {plugin.enabled ? <><Circle size={12} /> Disable</> : <><CheckCircle size={12} /> Enable</>}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 rounded-lg text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
@@ -631,23 +640,31 @@ function PluginDetailModal({
             <BookOpen size={14} />
             Overview
           </button>
-          <button
-            onClick={() => setTab('config')}
-            className={`flex items-center gap-1.5 px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
-              tab === 'config'
-                ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
-                : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
-            }`}
-          >
-            <Settings size={14} />
-            Configuration
-          </button>
+          {!comingSoon && (
+            <button
+              onClick={() => setTab('config')}
+              className={`flex items-center gap-1.5 px-3 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                tab === 'config'
+                  ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
+                  : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
+              }`}
+            >
+              <Settings size={14} />
+              Configuration
+            </button>
+          )}
         </div>
 
         {/* ── Body ── */}
         <div className="overflow-y-auto flex-1 px-6 py-6">
           {tab === 'overview' && (
             <div className="space-y-6">
+              {comingSoon && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-4 py-3">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">This plugin is not yet available.</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">It will be included in a future release of Gantry.</p>
+                </div>
+              )}
               {/* Description */}
               <div className="space-y-3">
                 {paragraphs.map((p, i) => (
@@ -810,12 +827,13 @@ function PluginCard({
   onSync: () => void;
   onOpenDetail: (tab: 'overview' | 'config') => void;
 }) {
+  const comingSoon = !IMPLEMENTED_PLUGINS.has(plugin.name);
   const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
   const iconBg = CATEGORY_ICON_BG[plugin.category] ?? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]';
-  const canSync = plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
+  const canSync = !comingSoon && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
 
   return (
-    <div className="group flex flex-col rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] transition-shadow hover:shadow-md">
+    <div className={`group flex flex-col rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] transition-shadow ${comingSoon ? 'opacity-50' : 'hover:shadow-md'}`}>
       {/* Card top accent strip */}
       <div className="h-1 w-full rounded-t-xl bg-[var(--gantry-accent)]/20" />
 
@@ -835,12 +853,16 @@ function PluginCard({
               <p className="text-xs text-[var(--gantry-text-secondary)]">by {plugin.author} · v{plugin.version}</p>
             </div>
           </div>
-          {plugin.enabled && (
+          {comingSoon ? (
+            <span className="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800/30 dark:text-gray-400">
+              Coming Soon
+            </span>
+          ) : plugin.enabled ? (
             <span className="flex-shrink-0 flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
               <CheckCircle size={10} />
               Active
             </span>
-          )}
+          ) : null}
         </div>
 
         <p className="text-sm text-[var(--gantry-text-secondary)] line-clamp-2">{plugin.description}</p>
@@ -876,9 +898,12 @@ function PluginCard({
       {/* Action row */}
       <div className="flex items-center gap-2 px-5 pb-5 pt-1 border-t border-[var(--gantry-border)]">
         <button
-          onClick={() => onAction(plugin.enabled ? 'disable' : 'enable')}
+          onClick={() => !comingSoon && onAction(plugin.enabled ? 'disable' : 'enable')}
+          disabled={comingSoon}
           className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors flex items-center justify-center gap-1 ${
-            plugin.enabled
+            comingSoon
+              ? 'border-[var(--gantry-border)] text-[var(--gantry-text-secondary)] cursor-not-allowed'
+              : plugin.enabled
               ? 'border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]'
               : 'border-[var(--gantry-accent)] text-[var(--gantry-accent)] hover:bg-[var(--gantry-accent)]/10'
           }`}
@@ -899,13 +924,15 @@ function PluginCard({
             <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
           </button>
         )}
-        <button
-          onClick={() => onOpenDetail('config')}
-          title="Configure"
-          className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
-        >
-          <Settings size={12} />
-        </button>
+        {!comingSoon && (
+          <button
+            onClick={() => onOpenDetail('config')}
+            title="Configure"
+            className="py-1.5 px-3 text-xs font-medium rounded-lg border border-[var(--gantry-border)] text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] transition-colors"
+          >
+            <Settings size={12} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -980,6 +1007,10 @@ export default function Plugins() {
     const matchCategory = category === 'all' || p.category === category;
     const matchTab = tab === 'browse' || p.enabled;
     return matchSearch && matchCategory && matchTab;
+  }).sort((a, b) => {
+    const aImpl = IMPLEMENTED_PLUGINS.has(a.name) ? 0 : 1;
+    const bImpl = IMPLEMENTED_PLUGINS.has(b.name) ? 0 : 1;
+    return aImpl - bImpl;
   });
 
   const enabledCount = plugins.filter((p) => p.enabled).length;
