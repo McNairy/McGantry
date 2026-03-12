@@ -27,6 +27,7 @@ export interface User {
   role: string;
   effectiveRole?: string;
   groups?: string[];
+  permissions?: Record<string, boolean>;
 }
 
 export interface SearchResult {

@@ -303,7 +303,7 @@ export default function ArgoCDTab({ entity }: { entity: Entity }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { user } = useAuth();
-  const canSync = user?.role !== 'viewer';
+  const canSync = user?.permissions?.execute ?? false;
 
   // Parse the argocd.io/appNames annotation — CSV of "instance:appName" pairs.
   // Fall back to the old singular argocd.io/appName for backward compat.

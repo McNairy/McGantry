@@ -112,12 +112,17 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 		groupNames = []string{}
 	}
 
+	// Look up the effective role's permissions so the frontend can do
+	// fine-grained checks (e.g. show "New Entity" only if write is granted).
+	permissions := auth.RolePermissions(effectiveRole)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"userId":        claims.UserID,
 		"username":      claims.Username,
 		"role":          claims.Role,
 		"effectiveRole": effectiveRole,
 		"groups":        groupNames,
+		"permissions":   permissions,
 	})
 }
 

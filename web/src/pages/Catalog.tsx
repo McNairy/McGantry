@@ -49,7 +49,7 @@ export default function Catalog() {
   const { kind } = useParams<{ kind?: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canWrite = user?.role !== 'viewer';
+  const canWrite = user?.permissions?.write ?? false;
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');

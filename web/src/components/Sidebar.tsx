@@ -190,7 +190,7 @@ export default function Sidebar() {
             </li>
           )}
           {/* GitOps (admin only, visible when plugin enabled) */}
-          {gitopsEnabled && (user?.effectiveRole || user?.role) === 'admin' && (
+          {gitopsEnabled && user?.permissions?.admin && (
             <li>
               <Link
                 to="/gitops"
@@ -206,8 +206,8 @@ export default function Sidebar() {
               </Link>
             </li>
           )}
-          {/* Developer+: Plugins (uses effectiveRole to account for group elevation) */}
-          {(['developer', 'platform-engineer', 'admin'].includes(user?.effectiveRole || user?.role || '')) && (
+          {/* Plugins: requires write permission (developer+) */}
+          {user?.permissions?.write && (
             <li>
               <Link
                 to="/plugins"
@@ -224,7 +224,7 @@ export default function Sidebar() {
             </li>
           )}
           {/* Admin-only: Audit Log */}
-          {(user?.effectiveRole || user?.role) === 'admin' && (
+          {user?.permissions?.admin && (
             <li>
               <Link
                 to="/audit"
@@ -241,7 +241,7 @@ export default function Sidebar() {
             </li>
           )}
           {/* Admin-only: Users */}
-          {(user?.effectiveRole || user?.role) === 'admin' && (
+          {user?.permissions?.admin && (
             <li>
               <Link
                 to="/users"
@@ -258,7 +258,7 @@ export default function Sidebar() {
             </li>
           )}
           {/* Admin-only: Access Control */}
-          {(user?.effectiveRole || user?.role) === 'admin' && (
+          {user?.permissions?.admin && (
             <li>
               <Link
                 to="/rbac"

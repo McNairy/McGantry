@@ -94,7 +94,7 @@ export default function EntityDetail() {
   const namespace = searchParams.get('namespace') ?? 'default';
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canWrite = user?.role !== 'viewer';
+  const canWrite = user?.permissions?.write ?? false;
   const [entity, setEntity] = useState<Entity | null>(null);
   const [schema, setSchema] = useState<JsonSchema | null>(null);
   const [activity, setActivity] = useState<AuditEntry[]>([]);

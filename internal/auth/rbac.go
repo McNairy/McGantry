@@ -57,6 +57,22 @@ func RoleLevel(role string) int {
 	return globalStore.hierarchy[role]
 }
 
+// RolePermissions returns a copy of the permissions map for a role.
+// Returns nil if the role is unknown.
+func RolePermissions(role string) map[string]bool {
+	globalStore.mu.RLock()
+	perms, ok := globalStore.permissions[role]
+	globalStore.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	result := make(map[string]bool, len(perms))
+	for k, v := range perms {
+		result[k] = v
+	}
+	return result
+}
+
 // IsValidRole checks if a role exists in the store.
 func IsValidRole(role string) bool {
 	globalStore.mu.RLock()

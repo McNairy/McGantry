@@ -279,7 +279,7 @@ function selectCls() {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.permissions?.admin ?? false;
 
   const [entities, setEntities] = useState<Entity[]>([]);
   const [activity, setActivity] = useState<AuditEntry[]>([]);

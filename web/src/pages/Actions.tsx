@@ -84,11 +84,12 @@ function relativeTime(dateStr: string) {
 // ─── Action Card ──────────────────────────────────────────────────────────────
 
 function ActionCard({
-  action, canWrite, showCategory,
+  action, canWrite, canExecute, showCategory,
   onExecute, onHistory, onEdit,
 }: {
   action: Entity;
   canWrite: boolean;
+  canExecute: boolean;
   showCategory: boolean;
   onExecute: () => void;
   onHistory: () => void;
@@ -155,7 +156,7 @@ function ActionCard({
 
         {/* Action buttons */}
         <div className="mt-3 flex flex-col gap-2">
-          {canWrite ? (
+          {canExecute ? (
             <button
               onClick={onExecute}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
@@ -163,7 +164,7 @@ function ActionCard({
               <Zap className="h-4 w-4" /> Execute
             </button>
           ) : (
-            <p className="text-center text-xs text-[var(--gantry-text-secondary)]">Viewer — execute not permitted</p>
+            <p className="text-center text-xs text-[var(--gantry-text-secondary)]">Execute not permitted</p>
           )}
           <div className="flex gap-2">
             <button
@@ -190,11 +191,12 @@ function ActionCard({
 // ─── Category Section ─────────────────────────────────────────────────────────
 
 function CategorySection({
-  title, actions, canWrite, onExecute, onHistory, onEdit,
+  title, actions, canWrite, canExecute, onExecute, onHistory, onEdit,
 }: {
   title: string;
   actions: Entity[];
   canWrite: boolean;
+  canExecute: boolean;
   onExecute: (a: Entity) => void;
   onHistory: (a: Entity) => void;
   onEdit: (a: Entity) => void;
@@ -226,6 +228,7 @@ function CategorySection({
               key={action.metadata.name}
               action={action}
               canWrite={canWrite}
+              canExecute={canExecute}
               showCategory={false}
               onExecute={() => onExecute(action)}
               onHistory={() => onHistory(action)}
@@ -426,7 +429,8 @@ function RunStatusModal({ run, onClose }: { run: ActionRun; onClose: () => void 
 
 export default function Actions() {
   const { user } = useAuth();
-  const canWrite = user?.role !== 'viewer';
+  const canWrite = user?.permissions?.write ?? false;
+  const canExecute = user?.permissions?.execute ?? false;
 
   const [actions, setActions] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -642,6 +646,7 @@ export default function Actions() {
                     title={section.title}
                     actions={section.actions}
                     canWrite={canWrite}
+                    canExecute={canExecute}
                     onExecute={setExecuting}
                     onHistory={setHistoryAction}
                     onEdit={setEditAction}
@@ -653,6 +658,7 @@ export default function Actions() {
                         key={action.metadata.name}
                         action={action}
                         canWrite={canWrite}
+                        canExecute={canExecute}
                         showCategory={activeCategory === 'All'}
                         onExecute={() => setExecuting(action)}
                         onHistory={() => setHistoryAction(action)}
