@@ -23,6 +23,7 @@ type Handlers struct {
 	SearchSvc  *search.Service
 	Dispatcher *dispatcher.Manager
 	GitOps     *gitops.Service
+	DataDir    string // root data directory, used for GitOps repo storage
 }
 
 // writeJSON serializes v as JSON and writes it to the response with the given

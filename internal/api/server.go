@@ -20,20 +20,20 @@ import (
 	"github.com/go2engle/gantry/internal/dispatcher"
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
-	"github.com/go2engle/gantry/internal/gitops"
 	"github.com/go2engle/gantry/internal/metrics"
 	"github.com/go2engle/gantry/internal/search"
 )
 
 // Server is the Gantry HTTP server.
 type Server struct {
-	config  *config.Config
-	handler http.Handler
-	port    int
+	config   *config.Config
+	handler  http.Handler
+	port     int
+	Handlers *handlers.Handlers
 }
 
 // NewServer creates a new Gantry API server with all routes configured.
-func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, eventBus *events.Bus, validator *entity.SchemaValidator, searchSvc *search.Service, wsHub *websocket.Hub, gitopsSvc *gitops.Service) *Server {
+func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, eventBus *events.Bus, validator *entity.SchemaValidator, searchSvc *search.Service, wsHub *websocket.Hub) *Server {
 	r := chi.NewRouter()
 
 	// Core middleware.
@@ -71,7 +71,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 		Validator:  validator,
 		SearchSvc:  searchSvc,
 		Dispatcher: dispatcher.New(database, eventBus),
-		GitOps:     gitopsSvc,
+		DataDir:    cfg.DataDir,
 	}
 
 	// Health check routes (public).
@@ -200,9 +200,10 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 	}
 
 	return &Server{
-		config:  cfg,
-		handler: r,
-		port:    cfg.Port,
+		config:   cfg,
+		handler:  r,
+		port:     cfg.Port,
+		Handlers: h,
 	}
 }
 

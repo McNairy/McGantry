@@ -1,8 +1,53 @@
 package handlers
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"time"
+
+	"github.com/go2engle/gantry/internal/gitops"
 )
+
+// InitGitOps initializes or reinitializes the GitOps service based on the
+// current plugin configuration in the database. Safe to call at any time —
+// on startup, after enabling the plugin, or after changing config.
+func (h *Handlers) InitGitOps() {
+	p, err := h.DB.GetPlugin(context.Background(), "gitops")
+	if err != nil || p == nil || !p.Enabled {
+		if h.GitOps != nil {
+			h.GitOps.Stop()
+			h.GitOps = nil
+		}
+		return
+	}
+
+	cfg := gitops.ConfigFromPlugin(p.Config, h.DataDir)
+
+	if h.GitOps != nil {
+		// Reinit existing service — handles URL changes, re-clones if needed.
+		if err := h.GitOps.Reinit(cfg); err != nil {
+			log.Printf("[gitops] reinit error: %v", err)
+		}
+		return
+	}
+
+	svc, err := gitops.New(cfg, h.DB)
+	if err != nil {
+		log.Printf("[gitops] init error: %v", err)
+		return
+	}
+	h.GitOps = svc
+
+	// Start periodic pull if configured.
+	if cfg.SyncInterval != "" {
+		if interval, err := time.ParseDuration(cfg.SyncInterval); err == nil && interval > 0 {
+			svc.StartPullLoop(interval)
+		}
+	}
+
+	log.Println("[gitops] service initialized")
+}
 
 // GetGitOpsStatus returns the current GitOps sync status.
 func (h *Handlers) GetGitOpsStatus(w http.ResponseWriter, r *http.Request) {

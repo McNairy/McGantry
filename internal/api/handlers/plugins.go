@@ -123,6 +123,12 @@ func (h *Handlers) EnablePlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Dynamically initialize or shut down the GitOps service.
+	if name == "gitops" {
+		go h.InitGitOps()
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -166,6 +172,12 @@ func (h *Handlers) UpdatePluginConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Reinitialize GitOps if its config changed while enabled.
+	if name == "gitops" {
+		go h.InitGitOps()
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

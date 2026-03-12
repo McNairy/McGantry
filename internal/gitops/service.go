@@ -2,7 +2,10 @@ package gitops
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +16,8 @@ import (
 	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go2engle/gantry/internal/db"
 	"github.com/go2engle/gantry/internal/entity"
 )
@@ -154,6 +158,9 @@ func New(cfg Config, database *db.DB) (*Service, error) {
 		},
 	}
 
+	// Restore sync history from previous runs.
+	s.loadHistory()
+
 	if err := s.ensureRepo(); err != nil {
 		s.status.LastError = err.Error()
 		return s, nil // return service even on clone failure so status is visible
@@ -190,6 +197,10 @@ func (s *Service) ensureRepo() error {
 
 	repo, err = git.PlainClone(repoPath, false, opts)
 	if err != nil {
+		// Handle empty remote repository — init locally and add remote.
+		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+			return s.initEmptyRepo(repoPath)
+		}
 		return fmt.Errorf("cloning repository: %w", err)
 	}
 
@@ -197,11 +208,39 @@ func (s *Service) ensureRepo() error {
 	return nil
 }
 
-func (s *Service) authMethod() *http.BasicAuth {
+// initEmptyRepo sets up a local repo with the remote configured, for use when
+// the remote repository has no commits yet.
+func (s *Service) initEmptyRepo(repoPath string) error {
+	os.RemoveAll(repoPath) // clean up any partial clone
+
+	repo, err := git.PlainInit(repoPath, false)
+	if err != nil {
+		return fmt.Errorf("initializing empty repo: %w", err)
+	}
+
+	_, err = repo.CreateRemote(&gitconfig.RemoteConfig{
+		Name: "origin",
+		URLs: []string{s.config.RepoURL},
+	})
+	if err != nil {
+		return fmt.Errorf("adding remote: %w", err)
+	}
+
+	// Set HEAD to the configured branch so first commit lands on the right branch.
+	ref := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName(s.config.Branch))
+	if err := repo.Storer.SetReference(ref); err != nil {
+		return fmt.Errorf("setting HEAD to branch %s: %w", s.config.Branch, err)
+	}
+
+	s.repo = repo
+	return nil
+}
+
+func (s *Service) authMethod() *githttp.BasicAuth {
 	if s.config.AuthToken == "" {
 		return nil
 	}
-	return &http.BasicAuth{
+	return &githttp.BasicAuth{
 		Username: "gantry", // username is ignored for PAT auth
 		Password: s.config.AuthToken,
 	}
@@ -221,11 +260,66 @@ func (s *Service) pullLatest() error {
 		Force:         true,
 	})
 
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return fmt.Errorf("pulling from remote: %w", err)
+	if err == nil || err == git.NoErrAlreadyUpToDate {
+		return nil
 	}
 
-	return nil
+	// Empty remote — nothing to pull.
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		return nil
+	}
+
+	// Local branch doesn't exist yet (repo was initialized from an empty remote
+	// and this is the first pull after the remote got commits). Fall back to
+	// fetch + checkout.
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return s.fetchAndCheckout()
+	}
+
+	return fmt.Errorf("pulling from remote: %w", err)
+}
+
+// fetchAndCheckout handles the first pull for repos initialized from an empty
+// remote. It fetches from origin, creates a local branch from the remote ref,
+// and checks out the worktree.
+func (s *Service) fetchAndCheckout() error {
+	branchRefName := plumbing.NewBranchReferenceName(s.config.Branch)
+
+	err := s.repo.Fetch(&git.FetchOptions{
+		RemoteName: "origin",
+		Auth:       s.authMethod(),
+		RefSpecs: []gitconfig.RefSpec{
+			gitconfig.RefSpec("refs/heads/" + s.config.Branch + ":refs/remotes/origin/" + s.config.Branch),
+		},
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+			return nil
+		}
+		return fmt.Errorf("fetching from remote: %w", err)
+	}
+
+	// Resolve the remote tracking ref.
+	remoteRef, err := s.repo.Reference(plumbing.NewRemoteReferenceName("origin", s.config.Branch), true)
+	if err != nil {
+		return nil // remote branch doesn't exist yet
+	}
+
+	// Create (or update) the local branch to point at the same commit.
+	localRef := plumbing.NewHashReference(branchRefName, remoteRef.Hash())
+	if err := s.repo.Storer.SetReference(localRef); err != nil {
+		return fmt.Errorf("creating local branch: %w", err)
+	}
+
+	// Checkout to populate the worktree with the files.
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("getting worktree: %w", err)
+	}
+	return w.Checkout(&git.CheckoutOptions{
+		Branch: branchRefName,
+		Force:  true,
+	})
 }
 
 func (s *Service) push() error {
@@ -530,17 +624,25 @@ func (s *Service) Pull() (*PullResult, error) {
 	// Walk the repo and reconcile all entity files.
 	result, err := s.reconcileFromRepo()
 
+	msg := fmt.Sprintf("gantry: pull — %d created, %d updated, %d deleted", result.Created, result.Updated, result.Deleted)
+	if result.Errors > 0 {
+		msg += fmt.Sprintf(", %d errors", result.Errors)
+	}
+
 	entry := SyncHistoryEntry{
 		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Direction: "pull",
-		Message:   fmt.Sprintf("gantry: pull — %d created, %d updated, %d deleted", result.Created, result.Updated, result.Deleted),
+		Message:   msg,
 		Files:     result.Created + result.Updated + result.Deleted,
+	}
+	if result.Errors > 0 {
+		entry.Error = fmt.Sprintf("%d files failed — check server logs for details", result.Errors)
 	}
 	if err != nil {
 		entry.Error = err.Error()
 		s.setError(err.Error())
-	} else {
+	} else if result.Errors == 0 {
 		s.status.LastError = ""
 	}
 
@@ -580,26 +682,34 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 
 		// Get the relative path from repo root.
 		relPath, _ := filepath.Rel(repoRoot, path)
-		kind, namespace, name := ParseEntityPath(s.config.BasePath, relPath)
-		if kind == "" {
-			return nil // not a valid entity path
-		}
 
 		data, err := os.ReadFile(path)
 		if err != nil {
+			log.Printf("[gitops-pull] read %s: %v", relPath, err)
 			result.Errors++
 			return nil
 		}
 
 		repoEntity, err := DeserializeEntity(data)
 		if err != nil {
+			log.Printf("[gitops-pull] parse %s: %v", relPath, err)
 			result.Errors++
 			return nil
 		}
 
+		// Use the entity's own kind/namespace/name from the YAML for DB lookup.
+		eKind := repoEntity.Kind
+		eNamespace := repoEntity.Metadata.Namespace
+		eName := repoEntity.Metadata.Name
+
 		// Check current DB state.
-		existing, err := s.db.GetEntity(ctx, kind, namespace, name)
+		existing, err := s.db.GetEntity(ctx, eKind, eNamespace, eName)
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			existing = nil
+			err = nil
+		}
 		if err != nil {
+			log.Printf("[gitops-pull] lookup %s/%s/%s: %v", eKind, eNamespace, eName, err)
 			result.Errors++
 			return nil
 		}
@@ -608,6 +718,7 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 			// Create new entity.
 			repoEntity.Metadata.CreatedBy = "gitops"
 			if err := s.db.CreateEntity(ctx, repoEntity); err != nil {
+				log.Printf("[gitops-pull] create %s/%s/%s: %v", eKind, eNamespace, eName, err)
 				result.Errors++
 			} else {
 				result.Created++
@@ -623,6 +734,7 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 			existing.Metadata.Labels = repoEntity.Metadata.Labels
 
 			if err := s.db.UpdateEntity(ctx, existing); err != nil {
+				log.Printf("[gitops-pull] update %s/%s/%s: %v", eKind, eNamespace, eName, err)
 				result.Errors++
 			} else {
 				result.Updated++
@@ -641,7 +753,7 @@ func (s *Service) ListFiles() ([]FileEntry, error) {
 	defer s.mu.Unlock()
 
 	if s.repo == nil {
-		return nil, fmt.Errorf("not connected to repository")
+		return []FileEntry{}, nil
 	}
 
 	w, err := s.repo.Worktree()
@@ -709,6 +821,39 @@ func (s *Service) addHistory(entry SyncHistoryEntry) {
 	if len(s.history) > maxHistory {
 		s.history = s.history[:maxHistory]
 	}
+	s.persistHistory()
+}
+
+// historyFilePath returns the path to the JSON file used to persist sync history.
+func (s *Service) historyFilePath() string {
+	return filepath.Join(s.config.DataDir, "sync-history.json")
+}
+
+// persistHistory writes the current history slice to disk as JSON.
+// Must be called with historyMu held.
+func (s *Service) persistHistory() {
+	data, err := json.Marshal(s.history)
+	if err != nil {
+		log.Printf("[gitops] failed to marshal history: %v", err)
+		return
+	}
+	if err := os.WriteFile(s.historyFilePath(), data, 0o644); err != nil {
+		log.Printf("[gitops] failed to persist history: %v", err)
+	}
+}
+
+// loadHistory reads persisted sync history from disk.
+func (s *Service) loadHistory() {
+	data, err := os.ReadFile(s.historyFilePath())
+	if err != nil {
+		return // file doesn't exist yet — that's fine
+	}
+	var entries []SyncHistoryEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		log.Printf("[gitops] failed to parse history file: %v", err)
+		return
+	}
+	s.history = entries
 }
 
 func (s *Service) setError(msg string) {
