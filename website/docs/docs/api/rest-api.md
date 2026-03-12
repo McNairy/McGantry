@@ -377,6 +377,90 @@ DELETE /api/v1/plugins/{name}
 
 Requires `developer` role.
 
+## GitOps
+
+The GitOps plugin endpoints are available when the GitOps plugin is installed and enabled.
+
+### Get Sync Status
+
+```
+GET /api/v1/plugins/gitops/status
+```
+
+Returns the current connection and sync state.
+
+```bash
+curl http://localhost:8080/api/v1/plugins/gitops/status \
+  -H "Authorization: Bearer <token>"
+```
+
+Response:
+
+```json
+{
+  "connected": true,
+  "repoUrl": "https://github.com/org/gantry-catalog.git",
+  "branch": "main",
+  "lastCommit": "a1b2c3d4e5f6",
+  "lastCommitAt": "2026-03-12T10:30:00Z",
+  "lastPushAt": "2026-03-12T10:30:00Z",
+  "lastPullAt": "2026-03-12T10:25:00Z",
+  "lastError": "",
+  "pendingFiles": 0
+}
+```
+
+### Get Sync History
+
+```
+GET /api/v1/plugins/gitops/history
+```
+
+Returns recent push and pull operations (up to 100 entries).
+
+### List Tracked Files
+
+```
+GET /api/v1/plugins/gitops/files
+```
+
+Returns all entity YAML files tracked in the Git repository.
+
+Response:
+
+```json
+[
+  {"path": "Service/default/user-service.yaml", "kind": "Service", "namespace": "default", "name": "user-service"},
+  {"path": "Team/default/backend-services.yaml", "kind": "Team", "namespace": "default", "name": "backend-services"}
+]
+```
+
+### Trigger Full Sync (Push)
+
+```
+POST /api/v1/plugins/gitops/sync
+```
+
+Requires `developer` role. Exports all entities from the database to the Git repo, commits, and pushes. Runs asynchronously — returns `202 Accepted`.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/plugins/gitops/sync \
+  -H "Authorization: Bearer <token>"
+```
+
+### Trigger Pull
+
+```
+POST /api/v1/plugins/gitops/pull
+```
+
+Requires `developer` role. Fetches the latest changes from the remote Git repo and reconciles with the database. Runs asynchronously — returns `202 Accepted`.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/plugins/gitops/pull \
+  -H "Authorization: Bearer <token>"
+```
+
 ## Dashboard
 
 ### Get Dashboard Config
