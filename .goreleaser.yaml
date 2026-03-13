@@ -56,7 +56,7 @@ changelog:
 
 dockers:
   - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-amd64"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-amd64"
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
@@ -64,7 +64,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
     goarch: amd64
   - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-arm64"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-arm64"
     use: buildx
     build_flag_templates:
       - "--platform=linux/arm64"
@@ -73,11 +73,11 @@ dockers:
     goarch: arm64
 
 docker_manifests:
-  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}"
+  - name_template: "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}"
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:latest"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-amd64"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:latest"
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-arm64"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-amd64"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/gantry:{{ .Version }}-arm64"
