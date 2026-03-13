@@ -137,6 +137,33 @@ const revealObserver = new IntersectionObserver(entries => {
 
 document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
 
+/* — Product demo view switcher — */
+(function () {
+  const views = Array.from(document.querySelectorAll('[data-demo-view]'));
+  const controls = Array.from(document.querySelectorAll('[data-demo-target]'));
+  if (!views.length || !controls.length) return;
+
+  function setView(nextView) {
+    views.forEach((view) => {
+      const active = view.dataset.demoView === nextView;
+      view.classList.toggle('is-active', active);
+      view.hidden = !active;
+    });
+
+    controls.forEach((control) => {
+      const active = control.dataset.demoTarget === nextView;
+      control.classList.toggle('is-active', active);
+      if (control.classList.contains('demo-switch')) {
+        control.setAttribute('aria-selected', active ? 'true' : 'false');
+      }
+    });
+  }
+
+  controls.forEach((control) => {
+    control.addEventListener('click', () => setView(control.dataset.demoTarget));
+  });
+})();
+
 /* — Terminal typewriter — */
 const termEl = document.getElementById('terminal-content');
 
