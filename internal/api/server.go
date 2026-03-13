@@ -184,7 +184,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			// Health check proxy (fetches external health URLs for the frontend).
 			protected.Get("/health-check", h.HealthCheckProxy)
 
-			// Plugin marketplace. Write endpoints require developer+.
+			// Plugin marketplace. Sensitive plugin detail/config reads and writes require developer+.
 			protected.Get("/plugins", h.ListPlugins)
 			// Kubernetes-specific plugin endpoints (before generic {name} routes).
 			protected.Get("/plugins/kubernetes/workload/{appName}", h.GetKubernetesWorkload)
@@ -205,15 +205,16 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/sync", h.SyncArgoCDApp)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/refresh", h.RefreshArgoCDApp)
-			protected.Get("/plugins/{name}", h.GetPlugin)
+			protected.With(middleware.RequireRole("developer")).Get("/plugins/{name}", h.GetPlugin)
 			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/enable", h.EnablePlugin)
-			protected.Get("/plugins/{name}/config", h.GetPluginConfig)
+			protected.With(middleware.RequireRole("developer")).Get("/plugins/{name}/config", h.GetPluginConfig)
 			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/config", h.UpdatePluginConfig)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/{name}/sync", h.SyncPlugin)
 		})
 
-		// WebSocket (public -- auth is handled inside the WS handshake).
-		api.Get("/ws", wsHub.ServeWS)
+		// WebSocket. Browsers may authenticate with a `token` query parameter
+		// because native WebSocket clients cannot set Authorization headers.
+		api.With(middleware.RequireWebSocketAuth(authSvc, database)).Get("/ws", wsHub.ServeWS)
 	})
 
 	// Serve frontend static files from web/dist if the directory exists.

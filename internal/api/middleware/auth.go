@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go2engle/gantry/internal/auth"
 	"github.com/go2engle/gantry/internal/db"
@@ -21,60 +22,26 @@ const effectiveRoleKey contextKey = "effectiveRole"
 func RequireAuth(authSvc *auth.Service, database *db.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			header := r.Header.Get("Authorization")
-			if header == "" {
-				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+			ctx, ok := authenticateRequest(r, authSvc, database, false, w)
+			if !ok {
 				return
 			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
 
-			parts := strings.SplitN(header, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				http.Error(w, `{"error":"invalid authorization header format"}`, http.StatusUnauthorized)
+// RequireWebSocketAuth validates a WebSocket handshake using either the
+// standard Authorization header or a `token` query parameter. Browsers cannot
+// set arbitrary headers on native WebSocket requests, so query-token auth is
+// supported here specifically for the handshake path.
+func RequireWebSocketAuth(authSvc *auth.Service, database *db.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, ok := authenticateRequest(r, authSvc, database, true, w)
+			if !ok {
 				return
 			}
-
-			token := parts[1]
-			var claims *auth.Claims
-
-			if strings.HasPrefix(token, auth.APIKeyPrefix) {
-				// Validate as an API key.
-				keyHash := auth.HashAPIKey(token)
-				apiKey, err := database.GetAPIKeyByHash(r.Context(), keyHash)
-				if err != nil {
-					http.Error(w, `{"error":"invalid or revoked api key"}`, http.StatusUnauthorized)
-					return
-				}
-				// Synthesize claims from the stored API key.
-				claims = &auth.Claims{
-					UserID:   apiKey.UserID,
-					Username: "apikey:" + apiKey.Name,
-					Role:     apiKey.Role,
-				}
-			} else {
-				// Validate as a JWT.
-				var err error
-				claims, err = authSvc.ValidateToken(token)
-				if err != nil {
-					http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
-					return
-				}
-			}
-
-			// Compute effective role from user's direct role + group roles.
-			effectiveRole := claims.Role
-			if claims.UserID != "" {
-				groups, err := database.ListUserGroups(r.Context(), claims.UserID)
-				if err == nil && len(groups) > 0 {
-					groupRoles := make([]string, len(groups))
-					for i, g := range groups {
-						groupRoles[i] = g.Role
-					}
-					effectiveRole = auth.EffectiveRole(claims.Role, groupRoles)
-				}
-			}
-
-			ctx := context.WithValue(r.Context(), claimsKey, claims)
-			ctx = context.WithValue(ctx, effectiveRoleKey, effectiveRole)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -123,4 +90,82 @@ func GetEffectiveRole(ctx context.Context) string {
 		return claims.Role
 	}
 	return ""
+}
+
+func authenticateRequest(r *http.Request, authSvc *auth.Service, database *db.DB, allowQueryToken bool, w http.ResponseWriter) (context.Context, bool) {
+	token, errMsg := tokenFromRequest(r, allowQueryToken)
+	if errMsg != "" {
+		http.Error(w, errMsg, http.StatusUnauthorized)
+		return nil, false
+	}
+
+	claims, effectiveRole, errMsg := authenticateToken(r, authSvc, database, token)
+	if errMsg != "" {
+		http.Error(w, errMsg, http.StatusUnauthorized)
+		return nil, false
+	}
+
+	ctx := context.WithValue(r.Context(), claimsKey, claims)
+	ctx = context.WithValue(ctx, effectiveRoleKey, effectiveRole)
+	return ctx, true
+}
+
+func tokenFromRequest(r *http.Request, allowQueryToken bool) (string, string) {
+	header := r.Header.Get("Authorization")
+	if header != "" {
+		parts := strings.SplitN(header, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			return "", `{"error":"invalid authorization header format"}`
+		}
+		return parts[1], ""
+	}
+
+	if allowQueryToken {
+		if token := r.URL.Query().Get("token"); token != "" {
+			return token, ""
+		}
+	}
+
+	return "", `{"error":"missing authorization header"}`
+}
+
+func authenticateToken(r *http.Request, authSvc *auth.Service, database *db.DB, token string) (*auth.Claims, string, string) {
+	if strings.HasPrefix(token, auth.APIKeyPrefix) {
+		keyHash := auth.HashAPIKey(token)
+		apiKey, err := database.GetAPIKeyByHash(r.Context(), keyHash)
+		if err != nil {
+			return nil, "", `{"error":"invalid or revoked api key"}`
+		}
+		if apiKey.ExpiresAt != nil && apiKey.ExpiresAt.Before(time.Now().UTC()) {
+			return nil, "", `{"error":"invalid or revoked api key"}`
+		}
+
+		claims := &auth.Claims{
+			UserID:   apiKey.UserID,
+			Username: "apikey:" + apiKey.Name,
+			Role:     apiKey.Role,
+		}
+		// API keys must honor their stored role exactly so they can be safely
+		// down-scoped relative to the owning user's account.
+		return claims, apiKey.Role, ""
+	}
+
+	claims, err := authSvc.ValidateToken(token)
+	if err != nil {
+		return nil, "", `{"error":"invalid or expired token"}`
+	}
+
+	effectiveRole := claims.Role
+	if claims.UserID != "" {
+		groups, err := database.ListUserGroups(r.Context(), claims.UserID)
+		if err == nil && len(groups) > 0 {
+			groupRoles := make([]string, len(groups))
+			for i, g := range groups {
+				groupRoles[i] = g.Role
+			}
+			effectiveRole = auth.EffectiveRole(claims.Role, groupRoles)
+		}
+	}
+
+	return claims, effectiveRole, ""
 }

@@ -57,10 +57,30 @@ func (h *Handlers) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Default role to the caller's role; cap it at the caller's own role level.
+	// Default role to the caller's effective role; reject any attempted
+	// privilege escalation beyond the caller's own current access level.
+	callerRole := middleware.GetEffectiveRole(r.Context())
+	if callerRole == "" {
+		callerRole = claims.Role
+	}
+	callerLevel := auth.RoleLevel(callerRole)
+	if callerLevel == 0 {
+		writeError(w, http.StatusForbidden, "unable to determine caller role")
+		return
+	}
+
 	role := req.Role
 	if role == "" {
-		role = claims.Role
+		role = callerRole
+	} else {
+		if !auth.IsValidRole(role) {
+			writeError(w, http.StatusBadRequest, "invalid role")
+			return
+		}
+		if auth.RoleLevel(role) > callerLevel {
+			writeError(w, http.StatusForbidden, "cannot create an api key with higher privileges than your own")
+			return
+		}
 	}
 
 	rawKey, keyHash, prefix, err := auth.GenerateAPIKey()
