@@ -1,14 +1,19 @@
 // @ts-check
 const { themes: prismThemes } = require('prism-react-renderer');
 
+const siteUrl = process.env.DOCS_SITE_URL || 'https://go2engle.com';
+const baseUrl = process.env.DOCS_BASE_URL || '/docs/';
+const homeUrl = process.env.DOCS_HOME_URL || baseUrl.replace(/docs\/?$/, '');
+const absoluteHomeUrl = new URL(homeUrl || '/', siteUrl).toString();
+
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Gantry',
   tagline: 'Open-source internal developer platform — single binary, zero dependencies.',
   favicon: 'img/favicon.svg',
 
-  url: 'https://gantry.io',
-  baseUrl: '/docs/',
+  url: siteUrl,
+  baseUrl,
 
   organizationName: 'go2engle',
   projectName: 'gantry',
@@ -65,7 +70,7 @@ const config = {
             label: 'Documentation',
           },
           {
-            href: '/',
+            href: absoluteHomeUrl,
             label: 'Home',
             position: 'left',
             target: '_self',

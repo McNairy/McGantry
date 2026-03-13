@@ -37,6 +37,10 @@ jobs:
       - name: Build Docusaurus docs
         if: hashFiles('website/docs/package.json') != ''
         working-directory: website/docs
+        env:
+          DOCS_SITE_URL: https://go2engle.com
+          DOCS_BASE_URL: /Gantry/docs/
+          DOCS_HOME_URL: /Gantry/
         run: |
           npm ci
           npm run build
