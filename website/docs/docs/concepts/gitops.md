@@ -22,8 +22,7 @@ The GitOps plugin provides automatic bidirectional synchronization between your 
 ### Setup
 
 1. Go to **Plugins** in the sidebar
-2. Find **GitOps** and click **Install**
-3. Configure the plugin:
+2. Find **GitOps**, open it, and configure the plugin:
 
 | Setting | Required | Description |
 |---|---|---|
@@ -36,7 +35,7 @@ The GitOps plugin provides automatic bidirectional synchronization between your 
 | **Commit Author Email** | No | Git commit author email (default: `gantry@localhost`) |
 | **Pull Sync Interval** | No | How often to auto-pull from Git (e.g., `5m`, `1h`). Leave empty for manual-only |
 
-4. Click **Enable** to activate the plugin
+3. Click **Enable** to activate the plugin
 
 ### How It Works
 
@@ -119,7 +118,7 @@ Server-managed fields (`createdAt`, `updatedAt`, `createdBy`) are stripped from 
 
 ### API Endpoints
 
-All endpoints require authentication. Push/pull operations require `developer` role.
+All endpoints require authentication. GitOps status/history/files and push/pull operations are `admin`-only.
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -160,6 +159,8 @@ Sync and pull operations run asynchronously and return `202 Accepted` immediatel
   "error": ""
 }
 ```
+
+For failed pulls, `error` contains a summary and the first few reconcile failures so the UI can show actionable details without flooding the history view.
 
 ## The Apply Command
 

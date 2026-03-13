@@ -1,12 +1,12 @@
 ---
 sidebar_position: 1
 title: Authentication
-description: JWT tokens, API keys, and role-based access control.
+description: JWTs, session cookies, API keys, and role-based access control.
 ---
 
 # Authentication
 
-Gantry uses JWT Bearer tokens for user sessions and API keys for programmatic access. All API endpoints (except health checks, login, and GitHub OAuth config) require authentication.
+Gantry uses JWTs for user sessions and API keys for programmatic access. Browser logins also set a same-origin HttpOnly session cookie, so the SPA can authenticate regular API calls and WebSocket connections without exposing the token to JavaScript.
 
 ## User Login
 
@@ -38,6 +38,19 @@ Response:
 
 JWT tokens expire after **24 hours**. Re-login to get a new token.
 
+## Session Cookies and Logout
+
+Successful login also sets a `gantry_session` cookie on the current origin. The browser UI uses that cookie automatically for API requests and WebSocket handshakes.
+
+To clear the browser session:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/logout \
+  -H "Authorization: Bearer <token>"
+```
+
+`POST /api/v1/auth/logout` returns `204 No Content` and clears the session cookie.
+
 ## Using Tokens
 
 Include the token in all API requests:
@@ -56,6 +69,8 @@ curl http://localhost:8080/api/v1/entities \
 
 API keys are long-lived credentials for CI/CD and automation. They use the same `Authorization: Bearer` header but with a different format: `gantry_<64-hex-chars>`.
 
+By default, a new API key gets the caller's **effective** role. You can explicitly down-scope a key, but Gantry rejects any attempt to create a key with more privilege than the caller currently has.
+
 ### Creating an API Key
 
 **Via the UI:** Settings → API Keys → Create New Key
@@ -64,7 +79,7 @@ API keys are long-lived credentials for CI/CD and automation. They use the same 
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/apikeys \
-  -H "Authorization: Bearer <admin-token>" \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "ci-catalog-sync",
@@ -114,10 +129,10 @@ Gantry has four roles in ascending order of privilege:
 
 | Role | Level | Capabilities |
 |---|---|---|
-| `viewer` | 1 | Read entities, search, view schemas and audit log |
-| `developer` | 2 | All viewer capabilities + create/update/delete entities, execute actions, manage plugins |
-| `platform-engineer` | 3 | All developer capabilities + reserved for future use |
-| `admin` | 4 | All capabilities + user management, dashboard configuration |
+| `viewer` | 1 | Read-only access to entities, search, schemas, dashboards, and plugin-backed views |
+| `developer` | 2 | All viewer capabilities + create/update/delete entities, execute actions |
+| `platform-engineer` | 3 | All developer capabilities + manage plugin config and plugin sync operations |
+| `admin` | 4 | All capabilities + user management, RBAC, audit log, dashboard config, and GitOps controls |
 
 The default `admin` user has the `admin` role. Newly registered users get `viewer` by default.
 
@@ -145,10 +160,11 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
     "username": "alice",
     "password": "secure-password",
     "displayName": "Alice Kim",
-    "email": "alice@example.com",
-    "role": "developer"
+    "email": "alice@example.com"
   }'
 ```
+
+New users are always created as `viewer`. Raise access through groups or later admin updates.
 
 ### List Users (Admin Only)
 
@@ -196,11 +212,18 @@ Response:
 
 ```json
 {
-  "id": "uuid",
+  "userId": "uuid",
   "username": "alice",
-  "displayName": "Alice Kim",
-  "email": "alice@example.com",
-  "role": "developer"
+  "role": "viewer",
+  "effectiveRole": "platform-engineer",
+  "groups": ["platform-engineers"],
+  "permissions": {
+    "read": true,
+    "write": true,
+    "execute": true,
+    "delete": true,
+    "admin": false
+  }
 }
 ```
 
@@ -220,4 +243,4 @@ These endpoints are accessible without authentication:
 
 ## GitHub OAuth SSO
 
-When the GitHub plugin is configured with `oauthEnabled: "true"`, users can sign in with GitHub. See [GitHub Plugin](../plugins/github#github-oauth-sso) for setup instructions.
+When the GitHub plugin is configured with `ssoEnabled: true`, users can sign in with GitHub. See [GitHub Plugin](../plugins/github#github-oauth-sso) for setup instructions.

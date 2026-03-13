@@ -26,24 +26,19 @@ Gantry ships with a bundled registry of official plugins:
 
 ### Via the UI
 
-1. Go to **Plugins** in the sidebar (requires `developer` role or higher)
-2. Browse the **Marketplace** tab
-3. Click **Install** on the plugin you want
-4. Configure it in the **Configure** modal
-5. Click **Enable** to activate
+1. Go to **Plugins** in the sidebar (requires `platform-engineer` role or higher)
+2. Pick a bundled plugin from the list
+3. Configure it in the plugin detail view
+4. Click **Enable** to activate it
 
 ### Via the API
 
 ```bash
-# Install
-curl -X POST http://localhost:8080/api/v1/plugins/kubernetes/install \
-  -H "Authorization: Bearer <token>"
-
 # Configure
 curl -X PUT http://localhost:8080/api/v1/plugins/kubernetes/config \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"clusters": "[{\"name\":\"prod\",\"kubeconfig\":\"...\"}]"}'
+  -d '{"clusters":[{"name":"prod","url":"https://k8s.example.com:6443","token":"..."}]}'
 
 # Enable
 curl -X PUT http://localhost:8080/api/v1/plugins/kubernetes/enable \
@@ -58,19 +53,20 @@ curl -X POST http://localhost:8080/api/v1/plugins/kubernetes/sync \
 ## Plugin Lifecycle
 
 ```
-Install → Configure → Enable → [Sync] → Disable → Uninstall
+Available → Configure → Enable → [Sync or Use] → Disable
 ```
 
-- **Install** — Registers the plugin in the `plugins` DB table
+- **Available** — Bundled plugins are auto-registered on startup
 - **Configure** — Sets plugin-specific config (credentials, endpoints, etc.). Sensitive values are encrypted with AES-256-GCM.
 - **Enable** — Activates the plugin; triggers initial sync if applicable
 - **Sync** — Manually triggers a re-sync of entities from the external system
 - **Disable** — Stops the plugin from running but keeps config intact
-- **Uninstall** — Removes the plugin and all its config
 
 ## Plugin Configuration Storage
 
-Plugin configs are stored as JSON in the `plugins.config` column. Sensitive fields (API tokens, kubeconfigs) are encrypted with AES-256-GCM using the key from `GANTRY_ENCRYPTION_KEY` / `$GANTRY_DATA_DIR/encryption.key`.
+Plugin configs are stored as JSON in the `plugins.config` column. Sensitive fields (API tokens, kubeconfigs, OAuth secrets) are encrypted with AES-256-GCM using the key from `GANTRY_ENCRYPTION_KEY` / `$GANTRY_DATA_DIR/encryption.key`.
+
+When plugin config is read back through the API, secret values are redacted as `__GANTRY_SECRET_REDACTED__`. Sending that placeholder back during an update keeps the existing secret unchanged.
 
 ## Entity Panels
 
@@ -84,7 +80,7 @@ Panels appear automatically when the entity has the relevant annotations or spec
 
 ## Plugin Permissions
 
-Managing plugins (install, configure, enable, sync) requires `developer` role or higher.
+Managing plugins (configure, enable, sync) generally requires `platform-engineer` role or higher. GitOps status, full sync, and pull controls are `admin`-only.
 
 Viewing plugin data (entity panels, tabs) is available to all authenticated users.
 

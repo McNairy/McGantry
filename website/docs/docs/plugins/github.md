@@ -16,10 +16,7 @@ The GitHub plugin syncs repositories from a GitHub organization as `Service` ent
 
 ## Installation
 
-```bash
-curl -X POST http://localhost:8080/api/v1/plugins/github/install \
-  -H "Authorization: Bearer <token>"
-```
+The GitHub plugin is bundled with Gantry. Open **Plugins**, select **GitHub**, configure it, then enable it.
 
 ## Authentication Options
 
@@ -49,10 +46,10 @@ curl -X PUT http://localhost:8080/api/v1/plugins/github/config \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "authMethod": "pat",
-    "token": "ghp_yourpersonalaccesstoken",
-    "org": "acme-corp",
-    "oauthEnabled": "false"
+    "authMode": "pat",
+    "personalAccessToken": "ghp_yourpersonalaccesstoken",
+    "orgName": "acme-corp",
+    "ssoEnabled": false
   }'
 ```
 
@@ -60,15 +57,19 @@ curl -X PUT http://localhost:8080/api/v1/plugins/github/config \
 
 | Field | Type | Description |
 |---|---|---|
-| `authMethod` | `pat` \| `app` | Authentication method |
-| `token` | string | PAT token (if `authMethod=pat`) |
-| `appId` | string | GitHub App ID (if `authMethod=app`) |
-| `installationId` | string | GitHub App installation ID (if `authMethod=app`) |
-| `privateKey` | string | GitHub App RSA private key PEM (if `authMethod=app`) |
-| `org` | string | GitHub organization name to sync from |
-| `oauthEnabled` | `"true"` \| `"false"` | Enable GitHub OAuth SSO |
-| `oauthClientId` | string | GitHub OAuth App client ID (required if `oauthEnabled=true`) |
-| `oauthClientSecret` | string | GitHub OAuth App client secret (required if `oauthEnabled=true`) |
+| `authMode` | `pat` \| `app` | Authentication method |
+| `personalAccessToken` | string | PAT token (if `authMode=pat`) |
+| `appId` | string | GitHub App ID (if `authMode=app`) |
+| `installationId` | string | GitHub App installation ID (if `authMode=app`) |
+| `privateKey` | string | GitHub App RSA private key PEM (if `authMode=app`) |
+| `ssoEnabled` | boolean | Enable GitHub OAuth SSO |
+| `oauthClientId` | string | GitHub OAuth App client ID (required if `ssoEnabled=true`) |
+| `oauthClientSecret` | string | GitHub OAuth App client secret (required if `ssoEnabled=true`) |
+| `autoProvision` | boolean | Automatically create Gantry users for first-time SSO logins |
+| `defaultRole` | string | Role assigned to auto-provisioned users and unmatched synced teams |
+| `syncTeams` | boolean | Sync GitHub org teams to Gantry groups during SSO login |
+| `orgName` | string | GitHub organization name for repo sync and optional team sync |
+| `teamRoleMappings` | array | Optional team slug to Gantry role mappings |
 
 ## Synced Entity Format
 
@@ -155,7 +156,7 @@ When configured, Gantry shows a **"Sign in with GitHub"** button on the login pa
    - Homepage URL: `https://gantry.your-org.com`
    - Callback URL: `https://gantry.your-org.com/api/v1/auth/github/callback`
 
-2. Configure the plugin with `oauthEnabled: "true"`, `oauthClientId`, and `oauthClientSecret`
+2. Configure the plugin with `ssoEnabled: true`, `oauthClientId`, and `oauthClientSecret`
 
 3. Check that SSO is enabled:
    ```bash
@@ -173,19 +174,18 @@ User clicks "Sign in with GitHub"
     → GET /api/v1/auth/github/callback?code=...
     → Gantry exchanges code for GitHub user info
     → Creates/updates Gantry user
-    → Issues JWT
-    → Redirect to /?github_token=<jwt>
-    → Frontend stores token, clears URL param
+    → Sets gantry_session HttpOnly cookie
+    → Redirects back to the SPA
 ```
 
 ### User Provisioning
 
-On first OAuth login, Gantry creates a user with:
-- Username: GitHub username
+On first OAuth login, Gantry can create a user with:
+- Username: `github:<login>`
 - Display name: GitHub display name
-- Role: `developer` (default for OAuth users)
+- Role: `viewer` by default, or the configured `defaultRole`
 
-Existing users with matching usernames are updated with their GitHub display name.
+If `autoProvision` is disabled, users must already exist in Gantry before SSO login. Existing users are matched first by `github:<login>`, then by email address if GitHub returns one.
 
 ## Triggering GitHub Actions
 
@@ -220,4 +220,4 @@ curl -X POST http://localhost:8080/api/v1/plugins/github/sync \
   -H "Authorization: Bearer <token>"
 ```
 
-Syncs all repositories from the configured GitHub org. Existing entities are updated; new repos create new entities. Archived and forked repositories are excluded by default.
+Syncs all repositories from the configured GitHub org. Existing entities are updated; new repos create new entities. Archived and forked repositories are excluded by default. This endpoint requires `platform-engineer` role or higher.

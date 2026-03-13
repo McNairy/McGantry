@@ -132,12 +132,13 @@ gantry version
 | `GANTRY_ADMIN_PASSWORD` | `--admin-password` | `changeme` | Initial admin password |
 | `GANTRY_JWT_SECRET` | — | auto-generated | JWT signing secret |
 | `GANTRY_DATA_DIR` | — | `./data` | Data directory for SQLite |
+| `GANTRY_ENCRYPTION_KEY` | — | auto-generated | AES-256-GCM key for encrypting plugin secrets at rest |
 
 Prefix a DB string with `postgres://` for PostgreSQL; otherwise it's treated as a SQLite file path.
 
 ## API
 
-All endpoints under `/api/v1/` require a Bearer token (obtained from login), except `/healthz`, `/readyz`, and `/api/v1/auth/login`.
+Most endpoints under `/api/v1/` require authentication. Browser logins set a same-origin HttpOnly session cookie, while CLI and automation clients can keep using `Authorization: Bearer <jwt-or-api-key>`.
 
 ```bash
 # Login
@@ -176,8 +177,12 @@ curl "localhost:8080/api/v1/search?q=payments" -H "Authorization: Bearer $TOKEN"
 |--------|------|-------------|
 | `GET` | `/healthz` | Health check |
 | `GET` | `/readyz` | Readiness check |
+| `GET` | `/metrics` | Metrics endpoint |
 | `POST` | `/api/v1/auth/login` | Login, returns JWT |
+| `POST` | `/api/v1/auth/logout` | Clear browser session cookie |
 | `GET` | `/api/v1/auth/me` | Current user info |
+| `GET` | `/api/v1/auth/apikeys` | List your API keys |
+| `POST` | `/api/v1/auth/apikeys` | Create a scoped API key |
 | `GET` | `/api/v1/entities` | List all entities |
 | `GET` | `/api/v1/entities/{kind}` | List by kind |
 | `GET` | `/api/v1/entities/{kind}/{name}` | Get entity |
@@ -187,10 +192,11 @@ curl "localhost:8080/api/v1/search?q=payments" -H "Authorization: Bearer $TOKEN"
 | `GET` | `/api/v1/search?q=` | Full-text search |
 | `GET` | `/api/v1/schemas` | List all JSON schemas |
 | `GET` | `/api/v1/schemas/{kind}` | Get schema for kind |
+| `GET` | `/api/v1/plugins` | List bundled plugins and enabled state |
 | `POST` | `/api/v1/actions/{name}/execute` | Execute an action |
 | `GET` | `/api/v1/actions/{name}/runs` | List action runs |
 | `GET` | `/api/v1/audit` | Audit log |
-| `GET` | `/api/v1/ws` | WebSocket (real-time events) |
+| `GET` | `/api/v1/ws` | WebSocket (session cookie or Authorization header auth) |
 
 ## Project Structure
 

@@ -23,21 +23,15 @@ The Kubernetes plugin syncs resources from one or more Kubernetes clusters into 
 
 ## Installation
 
-```bash
-# Via API
-curl -X POST http://localhost:8080/api/v1/plugins/kubernetes/install \
-  -H "Authorization: Bearer <token>"
-```
-
-Or via the UI: **Plugins → Marketplace → Kubernetes → Install**
+The Kubernetes plugin is bundled with Gantry. Open **Plugins**, select **Kubernetes**, configure one or more clusters, then enable it.
 
 ## Configuration
 
-The Kubernetes plugin supports **multiple clusters**. Configure each cluster as a JSON array:
+The Kubernetes plugin supports **multiple clusters**.
 
 ### Via the UI
 
-Go to **Plugins → Installed → Kubernetes → Configure**. Add clusters using the multi-cluster form.
+Go to **Plugins → Kubernetes** and add clusters using the multi-cluster form.
 
 ### Via the API
 
@@ -46,7 +40,17 @@ curl -X PUT http://localhost:8080/api/v1/plugins/kubernetes/config \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "clusters": "[{\"name\":\"prod\",\"kubeconfig\":\"<base64-kubeconfig>\",\"namespaceFilter\":\"payments,platform\",\"labelSelector\":\"app.kubernetes.io/managed-by=helm\"}]"
+    "clusters": [
+      {
+        "name": "prod",
+        "url": "https://k8s.example.com:6443",
+        "token": "<service-account-token>",
+        "caData": "<base64-ca-cert>",
+        "namespaces": "payments,platform"
+      }
+    ],
+    "labelSelector": "app.kubernetes.io/managed-by=helm",
+    "syncInterval": "5m"
   }'
 ```
 
@@ -57,9 +61,17 @@ Each cluster object in the `clusters` array:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | Yes | Display name for this cluster |
-| `kubeconfig` | string | Yes | Full kubeconfig YAML (will be encrypted at rest) |
-| `namespaceFilter` | string | No | Comma-separated namespace names to sync (empty = all) |
-| `labelSelector` | string | No | Kubernetes label selector to filter resources (e.g., `app.kubernetes.io/managed-by=helm`) |
+| `url` | string | Yes | Kubernetes API server URL |
+| `token` | string | Yes | Bearer token for cluster authentication |
+| `caData` | string | No | Base64-encoded CA certificate. Leave empty to skip TLS verification |
+| `namespaces` | string | No | Comma-separated namespace names to sync (empty = all namespaces) |
+
+Top-level plugin fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `labelSelector` | string | Global label selector applied to all clusters |
+| `syncInterval` | string | Automatic sync interval (for example `5m` or `1h`) |
 
 ## Enabling and Syncing
 
@@ -73,6 +85,8 @@ curl -X PUT http://localhost:8080/api/v1/plugins/kubernetes/enable \
 curl -X POST http://localhost:8080/api/v1/plugins/kubernetes/sync \
   -H "Authorization: Bearer <token>"
 ```
+
+Plugin configuration, enablement, and sync require `platform-engineer` role or higher.
 
 ## Synced Entity Format
 
@@ -146,7 +160,7 @@ Returns chunked HTTP response with log lines. The UI polls this endpoint and dis
 ### Workload API
 
 ```
-GET /api/v1/plugins/kubernetes/workload/{appName}?cluster=prod&namespace=payments
+GET /api/v1/plugins/kubernetes/workload/{appName}?namespaces=payments,platform
 ```
 
 Returns deployment info and pod list for a given `app` label value.
@@ -179,13 +193,13 @@ Sync errors per cluster are logged with the prefix `[kubernetes-sync]` and visib
 
 **Entities not appearing after sync:**
 - Check the server log for `[kubernetes-sync]` errors
-- Verify the kubeconfig has permission to `list` and `get` namespaces, deployments, and services
-- Check `namespaceFilter` isn't accidentally excluding the namespace
+- Verify the service account token has permission to `list` and `get` namespaces, deployments, services, and pods
+- Check `namespaces` isn't accidentally excluding the namespace
 
 **"Kubernetes tab" not showing on entity:**
 - Ensure the entity has `annotations.kubernetes.io/cluster` set
 - Or ensure the entity `name` matches the deployment's `app` label value
 
 **Log streaming not working:**
-- The kubeconfig needs `pods/log` permission
+- The service account token needs `pods/log` permission
 - Check the container name is correct

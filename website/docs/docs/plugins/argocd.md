@@ -17,10 +17,7 @@ The ArgoCD plugin discovers ArgoCD Applications and represents them as `Service`
 
 ## Installation
 
-```bash
-curl -X POST http://localhost:8080/api/v1/plugins/argocd/install \
-  -H "Authorization: Bearer <token>"
-```
+The ArgoCD plugin is bundled with Gantry. Open **Plugins**, select **ArgoCD**, configure one or more ArgoCD instances, then enable it.
 
 ## Configuration
 
@@ -29,9 +26,17 @@ curl -X PUT http://localhost:8080/api/v1/plugins/argocd/config \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://argocd.your-org.com",
-    "token": "your-argocd-api-token",
-    "insecure": "false"
+    "instances": [
+      {
+        "name": "production",
+        "argocdUrl": "https://argocd.your-org.com",
+        "token": "your-argocd-api-token",
+        "insecureSkipTLS": false,
+        "project": "default"
+      }
+    ],
+    "labelKey": "name",
+    "syncInterval": "5m"
   }'
 ```
 
@@ -39,9 +44,21 @@ curl -X PUT http://localhost:8080/api/v1/plugins/argocd/config \
 
 | Field | Type | Description |
 |---|---|---|
-| `url` | string | ArgoCD server URL (e.g., `https://argocd.your-org.com`) |
-| `token` | string | ArgoCD API token (see below for how to create) |
-| `insecure` | `"true"` \| `"false"` | Skip TLS verification (not recommended for production) |
+| `instances` | array | One or more ArgoCD instances to discover applications from |
+| `labelKey` | string | Application label used as the Gantry service name when grouping apps |
+| `syncInterval` | string | Automatic background sync interval |
+
+Each item in `instances` can include:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Display name for the ArgoCD instance |
+| `argocdUrl` | string | Base URL of the ArgoCD server |
+| `token` | string | API token for the instance |
+| `username` | string | Optional username if you authenticate without a token |
+| `password` | string | Optional password if you authenticate without a token |
+| `insecureSkipTLS` | boolean | Skip TLS verification for self-signed certificates |
+| `project` | string | Optional ArgoCD project filter |
 
 ### Creating an ArgoCD API Token
 
@@ -130,7 +147,7 @@ Requires `developer` role. Triggers a normal ArgoCD sync.
 POST /api/v1/plugins/argocd/apps/{appName}/sync
 ```
 
-With body `{"force": true}` — prunes resources and forces re-apply.
+With body `{"hard": true}` — prunes resources and forces re-apply.
 
 ### Refresh
 
@@ -143,7 +160,7 @@ Requests ArgoCD to re-fetch the Git source without syncing.
 ### Get Apps for Entity
 
 ```
-GET /api/v1/plugins/argocd/entity-apps?name=payment-api
+GET /api/v1/plugins/argocd/entity-apps?appNames=production:payment-api
 ```
 
 Returns all ArgoCD apps matching an entity name.
@@ -169,6 +186,8 @@ curl -X POST http://localhost:8080/api/v1/plugins/argocd/sync \
 ```
 
 Re-discovers all ArgoCD applications and upserts them as entities.
+
+Plugin configuration, enablement, and sync require `platform-engineer` role or higher.
 
 ## Troubleshooting
 

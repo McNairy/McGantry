@@ -6,7 +6,7 @@ description: Complete Gantry REST API reference.
 
 # REST API Reference
 
-All API endpoints are prefixed with `/api/v1`. Requests must include `Authorization: Bearer <token>` unless noted as public.
+All API endpoints are prefixed with `/api/v1`. Requests must include `Authorization: Bearer <token>` unless noted as public. The browser UI can also authenticate same-origin requests with the `gantry_session` cookie set by `POST /api/v1/auth/login`.
 
 ## Entities
 
@@ -278,21 +278,18 @@ curl "http://localhost:8080/api/v1/audit?limit=20" \
 Response entries:
 
 ```json
-{
-  "entries": [
-    {
-      "id": "uuid",
-      "timestamp": "2025-01-01T12:00:00Z",
-      "userName": "alice",
-      "action": "create",
-      "resourceType": "Service",
-      "resourceName": "payment-api",
-      "source": "api",
-      "ipAddress": "10.0.0.1"
-    }
-  ],
-  "total": 142
-}
+[
+  {
+    "id": "uuid",
+    "timestamp": "2025-01-01T12:00:00Z",
+    "userName": "alice",
+    "action": "create",
+    "resourceType": "Service",
+    "resourceName": "payment-api",
+    "source": "api",
+    "ipAddress": "10.0.0.1"
+  }
+]
 ```
 
 ## User History
@@ -329,15 +326,15 @@ Returns the current user's recently viewed entities (max 20 per user).
 GET /api/v1/plugins
 ```
 
-Returns all plugins from the registry with their installation status.
+Returns all bundled plugins with their current enabled state.
 
-### Install Plugin
+### Get Plugin Detail
 
 ```
-POST /api/v1/plugins/{name}/install
+GET /api/v1/plugins/{name}
 ```
 
-Requires `developer` role.
+Requires `platform-engineer` role.
 
 ### Get Plugin Config
 
@@ -345,13 +342,15 @@ Requires `developer` role.
 GET /api/v1/plugins/{name}/config
 ```
 
+Requires `platform-engineer` role.
+
 ### Update Plugin Config
 
 ```
 PUT /api/v1/plugins/{name}/config
 ```
 
-Requires `developer` role. Body is a flat JSON object of string values.
+Requires `platform-engineer` role. Body is a JSON object that matches the plugin's config schema. Secret fields are redacted on reads as `__GANTRY_SECRET_REDACTED__`; sending that placeholder back preserves the stored secret.
 
 ### Enable/Disable Plugin
 
@@ -361,25 +360,19 @@ PUT /api/v1/plugins/{name}/enable
 
 Body: `{"enabled": true}` or `{"enabled": false}`
 
+Requires `platform-engineer` role.
+
 ### Trigger Sync
 
 ```
 POST /api/v1/plugins/{name}/sync
 ```
 
-Requires `developer` role.
-
-### Uninstall Plugin
-
-```
-DELETE /api/v1/plugins/{name}
-```
-
-Requires `developer` role.
+Requires `platform-engineer` role.
 
 ## GitOps
 
-The GitOps plugin endpoints are available when the GitOps plugin is installed and enabled.
+The GitOps plugin endpoints are available when the GitOps plugin is enabled.
 
 ### Get Sync Status
 
@@ -441,7 +434,7 @@ Response:
 POST /api/v1/plugins/gitops/sync
 ```
 
-Requires `developer` role. Exports all entities from the database to the Git repo, commits, and pushes. Runs asynchronously — returns `202 Accepted`.
+Requires `admin` role. Exports all entities from the database to the Git repo, commits, and pushes. Runs asynchronously — returns `202 Accepted`.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/plugins/gitops/sync \
@@ -454,7 +447,7 @@ curl -X POST http://localhost:8080/api/v1/plugins/gitops/sync \
 POST /api/v1/plugins/gitops/pull
 ```
 
-Requires `developer` role. Fetches the latest changes from the remote Git repo and reconciles with the database. Runs asynchronously — returns `202 Accepted`.
+Requires `admin` role. Fetches the latest changes from the remote Git repo and reconciles with the database. Runs asynchronously — returns `202 Accepted`.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/plugins/gitops/pull \
@@ -499,13 +492,23 @@ GET /readyz     → {"status": "ok"} or 503 if DB unreachable
 GET /metrics    → Prometheus text format metrics
 ```
 
+## Health Check Proxy
+
+```
+GET /api/v1/health-check?url=https://example.com/healthz
+```
+
+Authenticated endpoint used by the frontend status monitor. Only absolute `http` and `https` URLs to public targets are allowed. Loopback, private, link-local, and userinfo-containing URLs are rejected.
+
 ## WebSocket
 
 ```
 GET /api/v1/ws
 ```
 
-Real-time entity change notifications. Connect with a WebSocket client:
+Real-time entity and action notifications. WebSocket handshakes must authenticate with either a same-origin `gantry_session` cookie or an `Authorization: Bearer <token>` header. Query-string token auth is rejected.
+
+Connect with a WebSocket client:
 
 ```javascript
 const ws = new WebSocket('ws://localhost:8080/api/v1/ws');
@@ -521,7 +524,7 @@ Subscribe to a specific channel:
 
 ```javascript
 ws.send(JSON.stringify({
-  type: "subscribe",
+  action: "subscribe",
   channel: "entities"
 }));
 ```
@@ -532,8 +535,7 @@ All errors return JSON:
 
 ```json
 {
-  "error": "entity not found",
-  "code": 404
+  "error": "entity not found"
 }
 ```
 
