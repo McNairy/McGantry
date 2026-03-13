@@ -33,6 +33,7 @@ export default function GitOps() {
   const [syncing, setSyncing] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [tab, setTab] = useState<'history' | 'files'>('history');
+  const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
 
   const fetchData = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
@@ -158,9 +159,16 @@ export default function GitOps() {
 
       {/* Error banner */}
       {status?.lastError && status?.connected && (
-        <div className="flex items-center gap-3 rounded-xl border border-yellow-400/30 bg-yellow-400/10 px-5 py-3">
-          <AlertCircle className="h-4 w-4 shrink-0 text-yellow-500" />
-          <p className="text-xs text-[var(--gantry-text-secondary)]">{status.lastError}</p>
+        <div className="rounded-xl border border-yellow-400/30 bg-yellow-400/10 px-5 py-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--gantry-text-primary)]">Latest pull error</p>
+              <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-[var(--gantry-text-secondary)]">
+                {status.lastError}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -273,47 +281,65 @@ export default function GitOps() {
             history.map((entry) => (
               <div
                 key={entry.id}
-                className="flex items-center gap-4 rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-3"
+                className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-3"
               >
-                {/* Direction icon */}
-                {entry.direction === 'push' ? (
-                  <ArrowUpCircle className="h-5 w-5 shrink-0 text-blue-500" />
-                ) : (
-                  <ArrowDownCircle className="h-5 w-5 shrink-0 text-purple-500" />
-                )}
+                <div className="flex items-start gap-4">
+                  {/* Direction icon */}
+                  {entry.direction === 'push' ? (
+                    <ArrowUpCircle className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
+                  ) : (
+                    <ArrowDownCircle className="mt-0.5 h-5 w-5 shrink-0 text-purple-500" />
+                  )}
 
-                {/* Details */}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[var(--gantry-text-primary)]">
-                    {entry.message}
-                  </p>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--gantry-text-secondary)]">
-                    <span>{relativeTime(entry.timestamp)}</span>
-                    {entry.commit && (
-                      <span className="rounded bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 font-mono text-[11px]">
-                        {entry.commit}
-                      </span>
-                    )}
-                    <span>{entry.files} {entry.files === 1 ? 'file' : 'files'}</span>
+                  {/* Details */}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-[var(--gantry-text-primary)]">
+                      {entry.message}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--gantry-text-secondary)]">
+                      <span>{relativeTime(entry.timestamp)}</span>
+                      {entry.commit && (
+                        <span className="rounded bg-[var(--gantry-bg-tertiary)] px-1.5 py-0.5 font-mono text-[11px]">
+                          {entry.commit}
+                        </span>
+                      )}
+                      <span>{entry.files} {entry.files === 1 ? 'file' : 'files'}</span>
+                    </div>
                   </div>
+
+                  {/* Direction badge */}
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      entry.direction === 'push'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                        : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    }`}
+                  >
+                    {entry.direction}
+                  </span>
+
+                  {/* Error indicator */}
+                  {entry.error && (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedErrorId(expandedErrorId === entry.id ? null : entry.id)}
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-[var(--gantry-danger)]/30 bg-[var(--gantry-danger)]/10 px-2 py-1 text-[11px] font-medium text-[var(--gantry-danger)] transition-colors hover:border-[var(--gantry-danger)]"
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {expandedErrorId === entry.id ? 'Hide error' : 'View error'}
+                    </button>
+                  )}
                 </div>
 
-                {/* Direction badge */}
-                <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                    entry.direction === 'push'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                      : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  }`}
-                >
-                  {entry.direction}
-                </span>
-
-                {/* Error indicator */}
-                {entry.error && (
-                  <span title={entry.error}>
-                    <AlertCircle className="h-4 w-4 shrink-0 text-[var(--gantry-danger)]" />
-                  </span>
+                {entry.error && expandedErrorId === entry.id && (
+                  <div className="mt-3 rounded-lg border border-[var(--gantry-danger)]/20 bg-[var(--gantry-danger)]/10 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--gantry-danger)]">
+                      Error details
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-[var(--gantry-text-primary)]">
+                      {entry.error}
+                    </p>
+                  </div>
                 )}
               </div>
             ))

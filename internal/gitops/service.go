@@ -69,10 +69,11 @@ type FileEntry struct {
 
 // PullResult holds the result of a pull + reconcile operation.
 type PullResult struct {
-	Created int `json:"created"`
-	Updated int `json:"updated"`
-	Deleted int `json:"deleted"`
-	Errors  int `json:"errors"`
+	Created      int      `json:"created"`
+	Updated      int      `json:"updated"`
+	Deleted      int      `json:"deleted"`
+	Errors       int      `json:"errors"`
+	ErrorDetails []string `json:"errorDetails,omitempty"`
 }
 
 type batchItem struct {
@@ -83,9 +84,10 @@ type batchItem struct {
 }
 
 const (
-	maxHistory    = 100
-	batchDelay    = 2 * time.Second
-	defaultBranch = "main"
+	maxHistory          = 100
+	batchDelay          = 2 * time.Second
+	defaultBranch       = "main"
+	maxPullErrorDetails = 5
 )
 
 // Service manages bidirectional Git synchronization for Gantry entities.
@@ -751,12 +753,12 @@ func (s *Service) Pull() (*PullResult, error) {
 		Message:   msg,
 		Files:     result.Created + result.Updated + result.Deleted,
 	}
-	if result.Errors > 0 {
-		entry.Error = fmt.Sprintf("%d files failed — check server logs for details", result.Errors)
-	}
 	if err != nil {
 		entry.Error = err.Error()
 		s.setError(err.Error())
+	} else if result.Errors > 0 {
+		entry.Error = formatPullErrors(result)
+		s.setError(entry.Error)
 	} else if result.Errors == 0 {
 		s.status.LastError = ""
 	}
@@ -768,12 +770,13 @@ func (s *Service) Pull() (*PullResult, error) {
 
 // reconcileFromRepo walks the repo tree and syncs entities to the database.
 func (s *Service) reconcileFromRepo() (*PullResult, error) {
+	result := &PullResult{}
+
 	w, err := s.repo.Worktree()
 	if err != nil {
-		return nil, fmt.Errorf("getting worktree: %w", err)
+		return result, fmt.Errorf("getting worktree: %w", err)
 	}
 
-	result := &PullResult{}
 	ctx := context.Background()
 	repoRoot := w.Filesystem.Root()
 
@@ -800,15 +803,17 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 
 		data, err := os.ReadFile(path)
 		if err != nil {
-			log.Printf("[gitops-pull] read %s: %v", relPath, err)
-			result.Errors++
+			detail := fmt.Sprintf("%s: read failed: %v", relPath, err)
+			log.Printf("[gitops-pull] %s", detail)
+			result.addError(detail)
 			return nil
 		}
 
 		repoEntity, err := DeserializeEntity(data)
 		if err != nil {
-			log.Printf("[gitops-pull] parse %s: %v", relPath, err)
-			result.Errors++
+			detail := fmt.Sprintf("%s: parse failed: %v", relPath, err)
+			log.Printf("[gitops-pull] %s", detail)
+			result.addError(detail)
 			return nil
 		}
 
@@ -824,8 +829,9 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 			err = nil
 		}
 		if err != nil {
-			log.Printf("[gitops-pull] lookup %s/%s/%s: %v", eKind, eNamespace, eName, err)
-			result.Errors++
+			detail := fmt.Sprintf("%s: lookup %s/%s/%s failed: %v", relPath, eKind, eNamespace, eName, err)
+			log.Printf("[gitops-pull] %s", detail)
+			result.addError(detail)
 			return nil
 		}
 
@@ -833,8 +839,9 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 			// Create new entity.
 			repoEntity.Metadata.CreatedBy = "gitops"
 			if err := s.db.CreateEntity(ctx, repoEntity); err != nil {
-				log.Printf("[gitops-pull] create %s/%s/%s: %v", eKind, eNamespace, eName, err)
-				result.Errors++
+				detail := fmt.Sprintf("%s: create %s/%s/%s failed: %v", relPath, eKind, eNamespace, eName, err)
+				log.Printf("[gitops-pull] %s", detail)
+				result.addError(detail)
 			} else {
 				result.Created++
 			}
@@ -849,8 +856,9 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 			existing.Metadata.Labels = repoEntity.Metadata.Labels
 
 			if err := s.db.UpdateEntity(ctx, existing); err != nil {
-				log.Printf("[gitops-pull] update %s/%s/%s: %v", eKind, eNamespace, eName, err)
-				result.Errors++
+				detail := fmt.Sprintf("%s: update %s/%s/%s failed: %v", relPath, eKind, eNamespace, eName, err)
+				log.Printf("[gitops-pull] %s", detail)
+				result.addError(detail)
 			} else {
 				result.Updated++
 			}
@@ -860,6 +868,40 @@ func (s *Service) reconcileFromRepo() (*PullResult, error) {
 	})
 
 	return result, err
+}
+
+func (r *PullResult) addError(detail string) {
+	r.Errors++
+	if len(r.ErrorDetails) < maxPullErrorDetails {
+		r.ErrorDetails = append(r.ErrorDetails, detail)
+	}
+}
+
+func formatPullErrors(result *PullResult) string {
+	if result == nil || result.Errors == 0 {
+		return ""
+	}
+
+	if len(result.ErrorDetails) == 0 {
+		if result.Errors == 1 {
+			return "1 file failed during pull"
+		}
+		return fmt.Sprintf("%d files failed during pull", result.Errors)
+	}
+
+	lines := make([]string, 0, len(result.ErrorDetails)+2)
+	if result.Errors == 1 {
+		lines = append(lines, "1 file failed during pull:")
+	} else {
+		lines = append(lines, fmt.Sprintf("%d files failed during pull:", result.Errors))
+	}
+	lines = append(lines, result.ErrorDetails...)
+
+	if remaining := result.Errors - len(result.ErrorDetails); remaining > 0 {
+		lines = append(lines, fmt.Sprintf("Additional errors omitted: %d", remaining))
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // ListFiles returns all entity files tracked in the repo.
