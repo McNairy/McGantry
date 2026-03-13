@@ -1,11 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -68,51 +69,64 @@ jobs:
         working-directory: web
         run: npm run build
 
-  release:
-    name: Release
+  label:
+    name: Label PR
     runs-on: ubuntu-latest
     needs: [test, lint, frontend]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: always() && github.event_name == 'pull_request'
     permissions:
-      contents: write
-      packages: write
+      pull-requests: write
+      issues: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Apply CI result label
+        uses: actions/github-script@v7
         with:
-          fetch-depth: 0
+          script: |
+            const passed =
+              '${{ needs.test.result }}'     === 'success' &&
+              '${{ needs.lint.result }}'     === 'success' &&
+              '${{ needs.frontend.result }}' === 'success';
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: true
+            const passLabel   = 'ci: passed';
+            const failLabel   = 'ci: failed';
+            const addLabel    = passed ? passLabel : failLabel;
+            const removeLabel = passed ? failLabel : passLabel;
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: web/package-lock.json
+            // Ensure both labels exist on the repo (creates them if missing)
+            for (const [name, color] of [
+              [passLabel, '0e8a16'],
+              [failLabel, 'd73a4a'],
+            ]) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo:  context.repo.repo,
+                  name,
+                });
+              } catch {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo:  context.repo.repo,
+                  name,
+                  color,
+                });
+              }
+            }
 
-      - name: Set up QEMU (multi-arch Docker)
-        uses: docker/setup-qemu-action@v3
+            // Remove the stale opposite label (ignore 404 if it wasn't applied)
+            try {
+              await github.rest.issues.removeLabel({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                name:         removeLabel,
+              });
+            } catch (_) {}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+            // Apply the current result label
+            await github.rest.issues.addLabels({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: context.issue.number,
+              labels:       [addLabel],
+            });

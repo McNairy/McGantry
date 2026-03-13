@@ -2,6 +2,9 @@ version: 2
 
 project_name: gantry
 
+release:
+  mode: replace
+
 before:
   hooks:
     - cmd: sh -c "cd web && npm ci && npm run build"
