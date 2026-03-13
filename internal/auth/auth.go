@@ -17,6 +17,9 @@ import (
 // APIKeyPrefix is the prefix for all Gantry API keys.
 const APIKeyPrefix = "gantry_"
 
+// SessionCookieName is the browser session cookie used for same-origin auth.
+const SessionCookieName = "gantry_session"
+
 // GenerateAPIKey creates a new random API key and returns the raw key, its
 // SHA-256 hash, and a short display prefix. The raw key should be shown to the
 // user exactly once and never stored — only the hash should be persisted.

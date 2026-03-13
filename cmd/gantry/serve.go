@@ -85,6 +85,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	tlsKey, _ := cmd.Flags().GetString("tls-key")
 
 	// Initialize database and run migrations.
+	authService := auth.NewService(cfg.JWTSecret)
+
 	database, err := db.New(cfg)
 	if err != nil {
 		return fmt.Errorf("initializing database: %w", err)
@@ -94,6 +96,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err := database.Migrate(); err != nil {
 		return fmt.Errorf("running database migrations: %w", err)
 	}
+	if err := database.InitializeBootstrapAdminPassword(context.Background(), authService, cfg.AdminPassword); err != nil {
+		return fmt.Errorf("initializing bootstrap admin password: %w", err)
+	}
 
 	// Seed default groups (Admins, Developers, Platform Engineers).
 	if err := database.SeedDefaultGroups(context.Background()); err != nil {
@@ -101,8 +106,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Add the bootstrap admin user to the "admins" group (idempotent).
-	const adminUserID = "00000000-0000-0000-0000-000000000001"
-	_ = database.AddUserToGroupByName(context.Background(), adminUserID, "admins")
+	_ = database.AddUserToGroupByName(context.Background(), db.BootstrapAdminUserID, "admins")
 
 	// Seed default roles (viewer, developer, platform-engineer, admin).
 	if err := database.SeedDefaultRoles(context.Background()); err != nil {
@@ -133,7 +137,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create core services.
-	authService := auth.NewService(cfg.JWTSecret)
 	eventBus := events.New()
 	searchService := search.New(database.DB)
 

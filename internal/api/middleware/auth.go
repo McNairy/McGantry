@@ -31,14 +31,12 @@ func RequireAuth(authSvc *auth.Service, database *db.DB) func(http.Handler) http
 	}
 }
 
-// RequireWebSocketAuth validates a WebSocket handshake using either the
-// standard Authorization header or a `token` query parameter. Browsers cannot
-// set arbitrary headers on native WebSocket requests, so query-token auth is
-// supported here specifically for the handshake path.
+// RequireWebSocketAuth validates a WebSocket handshake using the standard
+// Authorization header or the browser session cookie.
 func RequireWebSocketAuth(authSvc *auth.Service, database *db.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx, ok := authenticateRequest(r, authSvc, database, true, w)
+			ctx, ok := authenticateRequest(r, authSvc, database, false, w)
 			if !ok {
 				return
 			}
@@ -126,7 +124,11 @@ func tokenFromRequest(r *http.Request, allowQueryToken bool) (string, string) {
 		}
 	}
 
-	return "", `{"error":"missing authorization header"}`
+	if c, err := r.Cookie(auth.SessionCookieName); err == nil && c.Value != "" {
+		return c.Value, ""
+	}
+
+	return "", `{"error":"missing authentication credentials"}`
 }
 
 func authenticateToken(r *http.Request, authSvc *auth.Service, database *db.DB, token string) (*auth.Claims, string, string) {

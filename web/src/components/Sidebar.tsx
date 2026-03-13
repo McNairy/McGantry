@@ -83,6 +83,15 @@ export default function Sidebar() {
     return location.pathname.startsWith(path);
   };
 
+  const roleLevels: Record<string, number> = {
+    viewer: 1,
+    developer: 2,
+    'platform-engineer': 3,
+    admin: 4,
+  };
+  const effectiveRole = user?.effectiveRole || user?.role || 'viewer';
+  const canManagePlugins = (roleLevels[effectiveRole] || 0) >= roleLevels['platform-engineer'];
+
   return (
     <aside
       className={`flex flex-col border-r border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] transition-all duration-200 ${
@@ -207,7 +216,7 @@ export default function Sidebar() {
             </li>
           )}
           {/* Plugins: requires write permission (developer+) */}
-          {user?.permissions?.write && (
+          {canManagePlugins && (
             <li>
               <Link
                 to="/plugins"
@@ -299,7 +308,7 @@ export default function Sidebar() {
               <p className="truncate text-sm font-medium text-[var(--gantry-text-primary)]">
                 {user.displayName || user.username}
               </p>
-              <p className="truncate text-xs text-[var(--gantry-text-secondary)]">{user.role}</p>
+              <p className="truncate text-xs text-[var(--gantry-text-secondary)]">{effectiveRole}</p>
             </div>
             <button
               onClick={logout}

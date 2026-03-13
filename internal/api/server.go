@@ -104,6 +104,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 
 			// Auth endpoints.
 			protected.Get("/auth/me", h.GetMe)
+			protected.Post("/auth/logout", h.Logout)
 			protected.Put("/auth/me/password", h.ChangePassword)
 			protected.With(middleware.RequireRole("admin")).Post("/auth/register", h.Register)
 
@@ -205,15 +206,15 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/sync", h.SyncArgoCDApp)
 			protected.With(middleware.RequireRole("developer")).Post("/plugins/argocd/apps/{appName}/refresh", h.RefreshArgoCDApp)
-			protected.With(middleware.RequireRole("developer")).Get("/plugins/{name}", h.GetPlugin)
-			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/enable", h.EnablePlugin)
-			protected.With(middleware.RequireRole("developer")).Get("/plugins/{name}/config", h.GetPluginConfig)
-			protected.With(middleware.RequireRole("developer")).Put("/plugins/{name}/config", h.UpdatePluginConfig)
-			protected.With(middleware.RequireRole("developer")).Post("/plugins/{name}/sync", h.SyncPlugin)
+			protected.With(middleware.RequireRole("platform-engineer")).Get("/plugins/{name}", h.GetPlugin)
+			protected.With(middleware.RequireRole("platform-engineer")).Put("/plugins/{name}/enable", h.EnablePlugin)
+			protected.With(middleware.RequireRole("platform-engineer")).Get("/plugins/{name}/config", h.GetPluginConfig)
+			protected.With(middleware.RequireRole("platform-engineer")).Put("/plugins/{name}/config", h.UpdatePluginConfig)
+			protected.With(middleware.RequireRole("platform-engineer")).Post("/plugins/{name}/sync", h.SyncPlugin)
 		})
 
-		// WebSocket. Browsers may authenticate with a `token` query parameter
-		// because native WebSocket clients cannot set Authorization headers.
+		// WebSocket. Browsers authenticate via same-origin session cookies; other
+		// clients can still use Authorization headers.
 		api.With(middleware.RequireWebSocketAuth(authSvc, database)).Get("/ws", wsHub.ServeWS)
 	})
 

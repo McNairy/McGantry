@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go2engle/gantry/internal/entity"
+	"github.com/go2engle/gantry/internal/auth"
 	gantrycrypto "github.com/go2engle/gantry/internal/crypto"
+	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/plugins"
 )
 
@@ -60,14 +61,14 @@ type ActionRun struct {
 
 // APIKey represents a long-lived API authentication token.
 type APIKey struct {
-	ID          string     `json:"id"`
-	UserID      string     `json:"userId"`
-	Name        string     `json:"name"`
-	Prefix      string     `json:"prefix"`
-	Role        string     `json:"role"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	LastUsedAt  *time.Time `json:"lastUsedAt,omitempty"`
-	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	ID         string     `json:"id"`
+	UserID     string     `json:"userId"`
+	Name       string     `json:"name"`
+	Prefix     string     `json:"prefix"`
+	Role       string     `json:"role"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
 }
 
 // CreateAPIKey inserts a new API key record. keyHash is the SHA-256 hex of the raw key.
@@ -747,6 +748,28 @@ func (d *DB) UpdateUserPassword(ctx context.Context, userID, passwordHash string
 		`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`,
 		passwordHash, now, userID)
 	return err
+}
+
+// InitializeBootstrapAdminPassword applies the configured bootstrap password
+// once, but only while the admin account still has the default seeded hash.
+func (d *DB) InitializeBootstrapAdminPassword(ctx context.Context, authSvc *auth.Service, password string) error {
+	if password == "" || password == DefaultAdminPassword {
+		return nil
+	}
+
+	user, err := d.GetUserByID(ctx, BootstrapAdminUserID)
+	if err != nil {
+		return err
+	}
+	if user.PasswordHash != DefaultAdminPasswordHash {
+		return nil
+	}
+
+	hash, err := authSvc.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hashing bootstrap admin password: %w", err)
+	}
+	return d.UpdateUserPassword(ctx, user.ID, hash)
 }
 
 // GetUserByEmail retrieves a user by their email address.

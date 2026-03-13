@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -27,16 +28,6 @@ const (
 	// maxMessageSize is the maximum message size allowed from the peer.
 	maxMessageSize = 4096
 )
-
-// upgrader configures the WebSocket upgrade with permissive origin checks.
-// In production, CheckOrigin should be restricted to allowed origins.
-var upgrader = ws.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 // channelForEvent maps event types to subscription channels.
 var channelForEvent = map[events.EventType]string{
@@ -234,6 +225,11 @@ func (h *Hub) Run() {
 // ServeWS upgrades an HTTP connection to a WebSocket and registers the
 // resulting client with the hub. It should be used as an http.HandlerFunc.
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
+	upgrader := ws.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     sameOrigin,
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("websocket: upgrade error: %v", err)
@@ -251,6 +247,18 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 	go client.readPump()
+}
+
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return u.Host == r.Host
 }
 
 // Broadcast serializes an event to JSON and sends it to all connected clients

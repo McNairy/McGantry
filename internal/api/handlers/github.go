@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/go2engle/gantry/internal/auth"
@@ -55,11 +54,12 @@ func (h *Handlers) GitHubOAuthBegin(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   600,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+		Secure:   isHTTPSRequest(r),
 	})
 
 	// Store the frontend origin so the callback can redirect back to the
 	// correct host:port (e.g. localhost:3000 in dev with a Vite proxy).
-	if returnTo := r.URL.Query().Get("return_to"); returnTo != "" {
+	if returnTo := normalizeReturnTo(r, r.URL.Query().Get("return_to")); returnTo != "" {
 		http.SetCookie(w, &http.Cookie{
 			Name:     "gh_oauth_return_to",
 			Value:    returnTo,
@@ -67,6 +67,7 @@ func (h *Handlers) GitHubOAuthBegin(w http.ResponseWriter, r *http.Request) {
 			MaxAge:   600,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
+			Secure:   isHTTPSRequest(r),
 		})
 	}
 
@@ -90,10 +91,13 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	// Clear state cookie.
 	http.SetCookie(w, &http.Cookie{
-		Name:   "gh_oauth_state",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     "gh_oauth_state",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isHTTPSRequest(r),
 	})
 
 	code := r.URL.Query().Get("code")
@@ -141,10 +145,16 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Determine the return URL for redirects (including error redirects).
 	returnTo := ""
 	if c, err := r.Cookie("gh_oauth_return_to"); err == nil && c.Value != "" {
-		if u, err := url.Parse(c.Value); err == nil && u.Hostname() == requestHostname(r) {
-			returnTo = c.Value
-		}
-		http.SetCookie(w, &http.Cookie{Name: "gh_oauth_return_to", Value: "", Path: "/", MaxAge: -1})
+		returnTo = normalizeReturnTo(r, c.Value)
+		http.SetCookie(w, &http.Cookie{
+			Name:     "gh_oauth_return_to",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   isHTTPSRequest(r),
+		})
 	}
 
 	if gantryUser == nil {
@@ -205,12 +215,12 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
+	http.SetCookie(w, sessionCookie(r, token))
 
-	// Redirect to the SPA with the token as a query param.
-	// The frontend reads this param on load, stores it, and cleans the URL.
-	redirectURL := "/?github_token=" + token
+	// Redirect back to the SPA after setting the HttpOnly session cookie.
+	redirectURL := "/"
 	if returnTo != "" {
-		redirectURL = returnTo + "/?github_token=" + token
+		redirectURL = returnTo + "/"
 	}
 	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }

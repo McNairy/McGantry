@@ -29,22 +29,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const existingToken = getToken();
-    if (existingToken) {
-      api
-        .getMe()
-        .then((me) => {
-          setUser(me);
-          setTokenState(existingToken);
-        })
-        .catch(() => {
+    api
+      .getMe()
+      .then((me) => {
+        setUser(me);
+        setTokenState(existingToken);
+      })
+      .catch(async () => {
+        if (existingToken) {
           setToken(null);
           setTokenState(null);
-          setUser(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+          try {
+            const me = await api.getMe();
+            setUser(me);
+            return;
+          } catch {
+          }
+        }
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
@@ -68,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    api.logout().catch(() => {});
     setToken(null);
     setTokenState(null);
     setUser(null);
@@ -81,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         loginWithToken,
         logout,
-        isAuthenticated: !!user && !!token,
+        isAuthenticated: !!user,
         loading,
       }}
     >

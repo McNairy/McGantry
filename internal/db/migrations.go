@@ -1,5 +1,14 @@
 package db
 
+const (
+	// BootstrapAdminUserID is the fixed UUID of the initial admin account.
+	BootstrapAdminUserID = "00000000-0000-0000-0000-000000000001"
+	// DefaultAdminPassword is the bootstrap password used when no override is applied.
+	DefaultAdminPassword = "changeme"
+	// DefaultAdminPasswordHash is the bcrypt hash of DefaultAdminPassword at cost 10.
+	DefaultAdminPasswordHash = "$2a$10$eMgfxZdz20Vk.9EKPJ4oP.g99eQ1JgaHQs/JH7v2fpZZykUcN1Q8y"
+)
+
 // allMigrations returns the ordered list of SQL migration statements.
 // Each statement is idempotent (using IF NOT EXISTS) so migrations can be
 // run on every startup without harm.
@@ -7,10 +16,6 @@ package db
 // The dbType parameter ("sqlite" or "postgres") selects dialect-appropriate
 // SQL where syntax differs between engines.
 func allMigrations(dbType string) []string {
-	// Pre-computed bcrypt hash of "changeme" at cost 10.
-	// Generated with: golang.org/x/crypto/bcrypt.GenerateFromPassword([]byte("changeme"), 10)
-	const adminPasswordHash = "$2a$10$eMgfxZdz20Vk.9EKPJ4oP.g99eQ1JgaHQs/JH7v2fpZZykUcN1Q8y"
-
 	// TIMESTAMP works in both SQLite (type affinity: NUMERIC) and PostgreSQL.
 	migrations := []string{
 		// ------------------------------------------------------------------
@@ -212,13 +217,13 @@ func allMigrations(dbType string) []string {
 	if dbType == "postgres" {
 		migrations = append(migrations,
 			`INSERT INTO users (id, username, password_hash, display_name, role, created_at, updated_at)
-			 VALUES ('00000000-0000-0000-0000-000000000001', 'admin', '`+adminPasswordHash+`', 'Administrator', 'admin', NOW(), NOW())
-			 ON CONFLICT (username) DO NOTHING`,
+				 VALUES ('`+BootstrapAdminUserID+`', 'admin', '`+DefaultAdminPasswordHash+`', 'Administrator', 'admin', NOW(), NOW())
+				 ON CONFLICT (username) DO NOTHING`,
 		)
 	} else {
 		migrations = append(migrations,
 			`INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, created_at, updated_at)
-			 VALUES ('00000000-0000-0000-0000-000000000001', 'admin', '`+adminPasswordHash+`', 'Administrator', 'admin', datetime('now'), datetime('now'))`,
+				 VALUES ('`+BootstrapAdminUserID+`', 'admin', '`+DefaultAdminPasswordHash+`', 'Administrator', 'admin', datetime('now'), datetime('now'))`,
 		)
 	}
 

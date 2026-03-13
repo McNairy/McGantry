@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -22,11 +24,30 @@ func (h *Handlers) HealthCheckProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "url must be an absolute http or https URL")
 		return
 	}
+	if parsed.User != nil {
+		writeError(w, http.StatusBadRequest, "url must not contain userinfo")
+		return
+	}
+	if err := ensurePublicTarget(r.Context(), parsed.Hostname()); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 
 	start := time.Now()
-	resp, err := client.Get(target)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid url")
+		return
+	}
+	req.Header.Set("User-Agent", "gantry-health-check/1.0")
+	resp, err := client.Do(req)
 	latencyMs := time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -49,3 +70,52 @@ func (h *Handlers) HealthCheckProxy(w http.ResponseWriter, r *http.Request) {
 		"body":       string(body),
 	})
 }
+
+func ensurePublicTarget(ctx context.Context, host string) error {
+	if host == "" {
+		return errForbiddenTarget("missing host")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if !isPublicIP(ip) {
+			return errForbiddenTarget("private and loopback targets are not allowed")
+		}
+		return nil
+	}
+
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(addrs) == 0 {
+		return errForbiddenTarget("unable to resolve target host")
+	}
+	for _, addr := range addrs {
+		if !isPublicIP(addr.IP) {
+			return errForbiddenTarget("private and loopback targets are not allowed")
+		}
+	}
+	return nil
+}
+
+func isPublicIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() ||
+		ip.IsMulticast() || ip.IsUnspecified() {
+		return false
+	}
+	if v4 := ip.To4(); v4 != nil {
+		if v4[0] == 169 && v4[1] == 254 {
+			return false
+		}
+	}
+	return true
+}
+
+func errForbiddenTarget(msg string) error {
+	return &targetError{msg: msg}
+}
+
+type targetError struct {
+	msg string
+}
+
+func (e *targetError) Error() string { return e.msg }

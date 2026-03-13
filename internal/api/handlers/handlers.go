@@ -3,7 +3,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go2engle/gantry/internal/auth"
 	"github.com/go2engle/gantry/internal/db"
@@ -42,4 +45,87 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func isHTTPSRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func sessionCookie(r *http.Request, token string) *http.Cookie {
+	return &http.Cookie{
+		Name:     auth.SessionCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   86400,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isHTTPSRequest(r),
+	}
+}
+
+func clearSessionCookie(r *http.Request) *http.Cookie {
+	return &http.Cookie{
+		Name:     auth.SessionCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isHTTPSRequest(r),
+	}
+}
+
+func requestOrigin(r *http.Request) string {
+	scheme := "http"
+	if isHTTPSRequest(r) {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+func normalizeReturnTo(r *http.Request, raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil || !u.IsAbs() || u.Host == "" || u.User != nil {
+		return ""
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return ""
+	}
+	if u.Scheme == "https" && !isHTTPSRequest(r) {
+		return ""
+	}
+	if isHTTPSRequest(r) && u.Scheme != "https" {
+		return ""
+	}
+
+	reqHost := r.Host
+	if !isLoopbackHostname(u.Hostname()) && !strings.EqualFold(u.Host, reqHost) {
+		return ""
+	}
+	if isLoopbackHostname(u.Hostname()) && !strings.EqualFold(u.Hostname(), requestHostname(r)) {
+		return ""
+	}
+
+	return strings.TrimRight(u.String(), "/")
+}
+
+func isLoopbackHostname(host string) bool {
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

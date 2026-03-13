@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go2engle/gantry/internal/api/websocket"
@@ -169,6 +170,90 @@ func TestPluginConfigRequiresDeveloperRole(t *testing.T) {
 	}
 }
 
+func TestPluginConfigRequiresPlatformEngineerRole(t *testing.T) {
+	env := newTestServerEnv(t)
+	_, token := env.createUser(t, "developer-plugin", "developer")
+
+	if err := env.db.UpsertPlugin(context.Background(), &plugins.Plugin{
+		Name:    "github",
+		Version: "1.0.0",
+		Enabled: true,
+		Config: map[string]any{
+			"personalAccessToken": "secret-token",
+		},
+		Manifest: &plugins.Manifest{Name: "github"},
+	}); err != nil {
+		t.Fatalf("UpsertPlugin: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/plugins/github/config", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	rec := httptest.NewRecorder()
+	env.server.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPluginConfigRedactsSecretsAndPreservesExistingValues(t *testing.T) {
+	env := newTestServerEnv(t)
+	const redactedPlaceholder = "__GANTRY_SECRET_REDACTED__"
+	user, _ := env.createUser(t, "pe-plugin", "viewer")
+	if err := env.db.AddUserToGroupByName(context.Background(), user.ID, "platform-engineers"); err != nil {
+		t.Fatalf("AddUserToGroupByName: %v", err)
+	}
+	token, err := env.authSvc.GenerateToken(&auth.User{ID: user.ID, Username: user.Username, Role: user.Role})
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+
+	if err := env.db.UpsertPlugin(context.Background(), &plugins.Plugin{
+		Name:    "github",
+		Version: "1.0.0",
+		Enabled: true,
+		Config: map[string]any{
+			"authMode":            "pat",
+			"personalAccessToken": "secret-token",
+		},
+		Manifest: &plugins.Manifest{Name: "github"},
+	}); err != nil {
+		t.Fatalf("UpsertPlugin: %v", err)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/plugins/github/config", nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getRec := httptest.NewRecorder()
+	env.server.Router().ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+	if !strings.Contains(getRec.Body.String(), redactedPlaceholder) {
+		t.Fatalf("expected redacted secret placeholder, got %s", getRec.Body.String())
+	}
+	if strings.Contains(getRec.Body.String(), "secret-token") {
+		t.Fatalf("response leaked secret: %s", getRec.Body.String())
+	}
+
+	putReq := httptest.NewRequest(http.MethodPut, "/api/v1/plugins/github/config", bytes.NewBufferString(`{"authMode":"pat","personalAccessToken":"`+redactedPlaceholder+`"}`))
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	env.server.Router().ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", putRec.Code, putRec.Body.String())
+	}
+
+	plugin, err := env.db.GetPlugin(context.Background(), "github")
+	if err != nil {
+		t.Fatalf("GetPlugin: %v", err)
+	}
+	if got, _ := plugin.Config["personalAccessToken"].(string); got != "secret-token" {
+		t.Fatalf("expected secret to be preserved, got %q", got)
+	}
+}
+
 func TestWebSocketHandshakeRequiresAuthentication(t *testing.T) {
 	env := newTestServerEnv(t)
 
@@ -181,7 +266,7 @@ func TestWebSocketHandshakeRequiresAuthentication(t *testing.T) {
 	}
 }
 
-func TestWebSocketHandshakeAcceptsQueryTokenAuth(t *testing.T) {
+func TestWebSocketHandshakeRejectsQueryTokenAuth(t *testing.T) {
 	env := newTestServerEnv(t)
 	_, token := env.createUser(t, "ws-user", "viewer")
 
@@ -189,7 +274,35 @@ func TestWebSocketHandshakeAcceptsQueryTokenAuth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	env.server.Router().ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWebSocketHandshakeAcceptsSessionCookieAuth(t *testing.T) {
+	env := newTestServerEnv(t)
+	_, token := env.createUser(t, "ws-cookie-user", "viewer")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ws", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+	rec := httptest.NewRecorder()
+	env.server.Router().ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 after auth passed to websocket upgrader, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHealthCheckProxyRejectsLoopbackTargets(t *testing.T) {
+	env := newTestServerEnv(t)
+	_, token := env.createUser(t, "health-user", "viewer")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health-check?url=http://127.0.0.1/healthz", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.server.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

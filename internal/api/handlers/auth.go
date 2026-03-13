@@ -71,6 +71,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
+	http.SetCookie(w, sessionCookie(r, token))
 
 	// Publish login event.
 	h.Events.Publish(events.Event{
@@ -85,6 +86,12 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		Token: token,
 		User:  user,
 	})
+}
+
+// Logout clears the browser session cookie.
+func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, clearSessionCookie(r))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetMe handles GET /auth/me. It returns the currently authenticated user's

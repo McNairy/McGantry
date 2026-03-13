@@ -41,6 +41,8 @@ export const api = {
 
   getMe: () => request<User>('GET', '/auth/me'),
 
+  logout: () => request<void>('POST', '/auth/logout'),
+
   listEntities: (kind?: string) =>
     request<Entity[]>('GET', kind ? `/entities/${kind}` : '/entities'),
 

@@ -14,6 +14,8 @@ import (
 	k8s "github.com/go2engle/gantry/internal/plugins/kubernetes"
 )
 
+const redactedSecretValue = "__GANTRY_SECRET_REDACTED__"
+
 // ListPlugins returns all plugins from the DB (all bundled plugins are auto-registered on startup).
 func (h *Handlers) ListPlugins(w http.ResponseWriter, r *http.Request) {
 	// Load bundled registry for enriching with full metadata.
@@ -73,6 +75,7 @@ func (h *Handlers) GetPlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "plugin not found")
 		return
 	}
+	p.Config = redactSecretValues(p.Config).(map[string]any)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -156,7 +159,7 @@ func (h *Handlers) GetPluginConfig(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"schema": schema,
-		"values": p.Config,
+		"values": redactSecretValues(p.Config),
 	})
 }
 
@@ -168,7 +171,18 @@ func (h *Handlers) UpdatePluginConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := h.DB.UpdatePluginConfig(r.Context(), name, config); err != nil {
+	existing, err := h.DB.GetPlugin(r.Context(), name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing == nil {
+		writeError(w, http.StatusNotFound, "plugin not found")
+		return
+	}
+
+	merged, _ := preserveSecretValues(existing.Config, config).(map[string]any)
+	if err := h.DB.UpdatePluginConfig(r.Context(), name, merged); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -179,6 +193,78 @@ func (h *Handlers) UpdatePluginConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func redactSecretValues(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(val))
+		for k, inner := range val {
+			if isSecretKey(k) {
+				if s, ok := inner.(string); ok && s != "" {
+					out[k] = redactedSecretValue
+				} else {
+					out[k] = inner
+				}
+				continue
+			}
+			out[k] = redactSecretValues(inner)
+		}
+		return out
+	case []any:
+		out := make([]any, len(val))
+		for i, inner := range val {
+			out[i] = redactSecretValues(inner)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func preserveSecretValues(existing, updated any) any {
+	switch next := updated.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(next))
+		current, _ := existing.(map[string]any)
+		for k, v := range next {
+			if isSecretKey(k) {
+				if s, ok := v.(string); ok && s == redactedSecretValue {
+					if current != nil {
+						out[k] = current[k]
+					}
+					continue
+				}
+				out[k] = v
+				continue
+			}
+			out[k] = preserveSecretValues(current[k], v)
+		}
+		return out
+	case []any:
+		current, _ := existing.([]any)
+		out := make([]any, len(next))
+		for i, v := range next {
+			var currentItem any
+			if i < len(current) {
+				currentItem = current[i]
+			}
+			out[i] = preserveSecretValues(currentItem, v)
+		}
+		return out
+	default:
+		return updated
+	}
+}
+
+func isSecretKey(key string) bool {
+	key = strings.ToLower(strings.ReplaceAll(key, "_", ""))
+	for _, token := range []string{"key", "token", "secret", "password", "privatekey"} {
+		if strings.Contains(key, token) {
+			return true
+		}
+	}
+	return false
 }
 
 // SyncPlugin triggers a plugin-specific sync operation (e.g. Kubernetes discovery).
@@ -575,4 +661,3 @@ func (h *Handlers) StreamKubernetesPodLogs(w http.ResponseWriter, r *http.Reques
 
 	client.StreamLogs(w, namespace, pod, container, 200)
 }
-
