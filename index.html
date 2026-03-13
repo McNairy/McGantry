@@ -30,7 +30,7 @@
   <span class="nav-sep"></span>
   <div class="nav-links">
     <a href="#features"     class="nav-link">Features</a>
-    <a href="#how-it-works" class="nav-link">How it Works</a>
+    <a href="#how-it-works" class="nav-link">Product Tour</a>
     <a href="#plugins"      class="nav-link">Plugins</a>
     <a href="#why-gantry"   class="nav-link">Why Gantry</a>
     <a href="#get-started"  class="nav-link nav-link-cta">Get Started</a>
@@ -162,67 +162,846 @@
      HOW IT WORKS — dark card
      ============================================================ -->
 <section id="how-it-works" class="dark-section">
-  <div class="dark-section-card">
-    <div class="section-header reveal">
-        <span class="section-label">How it works</span>
-        <h2>Up and running in minutes</h2>
-        <p class="section-sub">No infrastructure expertise required. If you can run a binary, you can run Gantry.</p>
+  <div class="dark-section-card product-demo-card">
+    <div class="product-demo-head reveal">
+      <div class="product-demo-copy">
+        <span class="section-label">Product tour</span>
+        <h2>See what Gantry actually looks like</h2>
+        <p class="section-sub">Explore a clickable preview of Gantry with realistic data, and see how teams browse services, track status, and run self-service actions.</p>
       </div>
 
-      <div class="steps">
-        <div class="step reveal">
-          <div class="step-number">01</div>
-          <div class="step-content">
-            <h3>Install the binary</h3>
-            <p>Download a single pre-built binary for Linux, macOS, or Windows. Or pull the Docker image — your choice.</p>
-            <div class="code-block">
-<span class="code-comment"># macOS / Linux</span>
-<span class="code-key">curl</span> -sSL https://github.com/go2engle/gantry/releases/latest/download/install.sh | sh
-<span class="code-comment"></span>
-<span class="code-comment"># Docker</span>
-<span class="code-key">docker</span> run -p 8080:8080 ghcr.io/go2engle/gantry:latest
-            </div>
-          </div>
-        </div>
+      <div class="product-demo-switcher" role="tablist" aria-label="Gantry interface views">
+        <button type="button" class="demo-switch is-active" data-demo-target="dashboard" aria-selected="true">Dashboard</button>
+        <button type="button" class="demo-switch" data-demo-target="catalog" aria-selected="false">Catalog</button>
+        <button type="button" class="demo-switch" data-demo-target="service" aria-selected="false">Service detail</button>
+        <button type="button" class="demo-switch" data-demo-target="actions" aria-selected="false">Actions</button>
+      </div>
+    </div>
 
-        <div class="step reveal">
-          <div class="step-number">02</div>
-          <div class="step-content">
-            <h3>Define your catalog</h3>
-            <p>Write entity YAML files for your services, APIs, teams, and infrastructure. Schema validation and auto-complete work out of the box.</p>
-            <div class="code-block">
-<span class="code-comment"># catalog.yaml</span>
-<span class="code-key">apiVersion</span>: <span class="code-string">gantry.io/v1</span>
-<span class="code-key">kind</span>: <span class="code-type">Service</span>
-<span class="code-key">metadata</span>:
-  <span class="code-key">name</span>: <span class="code-string">payment-api</span>
-  <span class="code-key">labels</span>:
-    <span class="code-key">team</span>: <span class="code-string">payments</span>
-<span class="code-key">spec</span>:
-  <span class="code-key">description</span>: <span class="code-string">"Handles all payment processing"</span>
-  <span class="code-key">lifecycle</span>: <span class="code-string">production</span>
-  <span class="code-key">repoUrl</span>: <span class="code-string">https://github.com/acme/payment-api</span>
-            </div>
+    <div class="product-demo reveal">
+      <svg class="product-icon-sprite" aria-hidden="true" focusable="false">
+        <symbol id="icon-dashboard" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+        </symbol>
+        <symbol id="icon-box" viewBox="0 0 24 24">
+          <path d="M12 2 4 6.5v11L12 22l8-4.5v-11L12 2Z"></path>
+          <path d="M4 6.5 12 11l8-4.5"></path>
+          <path d="M12 22V11"></path>
+        </symbol>
+        <symbol id="icon-zap" viewBox="0 0 24 24">
+          <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path>
+        </symbol>
+        <symbol id="icon-settings" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.86l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-.4-1 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.86.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1-.4 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.86l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 .4 1 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.86-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.28.3.5.65.6 1 .07.2.1.4.1.6"></path>
+        </symbol>
+        <symbol id="icon-activity" viewBox="0 0 24 24">
+          <path d="M3 12h4l2.5-7 5 14 2.5-7H21"></path>
+        </symbol>
+        <symbol id="icon-git-branch" viewBox="0 0 24 24">
+          <circle cx="6" cy="6" r="2"></circle>
+          <circle cx="18" cy="18" r="2"></circle>
+          <circle cx="18" cy="6" r="2"></circle>
+          <path d="M8 6h8"></path>
+          <path d="M18 8v8"></path>
+          <path d="M6 8v8a4 4 0 0 0 4 4h6"></path>
+        </symbol>
+        <symbol id="icon-puzzle" viewBox="0 0 24 24">
+          <path d="M9 3h3a2 2 0 1 1 4 0h2a2 2 0 0 1 2 2v3h-2a2 2 0 1 0 0 4h2v3a2 2 0 0 1-2 2h-3v-2a2 2 0 1 0-4 0v2H8a2 2 0 0 1-2-2v-3h2a2 2 0 1 0 0-4H6V5a2 2 0 0 1 2-2h1Z"></path>
+        </symbol>
+        <symbol id="icon-clipboard" viewBox="0 0 24 24">
+          <rect x="8" y="3" width="8" height="4" rx="1"></rect>
+          <path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"></path>
+          <path d="M9 12h6"></path>
+          <path d="M9 16h6"></path>
+        </symbol>
+        <symbol id="icon-user-cog" viewBox="0 0 24 24">
+          <circle cx="9" cy="8" r="3"></circle>
+          <path d="M4 19a5 5 0 0 1 10 0"></path>
+          <circle cx="18" cy="9" r="2"></circle>
+          <path d="M18 5v1"></path>
+          <path d="M18 12v1"></path>
+          <path d="M15.5 6.5l.7.7"></path>
+          <path d="M19.8 10.8l.7.7"></path>
+          <path d="M20.5 6.5l-.7.7"></path>
+          <path d="M16.2 10.8l-.7.7"></path>
+        </symbol>
+        <symbol id="icon-shield" viewBox="0 0 24 24">
+          <path d="M12 3 5 6v6c0 5 3.5 8 7 9 3.5-1 7-4 7-9V6l-7-3Z"></path>
+        </symbol>
+        <symbol id="icon-server" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="6" rx="1.5"></rect>
+          <rect x="3" y="14" width="18" height="6" rx="1.5"></rect>
+          <path d="M7 7h.01"></path>
+          <path d="M7 17h.01"></path>
+        </symbol>
+        <symbol id="icon-globe" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M3 12h18"></path>
+          <path d="M12 3a15 15 0 0 1 0 18"></path>
+          <path d="M12 3a15 15 0 0 0 0 18"></path>
+        </symbol>
+        <symbol id="icon-database" viewBox="0 0 24 24">
+          <ellipse cx="12" cy="5" rx="7" ry="3"></ellipse>
+          <path d="M5 5v6c0 1.66 3.13 3 7 3s7-1.34 7-3V5"></path>
+          <path d="M5 11v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6"></path>
+        </symbol>
+        <symbol id="icon-users" viewBox="0 0 24 24">
+          <circle cx="9" cy="8" r="3"></circle>
+          <path d="M4 19a5 5 0 0 1 10 0"></path>
+          <path d="M16 11a3 3 0 1 0-2.4-4.8"></path>
+          <path d="M20 19a5 5 0 0 0-3.5-4.8"></path>
+        </symbol>
+        <symbol id="icon-cloud" viewBox="0 0 24 24">
+          <path d="M6 19h11a4 4 0 0 0 .3-8 6 6 0 0 0-11.6-1.7A4.2 4.2 0 0 0 6 19Z"></path>
+        </symbol>
+        <symbol id="icon-file-text" viewBox="0 0 24 24">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"></path>
+          <path d="M14 3v5h5"></path>
+          <path d="M9 13h6"></path>
+          <path d="M9 17h6"></path>
+        </symbol>
+        <symbol id="icon-search" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </symbol>
+        <symbol id="icon-plus" viewBox="0 0 24 24">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </symbol>
+        <symbol id="icon-pencil" viewBox="0 0 24 24">
+          <path d="M12 20h9"></path>
+          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+        </symbol>
+        <symbol id="icon-history" viewBox="0 0 24 24">
+          <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+          <path d="M3 4v5h5"></path>
+          <path d="M12 7v5l3 2"></path>
+        </symbol>
+        <symbol id="icon-github" viewBox="0 0 24 24">
+          <path d="M9 18c-4 1.5-4-2-6-2"></path>
+          <path d="M15 22v-3.9a3.4 3.4 0 0 0-.94-2.64c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 19 4.77 5.07 5.07 0 0 0 18.91 1S17.73.65 15 2.48a13.38 13.38 0 0 0-6 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77 5.44 5.44 0 0 0 3.5 8.46c0 5.42 3.3 6.61 6.44 7A3.4 3.4 0 0 0 9 18.13V22"></path>
+        </symbol>
+        <symbol id="icon-webhook" viewBox="0 0 24 24">
+          <path d="M10 14.5a3.5 3.5 0 1 0 0-5"></path>
+          <path d="M14 9.5a3.5 3.5 0 1 0 0 5"></path>
+          <path d="M7 12h10"></path>
+          <circle cx="6" cy="12" r="2"></circle>
+          <circle cx="18" cy="7" r="2"></circle>
+          <circle cx="18" cy="17" r="2"></circle>
+        </symbol>
+        <symbol id="icon-moon" viewBox="0 0 24 24">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"></path>
+        </symbol>
+        <symbol id="icon-chevron-left" viewBox="0 0 24 24">
+          <path d="m15 18-6-6 6-6"></path>
+        </symbol>
+        <symbol id="icon-log-out" viewBox="0 0 24 24">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <path d="M16 17l5-5-5-5"></path>
+          <path d="M21 12H9"></path>
+        </symbol>
+        <symbol id="icon-alert-triangle" viewBox="0 0 24 24">
+          <path d="M12 3 2 21h20L12 3Z"></path>
+          <path d="M12 9v4"></path>
+          <path d="M12 17h.01"></path>
+        </symbol>
+        <symbol id="icon-arrow-right" viewBox="0 0 24 24">
+          <path d="M5 12h14"></path>
+          <path d="m13 5 7 7-7 7"></path>
+        </symbol>
+      </svg>
+      <div class="product-shell">
+        <aside class="product-sidebar" aria-label="Mock Gantry navigation">
+          <div class="product-brand">
+            <div class="product-brand-mark">G</div>
+            <span class="product-brand-text">Gantry</span>
           </div>
-        </div>
 
-        <div class="step reveal">
-          <div class="step-number">03</div>
-          <div class="step-content">
-            <h3>Apply and explore</h3>
-            <p>Push your catalog to Gantry with one command. Your team can immediately discover, navigate, and act on all your infrastructure.</p>
-            <div class="code-block">
-<span class="code-key">gantry</span> apply -f catalog.yaml
-<span class="code-comment"></span>
-<span class="code-comment">✓ Created  Service/payment-api</span>
-<span class="code-comment">✓ Created  Team/payments</span>
-<span class="code-comment">✓ Created  API/payment-api-v2</span>
-<span class="code-comment"></span>
-<span class="code-key">open</span> http://localhost:8080
+          <nav class="product-nav">
+            <button type="button" class="product-nav-item is-active" data-demo-target="dashboard">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-dashboard"></use></svg>
+              <span>Dashboard</span>
+            </button>
+            <button type="button" class="product-nav-item" data-demo-target="catalog">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-box"></use></svg>
+              <span>Catalog</span>
+              <svg class="product-nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
+            </button>
+            <button type="button" class="product-nav-item" data-demo-target="actions">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+              <span>Actions</span>
+            </button>
+            <div class="product-nav-item">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-settings"></use></svg>
+              <span>Settings</span>
+            </div>
+            <div class="product-nav-item">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-activity"></use></svg>
+              <span>Status</span>
+            </div>
+            <div class="product-nav-item">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-git-branch"></use></svg>
+              <span>GitOps</span>
+            </div>
+            <div class="product-nav-item">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-puzzle"></use></svg>
+              <span>Plugins</span>
+            </div>
+            <div class="product-nav-item">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-clipboard"></use></svg>
+              <span>Audit Log</span>
+            </div>
+            <div class="product-nav-item">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-user-cog"></use></svg>
+              <span>Users</span>
+            </div>
+            <div class="product-nav-item">
+              <svg class="product-nav-icon" viewBox="0 0 24 24"><use href="#icon-shield"></use></svg>
+              <span>Access Control</span>
+            </div>
+          </nav>
+
+          <div class="product-sidebar-bottom">
+            <div class="product-bottom-strip">
+              <div class="product-theme-toggle">
+                <svg class="product-bottom-icon" viewBox="0 0 24 24"><use href="#icon-moon"></use></svg>
+              </div>
+              <div class="product-collapse-toggle">
+                <svg class="product-bottom-icon" viewBox="0 0 24 24"><use href="#icon-chevron-left"></use></svg>
+              </div>
+            </div>
+            <div class="product-user-card">
+              <div>
+                <strong>github:acme-platform-admin</strong>
+                <span>admin</span>
+              </div>
+              <svg class="product-logout" viewBox="0 0 24 24"><use href="#icon-log-out"></use></svg>
             </div>
           </div>
+        </aside>
+
+        <div class="product-main">
+          <section class="product-view is-active" data-demo-view="dashboard" aria-label="Dashboard view">
+            <div class="product-canvas">
+              <div class="product-page-head">
+                <div>
+                  <h3>Welcome to Gantry</h3>
+                  <p>Your internal developer platform overview</p>
+                </div>
+                <div class="product-head-actions">
+                  <button type="button" class="product-search-button">
+                    <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-search"></use></svg>
+                    <span>Search entities...</span>
+                    <kbd>⌘K</kbd>
+                  </button>
+                  <button type="button" class="product-secondary-button">
+                    <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg>
+                    <span>Edit Dashboard</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="stats-grid">
+                <div class="stat-tile">
+                  <div class="stat-icon-box"><svg viewBox="0 0 24 24"><use href="#icon-server"></use></svg></div>
+                  <div>
+                    <strong>12</strong>
+                    <span>Services</span>
+                  </div>
+                </div>
+                <div class="stat-tile">
+                  <div class="stat-icon-box"><svg viewBox="0 0 24 24"><use href="#icon-globe"></use></svg></div>
+                  <div>
+                    <strong>10</strong>
+                    <span>APIs</span>
+                  </div>
+                </div>
+                <div class="stat-tile">
+                  <div class="stat-icon-box"><svg viewBox="0 0 24 24"><use href="#icon-database"></use></svg></div>
+                  <div>
+                    <strong>12</strong>
+                    <span>Infrastructure</span>
+                  </div>
+                </div>
+                <div class="stat-tile">
+                  <div class="stat-icon-box"><svg viewBox="0 0 24 24"><use href="#icon-users"></use></svg></div>
+                  <div>
+                    <strong>10</strong>
+                    <span>Teams</span>
+                  </div>
+                </div>
+                <div class="stat-tile">
+                  <div class="stat-icon-box"><svg viewBox="0 0 24 24"><use href="#icon-cloud"></use></svg></div>
+                  <div>
+                    <strong>10</strong>
+                    <span>Environments</span>
+                  </div>
+                </div>
+                <div class="stat-tile">
+                  <div class="stat-icon-box"><svg viewBox="0 0 24 24"><use href="#icon-file-text"></use></svg></div>
+                  <div>
+                    <strong>10</strong>
+                    <span>Documentation</span>
+                  </div>
+                </div>
+              </div>
+
+              <article class="app-card status-card">
+                <div class="app-card-head">
+                  <div class="app-card-title">
+                    <svg class="product-inline-icon subtle" viewBox="0 0 24 24"><use href="#icon-activity"></use></svg>
+                    <h4>Service Status</h4>
+                  </div>
+                  <button type="button" class="app-link-button">
+                    <span>View all</span>
+                    <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-arrow-right"></use></svg>
+                  </button>
+                </div>
+                <div class="status-card-body">
+                  <div class="status-alert">
+                    <svg class="product-inline-icon warning" viewBox="0 0 24 24"><use href="#icon-alert-triangle"></use></svg>
+                    <span>5 services reporting issues</span>
+                  </div>
+                  <div class="status-service-row">
+                    <div class="status-service-name"><span class="status-dot amber"></span><span>Cloudflare</span></div>
+                    <span class="status-state-badge degraded">Degraded</span>
+                  </div>
+                  <div class="status-service-row">
+                    <div class="status-service-name"><span class="status-dot amber"></span><span>Snyk</span></div>
+                    <span class="status-state-badge degraded">Degraded</span>
+                  </div>
+                  <div class="status-service-row">
+                    <div class="status-service-name"><span class="status-dot blue"></span><span>Zoom</span></div>
+                    <span class="status-state-badge maintenance">Maintenance</span>
+                  </div>
+                  <div class="status-service-row">
+                    <div class="status-service-name"><span class="status-dot blue"></span><span>RubyGems</span></div>
+                    <span class="status-state-badge maintenance">Maintenance</span>
+                  </div>
+                  <div class="status-service-row">
+                    <div class="status-service-name"><span class="status-dot amber"></span><span>Twilio</span></div>
+                    <span class="status-state-badge degraded">Degraded</span>
+                  </div>
+                </div>
+              </article>
+
+              <div class="dashboard-bottom-grid">
+                <article class="app-card">
+                  <div class="app-card-head">
+                    <div class="dashboard-section-copy">
+                      <h4>Recently Browsed</h4>
+                      <p>Your recent entity views</p>
+                    </div>
+                  </div>
+                  <div class="app-list">
+                    <div class="app-list-row">
+                      <svg class="row-entity-icon" viewBox="0 0 24 24"><use href="#icon-file-text"></use></svg>
+                      <div class="app-list-copy">
+                        <strong>Incident Playbook</strong>
+                        <span>Documentation</span>
+                      </div>
+                      <small>12m ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <svg class="row-entity-icon" viewBox="0 0 24 24"><use href="#icon-cloud"></use></svg>
+                      <div class="app-list-copy">
+                        <strong>Staging</strong>
+                        <span>Environment</span>
+                      </div>
+                      <small>28m ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <svg class="row-entity-icon" viewBox="0 0 24 24"><use href="#icon-users"></use></svg>
+                      <div class="app-list-copy">
+                        <strong>Platform Ops</strong>
+                        <span>Team</span>
+                      </div>
+                      <small>46m ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <svg class="row-entity-icon" viewBox="0 0 24 24"><use href="#icon-database"></use></svg>
+                      <div class="app-list-copy">
+                        <strong>Ledger Postgres</strong>
+                        <span>Infrastructure</span>
+                      </div>
+                      <small>1h ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <svg class="row-entity-icon" viewBox="0 0 24 24"><use href="#icon-globe"></use></svg>
+                      <div class="app-list-copy">
+                        <strong>checkout-api</strong>
+                        <span>API</span>
+                      </div>
+                      <small>2h ago</small>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="app-card">
+                  <div class="app-card-head">
+                    <div class="app-card-title">
+                      <svg class="product-inline-icon subtle" viewBox="0 0 24 24"><use href="#icon-clipboard"></use></svg>
+                      <h4>Recent Activity</h4>
+                    </div>
+                    <button type="button" class="app-link-button">
+                      <span>View all</span>
+                      <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-arrow-right"></use></svg>
+                    </button>
+                  </div>
+                  <div class="app-list">
+                    <div class="app-list-row">
+                      <span class="app-dot red"></span>
+                      <div class="app-list-copy">
+                        <strong>Action/deploy-preview</strong>
+                        <span>action.executed by github:acme-platform-admin</span>
+                      </div>
+                      <small>9m ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <span class="app-dot red"></span>
+                      <div class="app-list-copy">
+                        <strong>Service/checkout-web</strong>
+                        <span>entity.updated by github:release-bot</span>
+                      </div>
+                      <small>24m ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <span class="app-dot red"></span>
+                      <div class="app-list-copy">
+                        <strong>Environment/staging</strong>
+                        <span>status.changed by status-monitor</span>
+                      </div>
+                      <small>41m ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <span class="app-dot red"></span>
+                      <div class="app-list-copy">
+                        <strong>Documentation/runbook-payments</strong>
+                        <span>entity.created by github:docs-bot</span>
+                      </div>
+                      <small>1h ago</small>
+                    </div>
+                    <div class="app-list-row">
+                      <span class="app-dot red"></span>
+                      <div class="app-list-copy">
+                        <strong>API/ledger-public</strong>
+                        <span>entity.synced by github-sync</span>
+                      </div>
+                      <small>2h ago</small>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section class="product-view" data-demo-view="catalog" aria-label="Catalog view" hidden>
+            <div class="product-canvas">
+              <div class="product-page-head">
+                <div>
+                  <h3>Catalog</h3>
+                  <p>Browse all entities in the catalog</p>
+                </div>
+                <button type="button" class="product-primary-button">Create Entity</button>
+              </div>
+
+              <div class="catalog-toolbar">
+                <div class="catalog-search">Search entities...</div>
+                <div class="catalog-select">All owners</div>
+                <div class="catalog-select">All tags</div>
+                <div class="catalog-toggle">
+                  <span class="is-active">Table</span>
+                  <span>Grid</span>
+                </div>
+              </div>
+
+              <div class="catalog-tabs">
+                <span class="is-active">All</span>
+                <span>Service</span>
+                <span>API</span>
+                <span>Infrastructure</span>
+                <span>Team</span>
+              </div>
+
+              <div class="app-card app-table-card">
+                <div class="app-table-head">
+                  <span>Name</span>
+                  <span>Owner</span>
+                  <span>Tags</span>
+                  <span>Updated</span>
+                </div>
+                <button type="button" class="app-table-row is-clickable" data-demo-target="service">
+                  <span>
+                    <strong>payment-api</strong>
+                    <small>Handles payment processing</small>
+                  </span>
+                  <span>payments</span>
+                  <span class="table-chip-row">
+                    <em>critical</em>
+                    <em>pci</em>
+                  </span>
+                  <span>Mar 13, 09:41</span>
+                </button>
+                <div class="app-table-row">
+                  <span>
+                    <strong>refunds-api</strong>
+                    <small>Refund processing service</small>
+                  </span>
+                  <span>payments</span>
+                  <span class="table-chip-row">
+                    <em>staging</em>
+                  </span>
+                  <span>Mar 13, 08:12</span>
+                </div>
+                <div class="app-table-row">
+                  <span>
+                    <strong>ledger-db</strong>
+                    <small>Primary financial database</small>
+                  </span>
+                  <span>finance-platform</span>
+                  <span class="table-chip-row">
+                    <em>postgres</em>
+                    <em>tier-1</em>
+                  </span>
+                  <span>Mar 12, 18:03</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="product-view" data-demo-view="service" aria-label="Service detail view" hidden>
+            <div class="product-canvas">
+              <div class="entity-breadcrumbs">
+                <span>Catalog</span>
+                <span>/</span>
+                <span>Service</span>
+                <span>/</span>
+                <strong>payment-api</strong>
+              </div>
+
+              <div class="product-page-head entity-head">
+                <div>
+                  <div class="entity-title-row">
+                    <span class="entity-kind-pill">Service</span>
+                    <h3>payment-api</h3>
+                  </div>
+                  <p>Handles card authorization, ledger writes, and settlement workflows.</p>
+                  <div class="entity-meta-inline">
+                    <span>Owner: <strong>payments</strong></span>
+                    <span class="entity-meta-pill">production</span>
+                    <span class="entity-meta-pill">backend</span>
+                    <span class="entity-meta-pill">pci</span>
+                  </div>
+                </div>
+                <div class="product-head-actions">
+                  <button type="button" class="product-secondary-button">Edit</button>
+                  <button type="button" class="product-danger-button">Delete</button>
+                </div>
+              </div>
+
+              <div class="catalog-tabs entity-tabs">
+                <span class="is-active">overview</span>
+                <span>dependencies</span>
+                <span>yaml</span>
+                <span>activity</span>
+              </div>
+
+              <div class="entity-layout">
+                <article class="app-card app-card-padded">
+                  <h4>Spec</h4>
+                  <div class="spec-grid">
+                    <div>
+                      <label>repoUrl</label>
+                      <p>https://github.com/acme/payment-api</p>
+                    </div>
+                    <div>
+                      <label>system</label>
+                      <p>checkout</p>
+                    </div>
+                    <div>
+                      <label>language</label>
+                      <p>Go</p>
+                    </div>
+                    <div>
+                      <label>healthCheckUrl</label>
+                      <p>https://payments.acme.dev/healthz</p>
+                    </div>
+                  </div>
+                </article>
+
+                <div class="entity-side-stack">
+                  <article class="app-card app-card-padded">
+                    <h4>Metadata</h4>
+                    <dl class="meta-list compact">
+                      <div><dt>API Version</dt><dd>gantry.io/v1</dd></div>
+                      <div><dt>Created</dt><dd>3/1/2026, 9:12 AM</dd></div>
+                      <div><dt>Updated</dt><dd>3/13/2026, 9:41 AM</dd></div>
+                    </dl>
+                  </article>
+
+                  <article class="app-card app-card-padded">
+                    <div class="health-card-head">
+                      <h4>Health</h4>
+                      <span class="health-refresh">↻</span>
+                    </div>
+                    <div class="health-row">
+                      <span class="app-dot green"></span>
+                      <strong>Healthy</strong>
+                      <small>200</small>
+                      <small>84ms</small>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="product-view" data-demo-view="actions" aria-label="Actions view" hidden>
+            <div class="product-canvas">
+              <div class="product-page-head">
+                <div>
+                  <h3>Actions</h3>
+                  <p>Self-service workflows — 18 actions across 6 categories</p>
+                </div>
+                <button type="button" class="product-primary-button">
+                  <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-plus"></use></svg>
+                  <span>New Action</span>
+                </button>
+              </div>
+
+              <div class="actions-toolbar">
+                <div class="catalog-search actions-search">
+                  <svg class="product-inline-icon subtle" viewBox="0 0 24 24"><use href="#icon-search"></use></svg>
+                  <span>Search actions...</span>
+                </div>
+                <div class="action-chip-row">
+                  <span class="action-filter-chip is-active">All <em>18</em></span>
+                  <span class="action-filter-chip">Deployments <em>6</em></span>
+                  <span class="action-filter-chip">Access <em>4</em></span>
+                  <span class="action-filter-chip">Infrastructure <em>5</em></span>
+                  <span class="action-filter-chip">Uncategorized <em>3</em></span>
+                </div>
+              </div>
+
+              <section class="actions-category-section">
+                <button type="button" class="actions-category-head">
+                  <svg class="product-inline-icon subtle" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg>
+                  <span class="actions-category-title">Deployments</span>
+                  <span class="actions-category-count">6</span>
+                  <span class="actions-category-rule"></span>
+                </button>
+                <div class="action-card-grid">
+                  <article class="action-page-card real-action-card">
+                    <div class="action-card-accent"></div>
+                    <div class="action-card-inner">
+                      <div class="action-card-top">
+                        <div class="action-card-icon-wrap">
+                          <svg class="action-card-type-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                        </div>
+                        <div class="action-card-title-wrap">
+                          <h4>Deploy Production</h4>
+                          <p class="action-card-name">deploy-production</p>
+                        </div>
+                      </div>
+                      <div class="action-card-badges">
+                        <span class="action-type-badge internal">internal</span>
+                        <span class="action-meta-badge">2 inputs</span>
+                        <span class="action-meta-badge">payments-team</span>
+                      </div>
+                      <p class="action-card-description">Promote the latest approved artifact to production using ArgoCD sync and rollout verification.</p>
+                      <div class="action-card-divider"></div>
+                      <div class="action-card-actions">
+                        <button type="button" class="product-primary-button action-execute">
+                          <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                          <span>Execute</span>
+                        </button>
+                        <div class="action-secondary-row">
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-history"></use></svg>
+                            <span>History</span>
+                          </button>
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg>
+                            <span>Edit</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article class="action-page-card real-action-card">
+                    <div class="action-card-accent"></div>
+                    <div class="action-card-inner">
+                      <div class="action-card-top">
+                        <div class="action-card-icon-wrap">
+                          <svg class="action-card-type-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                        </div>
+                        <div class="action-card-title-wrap">
+                          <h4>ArgoCD Sync</h4>
+                          <p class="action-card-name">argocd-sync</p>
+                        </div>
+                      </div>
+                      <div class="action-card-badges">
+                        <span class="action-type-badge argocd">argocd-sync</span>
+                        <span class="action-meta-badge">1 input</span>
+                        <span class="action-meta-badge">platform-team</span>
+                      </div>
+                      <p class="action-card-description">Trigger a sync for a selected ArgoCD application and wait for health to stabilize.</p>
+                      <div class="action-card-divider"></div>
+                      <div class="action-card-actions">
+                        <button type="button" class="product-primary-button action-execute">
+                          <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                          <span>Execute</span>
+                        </button>
+                        <div class="action-secondary-row">
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-history"></use></svg>
+                            <span>History</span>
+                          </button>
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg>
+                            <span>Edit</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article class="action-page-card real-action-card">
+                    <div class="action-card-accent"></div>
+                    <div class="action-card-inner">
+                      <div class="action-card-top">
+                        <div class="action-card-icon-wrap">
+                          <svg class="action-card-type-icon" viewBox="0 0 24 24"><use href="#icon-webhook"></use></svg>
+                        </div>
+                        <div class="action-card-title-wrap">
+                          <h4>Restart Service Pods</h4>
+                          <p class="action-card-name">restart-service-pods</p>
+                        </div>
+                      </div>
+                      <div class="action-card-badges">
+                        <span class="action-type-badge webhook">webhook</span>
+                        <span class="action-meta-badge">3 inputs</span>
+                        <span class="action-meta-badge">payments-team</span>
+                      </div>
+                      <p class="action-card-description">Restart a selected Kubernetes workload after configuration changes or incident response.</p>
+                      <div class="action-card-divider"></div>
+                      <div class="action-card-actions">
+                        <button type="button" class="product-primary-button action-execute">
+                          <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                          <span>Execute</span>
+                        </button>
+                        <div class="action-secondary-row">
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-history"></use></svg>
+                            <span>History</span>
+                          </button>
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg>
+                            <span>Edit</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section class="actions-category-section">
+                <button type="button" class="actions-category-head">
+                  <svg class="product-inline-icon subtle" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg>
+                  <span class="actions-category-title">Infrastructure</span>
+                  <span class="actions-category-count">5</span>
+                  <span class="actions-category-rule"></span>
+                </button>
+                <div class="action-card-grid">
+                  <article class="action-page-card real-action-card">
+                    <div class="action-card-accent"></div>
+                    <div class="action-card-inner">
+                      <div class="action-card-top">
+                        <div class="action-card-icon-wrap">
+                          <svg class="action-card-type-icon" viewBox="0 0 24 24"><use href="#icon-github"></use></svg>
+                        </div>
+                        <div class="action-card-title-wrap">
+                          <h4>Provision Preview Environment</h4>
+                          <p class="action-card-name">provision-preview-environment</p>
+                        </div>
+                      </div>
+                      <div class="action-card-badges">
+                        <span class="action-type-badge github">github-action</span>
+                        <span class="action-meta-badge">4 inputs</span>
+                        <span class="action-meta-badge">platform-team</span>
+                      </div>
+                      <p class="action-card-description">Create namespace, ingress, secrets, and a temporary database for a pull request branch.</p>
+                      <div class="action-card-divider"></div>
+                      <div class="action-card-actions">
+                        <button type="button" class="product-primary-button action-execute">
+                          <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                          <span>Execute</span>
+                        </button>
+                        <div class="action-secondary-row">
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-history"></use></svg>
+                            <span>History</span>
+                          </button>
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg>
+                            <span>Edit</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article class="action-page-card real-action-card">
+                    <div class="action-card-accent"></div>
+                    <div class="action-card-inner">
+                      <div class="action-card-top">
+                        <div class="action-card-icon-wrap">
+                          <svg class="action-card-type-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                        </div>
+                        <div class="action-card-title-wrap">
+                          <h4>Rotate API Key</h4>
+                          <p class="action-card-name">rotate-api-key</p>
+                        </div>
+                      </div>
+                      <div class="action-card-badges">
+                        <span class="action-type-badge internal">internal</span>
+                        <span class="action-meta-badge">1 input</span>
+                        <span class="action-meta-badge">security-team</span>
+                      </div>
+                      <p class="action-card-description">Issue a replacement key and update the secret reference for downstream consumers.</p>
+                      <div class="action-card-divider"></div>
+                      <div class="action-card-actions">
+                        <button type="button" class="product-primary-button action-execute">
+                          <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-zap"></use></svg>
+                          <span>Execute</span>
+                        </button>
+                        <div class="action-secondary-row">
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-history"></use></svg>
+                            <span>History</span>
+                          </button>
+                          <button type="button" class="action-secondary-button">
+                            <svg class="product-inline-icon" viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg>
+                            <span>Edit</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </section>
         </div>
       </div>
+
+    </div>
   </div>
 </section>
 
@@ -380,7 +1159,7 @@
         <a href="docs/"      class="footer-link">Docs</a>
         <a href="#features"  class="footer-link">Features</a>
         <a href="#plugins"   class="footer-link">Plugins</a>
-        <a href="#how-it-works" class="footer-link">How it Works</a>
+        <a href="#how-it-works" class="footer-link">Product Tour</a>
       </div>
 
       <div class="footer-col">
