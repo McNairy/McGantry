@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Gantry — open-source internal developer platform. Self-hostable, single binary, zero dependencies. Service catalog, self-service actions, GitOps-native.">
+  <meta property="og:title"       content="Gantry — Open-Source Internal Developer Platform">
+  <meta property="og:description" content="Self-hostable IDP as a single binary. Service catalog, plugins, GitOps-native.">
+  <meta property="og:type"        content="website">
+  <title>Gantry — Open-Source Internal Developer Platform</title>
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231c1c1e'/><path d='M8 24V12l8-6 8 6v12M4 12h24M16 6v18' stroke='white' stroke-width='2.2' stroke-linecap='round' fill='none'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     NAVIGATION — floating dark pill
+     ============================================================ -->
+<nav class="nav" id="nav">
+  <a href="#hero" class="nav-home" aria-label="Gantry home">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  </a>
+  <span class="nav-sep"></span>
+  <div class="nav-links">
+    <a href="#features"     class="nav-link">Features</a>
+    <a href="#how-it-works" class="nav-link">How it Works</a>
+    <a href="#plugins"      class="nav-link">Plugins</a>
+    <a href="#why-gantry"   class="nav-link">Why Gantry</a>
+    <a href="#get-started"  class="nav-link nav-link-cta">Get Started</a>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO — dark card
+     ============================================================ -->
+<section id="hero" class="hero">
+  <div class="hero-card">
+    <!-- Left: copy -->
+    <div class="hero-content">
+      <h1 class="hero-title reveal d1">
+        The Developer Platform<br>
+        Your Team Deserves
+      </h1>
+
+      <p class="hero-sub reveal d2">
+        Self-hostable internal developer platform. Service catalog, self-service
+        actions, and GitOps-native config &mdash; shipped as a
+        <strong>single binary</strong> with zero dependencies.
+      </p>
+
+      <div class="hero-actions reveal d3">
+        <a href="https://github.com/go2engle/gantry/releases/latest" class="btn-primary btn-lg" target="_blank" rel="noopener">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download
+        </a>
+        <a href="https://github.com/go2engle/gantry" class="btn-ghost btn-lg" target="_blank" rel="noopener">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <div class="hero-stats reveal d4">
+        <div class="stat">
+          <span class="stat-val">5 min</span>
+          <span class="stat-label">to production</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-val">1 binary</span>
+          <span class="stat-label">no dependencies</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-val">9+ plugins</span>
+          <span class="stat-label">out of the box</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: terminal -->
+    <div class="terminal-wrapper reveal d2">
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">gantry &mdash; zsh</span>
+        </div>
+        <div class="terminal-body" id="terminal-content"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FEATURES
+     ============================================================ -->
+<section id="features" class="section">
+  <div class="section-card">
+    <div class="section-header reveal">
+      <span class="section-label">Features</span>
+      <h2>Everything a platform team needs</h2>
+      <p class="section-sub">Built for engineering orgs that want great developer experience without the operational complexity.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="card reveal">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <h3>Service Catalog</h3>
+        <p>A single source of truth for every service, API, team, and infrastructure component. Relationships, ownership, and dependencies — all in one place.</p>
+      </div>
+      <div class="card reveal">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <h3>Single Binary</h3>
+        <p>No Kubernetes, no Node.js, no microservices. One Go binary with embedded SQLite. Deploy it on any server in minutes — or inside Docker.</p>
+      </div>
+      <div class="card reveal">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/></svg>
+        </div>
+        <h3>Plugin Ecosystem</h3>
+        <p>Kubernetes, GitHub, and ArgoCD plugins ship out of the box. Sync entities, view live deployments, stream logs, and trigger syncs — all inside the catalog.</p>
+      </div>
+      <div class="card reveal">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        </div>
+        <h3>Self-Service Actions</h3>
+        <p>Define runbooks as executable actions with JSON Schema forms. Let developers provision environments and trigger workflows — without opening a ticket.</p>
+      </div>
+      <div class="card reveal">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <h3>Full-Text Search</h3>
+        <p>Find any service, team, API, or doc in milliseconds. Powered by SQLite FTS5 with smart ranking — no Elasticsearch cluster required.</p>
+      </div>
+      <div class="card reveal">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        </div>
+        <h3>GitOps Native</h3>
+        <p>Define your catalog in YAML and apply it with <code style="font-family:var(--font-mono);font-size:12px;background:rgba(0,0,0,0.06);padding:1px 5px;border-radius:4px">gantry apply</code>. Every entity is version-controlled in Git.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     HOW IT WORKS — dark card
+     ============================================================ -->
+<section id="how-it-works" class="dark-section">
+  <div class="dark-section-card">
+    <div class="section-header reveal">
+        <span class="section-label">How it works</span>
+        <h2>Up and running in minutes</h2>
+        <p class="section-sub">No infrastructure expertise required. If you can run a binary, you can run Gantry.</p>
+      </div>
+
+      <div class="steps">
+        <div class="step reveal">
+          <div class="step-number">01</div>
+          <div class="step-content">
+            <h3>Install the binary</h3>
+            <p>Download a single pre-built binary for Linux, macOS, or Windows. Or pull the Docker image — your choice.</p>
+            <div class="code-block">
+<span class="code-comment"># macOS / Linux</span>
+<span class="code-key">curl</span> -sSL https://github.com/go2engle/gantry/releases/latest/download/install.sh | sh
+<span class="code-comment"></span>
+<span class="code-comment"># Docker</span>
+<span class="code-key">docker</span> run -p 8080:8080 ghcr.io/go2engle/gantry:latest
+            </div>
+          </div>
+        </div>
+
+        <div class="step reveal">
+          <div class="step-number">02</div>
+          <div class="step-content">
+            <h3>Define your catalog</h3>
+            <p>Write entity YAML files for your services, APIs, teams, and infrastructure. Schema validation and auto-complete work out of the box.</p>
+            <div class="code-block">
+<span class="code-comment"># catalog.yaml</span>
+<span class="code-key">apiVersion</span>: <span class="code-string">gantry.io/v1</span>
+<span class="code-key">kind</span>: <span class="code-type">Service</span>
+<span class="code-key">metadata</span>:
+  <span class="code-key">name</span>: <span class="code-string">payment-api</span>
+  <span class="code-key">labels</span>:
+    <span class="code-key">team</span>: <span class="code-string">payments</span>
+<span class="code-key">spec</span>:
+  <span class="code-key">description</span>: <span class="code-string">"Handles all payment processing"</span>
+  <span class="code-key">lifecycle</span>: <span class="code-string">production</span>
+  <span class="code-key">repoUrl</span>: <span class="code-string">https://github.com/acme/payment-api</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="step reveal">
+          <div class="step-number">03</div>
+          <div class="step-content">
+            <h3>Apply and explore</h3>
+            <p>Push your catalog to Gantry with one command. Your team can immediately discover, navigate, and act on all your infrastructure.</p>
+            <div class="code-block">
+<span class="code-key">gantry</span> apply -f catalog.yaml
+<span class="code-comment"></span>
+<span class="code-comment">✓ Created  Service/payment-api</span>
+<span class="code-comment">✓ Created  Team/payments</span>
+<span class="code-comment">✓ Created  API/payment-api-v2</span>
+<span class="code-comment"></span>
+<span class="code-key">open</span> http://localhost:8080
+            </div>
+          </div>
+        </div>
+      </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PLUGINS
+     ============================================================ -->
+<section id="plugins" class="section">
+  <div class="section-card">
+    <div class="section-header reveal">
+      <span class="section-label">Plugins</span>
+      <h2>Connect your entire stack</h2>
+      <p class="section-sub">Official plugins sync your infrastructure directly into the catalog. One-click install, zero configuration headaches.</p>
+    </div>
+
+    <div class="plugins-grid">
+      <div class="plugin-card reveal">
+        <div class="plugin-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M10.204 14.35l.007.01-.999 2.413a5.171 5.171 0 0 1-2.075-2.597l2.578-.437.004.005.485.606zm-.833-2.129l-.002-.004-2.584-.43a5.155 5.155 0 0 1 .961-2.836l1.817 1.877-.003.003-.194 1.39zm5.667-2.256l-.003-.002 1.814-1.875a5.16 5.16 0 0 1 .963 2.833l-2.58.434-.003-.003-.191-1.387zm-1.006 5.57l-.001-.002-.504.63-1.007 2.43a5.167 5.167 0 0 0 2.574-.573l-1.062-2.485zm3.17-2.66l-2.574.432-.004.004-.49.613.001.01.996 2.406a5.167 5.167 0 0 0 2.07-3.464zM12 6.677l-1.36 3.283.003.005.75.934h1.213l.754-.938.003-.005L12 6.677zM12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>
+        </div>
+        <h4>Kubernetes</h4>
+        <p>Sync namespaces, deployments, and services across multiple clusters. View pod logs and health status from any workload.</p>
+        <span class="plugin-tag">Official</span>
+      </div>
+
+      <div class="plugin-card reveal">
+        <div class="plugin-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        </div>
+        <h4>GitHub</h4>
+        <p>Sync repos as Service entities. View commits, open PRs, and CI status inline. GitHub OAuth SSO supported.</p>
+        <span class="plugin-tag">Official</span>
+      </div>
+
+      <div class="plugin-card reveal">
+        <div class="plugin-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" width="22" height="22"><circle cx="12" cy="12" r="10" opacity=".4"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <h4>ArgoCD</h4>
+        <p>Discover ArgoCD applications and correlate them with Kubernetes workloads. Trigger syncs and rollbacks from the catalog.</p>
+        <span class="plugin-tag">Official</span>
+      </div>
+
+      <div class="plugin-card reveal" style="opacity:0.5">
+        <div class="plugin-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        </div>
+        <h4>More coming soon</h4>
+        <p>PagerDuty, Datadog, Grafana, Flux, and more. Contribute or request plugins on GitHub.</p>
+        <span class="plugin-tag" style="background:rgba(0,0,0,0.04);border-color:rgba(0,0,0,0.1);color:var(--text-muted)">Planned</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     WHY GANTRY (vs Backstage)
+     ============================================================ -->
+<section id="why-gantry" class="section">
+  <div class="section-card">
+    <div class="section-header reveal">
+      <span class="section-label">Why Gantry</span>
+      <h2>Backstage is powerful.<br>It's also a full-time job.</h2>
+      <p class="section-sub">We built Gantry for teams that want the benefits of an IDP without a dedicated platform engineering team to maintain it.</p>
+    </div>
+
+    <div class="comparison-wrapper reveal">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Gantry</th>
+            <th>Backstage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Setup time</td>
+            <td>~5 minutes</td>
+            <td>Hours to days</td>
+          </tr>
+          <tr>
+            <td>Runtime dependencies</td>
+            <td>None &mdash; single binary</td>
+            <td>Node.js, PostgreSQL, often Kubernetes</td>
+          </tr>
+          <tr>
+            <td>Plugin language</td>
+            <td>Go</td>
+            <td>TypeScript / React</td>
+          </tr>
+          <tr>
+            <td>Hosting</td>
+            <td>Any Linux, macOS, or Windows server</td>
+            <td>Kubernetes recommended</td>
+          </tr>
+          <tr>
+            <td>Embedded database</td>
+            <td><span class="check">✓</span> SQLite, zero config</td>
+            <td><span class="cross">✗</span> External DB required</td>
+          </tr>
+          <tr>
+            <td>GitOps apply</td>
+            <td><span class="check">✓</span> <code>gantry apply</code></td>
+            <td><span class="cross">✗</span> YAML ingestion via plugins</td>
+          </tr>
+          <tr>
+            <td>License</td>
+            <td>Apache 2.0</td>
+            <td>Apache 2.0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CTA — dark card
+     ============================================================ -->
+<section id="get-started" class="cta-section">
+  <div class="cta-inner-card reveal">
+    <h2>Ready to build your<br>developer platform?</h2>
+    <p>Download the binary, apply your first catalog, and have your team using it before lunch.</p>
+    <div class="cta-actions">
+      <a href="https://github.com/go2engle/gantry/releases/latest" class="btn-primary btn-lg" target="_blank" rel="noopener">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Gantry
+      </a>
+      <a href="docs/" class="btn-ghost btn-lg">
+        Read the Docs &rarr;
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER — dark card
+     ============================================================ -->
+<footer class="footer">
+  <div class="footer-inner-card">
+    <div class="footer-cols">
+      <div class="footer-brand">
+        <a href="/" class="footer-logo">
+          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="white" fill-opacity="0.08"/>
+            <path d="M8 24V12l8-6 8 6v12M4 12h24M16 6v18" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+          Gantry
+        </a>
+        <p class="footer-brand-desc">Open-source internal developer platform. Self-hostable, single binary, zero dependencies.</p>
+      </div>
+
+      <div class="footer-col">
+        <h5>Product</h5>
+        <a href="docs/"      class="footer-link">Docs</a>
+        <a href="#features"  class="footer-link">Features</a>
+        <a href="#plugins"   class="footer-link">Plugins</a>
+        <a href="#how-it-works" class="footer-link">How it Works</a>
+      </div>
+
+      <div class="footer-col">
+        <h5>Resources</h5>
+        <a href="https://github.com/go2engle/gantry/releases" class="footer-link" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/go2engle/gantry/issues"   class="footer-link" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/go2engle/gantry/discussions" class="footer-link" target="_blank" rel="noopener">Discussions</a>
+      </div>
+
+      <div class="footer-col">
+        <h5>Connect</h5>
+        <a href="https://github.com/go2engle/gantry" class="footer-link" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">Apache 2.0 License &middot; Built with ♥ by the community</div>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
