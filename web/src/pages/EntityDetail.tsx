@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ChevronRight, Pencil, Trash2, X, ExternalLink, LayoutDashboard, BookOpen, FileText, Github, MessageSquare, Bell, Activity, Cpu, CircleHelp, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
+import { pruneEmpty } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 import type { Entity, JsonSchema, AuditEntry, GraphData, EntityLink, PluginRegistryEntry } from '../lib/types';
 import SchemaForm from '../components/SchemaForm';
@@ -175,9 +176,11 @@ export default function EntityDetail() {
     setEditing(true);
   }
 
-  const handleUpdate = async (spec: Record<string, any>) => {
+  const handleUpdate = async (raw: Record<string, any>) => {
     if (!entity || !kind || !name) return;
     try {
+      // Deep-prune empty values so the backend doesn't see "" for optional enum fields.
+      const spec = pruneEmpty(raw);
       const updated = await api.updateEntity(kind, name, {
         ...entity,
         metadata: {

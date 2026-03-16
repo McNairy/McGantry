@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { ENTITY_KINDS } from '../lib/types';
+import { pruneEmpty } from '../lib/utils';
 import type { Entity, JsonSchema } from '../lib/types';
 import EntityCard from '../components/EntityCard';
 import EntityTable from '../components/EntityTable';
@@ -111,16 +112,20 @@ export default function Catalog() {
     setCreateStep('kind');
   };
 
-  const handleCreate = async (spec: Record<string, any>) => {
+  const handleCreate = async (raw: Record<string, any>) => {
     try {
-      const name = (spec._name as string) || '';
-      const title = (spec._title as string) || '';
-      const owner = (spec._owner as string) || '';
-      const description = (spec._description as string) || '';
-      delete spec._name;
-      delete spec._title;
-      delete spec._owner;
-      delete spec._description;
+      const name = (raw._name as string) || '';
+      const title = (raw._title as string) || '';
+      const owner = (raw._owner as string) || '';
+      const description = (raw._description as string) || '';
+
+      // Strip metadata-prefixed keys, then deep-prune empty values
+      // so the backend doesn't see "" for optional enum fields.
+      const rawSpec: Record<string, any> = {};
+      for (const [key, value] of Object.entries(raw)) {
+        if (!key.startsWith('_')) rawSpec[key] = value;
+      }
+      const spec = pruneEmpty(rawSpec);
 
       const newEntity: Entity = {
         kind: createKind,
@@ -138,6 +143,7 @@ export default function Catalog() {
 
   const createSchema: JsonSchema = useMemo(() => {
     const kindSchema = schemas[createKind.toLowerCase()] || { type: 'object', properties: {} };
+    const kindRequired: string[] = (kindSchema as any).required || [];
     return {
       type: 'object',
       properties: {
@@ -147,7 +153,7 @@ export default function Catalog() {
         _description: { type: 'string', title: 'Description' },
         ...(kindSchema as any).properties,
       },
-      required: ['_name'],
+      required: ['_name', ...kindRequired],
     };
   }, [schemas, createKind]);
 
