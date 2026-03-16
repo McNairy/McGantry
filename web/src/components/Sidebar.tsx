@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../hooks/useTheme';
 import { api } from '../lib/api';
 import ThemeToggle from './ThemeToggle';
 import { ENTITY_KINDS } from '../lib/types';
@@ -73,6 +74,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const [gitopsEnabled, setGitopsEnabled] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { theme } = useTheme();
 
   useEffect(() => {
     setCatalogOpen(location.pathname.startsWith('/catalog'));
@@ -120,23 +122,22 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       >
         {/* Brand */}
         <div className="flex h-16 items-center justify-between border-b border-[var(--gantry-border)] px-4">
-          {!collapsed && (
-            <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--gantry-accent)] text-sm font-bold text-[var(--gantry-bg-primary)]">
-                G
+          {(() => {
+            const logoSrc = theme === 'dark' ? '/logo-black.png' : '/logo-white.png';
+            const brandMark = (
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--gantry-accent)]">
+                <img src={logoSrc} alt="Gantry" className="h-6 w-6 object-contain" />
               </div>
-              <span className="text-lg font-semibold text-[var(--gantry-text-primary)]">
-                Gantry
-              </span>
-            </Link>
-          )}
-          {collapsed && (
-            <Link to="/" className="mx-auto hidden lg:block">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--gantry-accent)] text-sm font-bold text-[var(--gantry-bg-primary)]">
-                G
-              </div>
-            </Link>
-          )}
+            );
+            return collapsed ? (
+              <Link to="/" className="mx-auto hidden lg:block">{brandMark}</Link>
+            ) : (
+              <Link to="/" className="flex items-center gap-2">
+                {brandMark}
+                <span className="text-lg font-semibold text-[var(--gantry-text-primary)]">Gantry</span>
+              </Link>
+            );
+          })()}
           <button
             className="rounded p-1 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] lg:hidden"
             aria-label="Close navigation menu"
