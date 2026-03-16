@@ -35,7 +35,7 @@ type Server struct {
 }
 
 // NewServer creates a new Gantry API server with all routes configured.
-func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, eventBus *events.Bus, validator *entity.SchemaValidator, searchSvc *search.Service, wsHub *websocket.Hub) *Server {
+func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, eventBus *events.Bus, validator *entity.SchemaValidator, searchSvc *search.Service, wsHub *websocket.Hub, version string) *Server {
 	r := chi.NewRouter()
 
 	// Core middleware.
@@ -74,6 +74,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 		SearchSvc:  searchSvc,
 		Dispatcher: dispatcher.New(database, eventBus),
 		DataDir:    cfg.DataDir,
+		Version:    version,
 	}
 	h.InitTeamsNotifier()
 
@@ -94,7 +95,8 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 	// API v1 routes.
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(middleware.RateLimit)
-		// Public auth endpoints.
+		// Public endpoints.
+		api.Get("/version", h.GetVersion)
 		api.Post("/auth/login", h.Login)
 		// GitHub SSO — public; used by login page and OAuth redirect flow.
 		api.Get("/auth/github/config", h.GetGitHubSSOConfig)
