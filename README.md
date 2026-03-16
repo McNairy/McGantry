@@ -1,188 +1,189 @@
-# Gantry
+<div align="center">
 
-**The Developer Platform That Just Works**
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="web/public/logo-white.png">
+  <source media="(prefers-color-scheme: light)" srcset="web/public/logo-black.png">
+  <img alt="Gantry" src="web/public/logo-black.png" width="280">
+</picture>
 
-Gantry is an open-source internal developer platform (IDP) that provides a unified service catalog, self-service portal, and GitOps-native configuration management — all in a single binary.
+<br />
+<br />
+
+**The open-source internal developer platform that ships as a single binary.**
+
+<p>
+  <a href="https://github.com/Go2Engle/Gantry/releases/latest">
+    <img alt="GitHub release" src="https://img.shields.io/github/v/release/Go2Engle/Gantry?style=flat-square&logo=github&color=6366f1&labelColor=1e1b4b">
+  </a>
+  <a href="https://github.com/Go2Engle/Gantry/blob/main/LICENSE">
+    <img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-6366f1?style=flat-square&labelColor=1e1b4b">
+  </a>
+  <a href="https://go.dev/">
+    <img alt="Go 1.22+" src="https://img.shields.io/badge/go-1.22+-00ADD8?style=flat-square&logo=go&logoColor=white&labelColor=1e1b4b">
+  </a>
+  <a href="https://github.com/Go2Engle/Gantry/actions">
+    <img alt="Build" src="https://img.shields.io/github/actions/workflow/status/Go2Engle/Gantry/release.yml?style=flat-square&logo=github-actions&logoColor=white&label=build&labelColor=1e1b4b">
+  </a>
+  <a href="https://github.com/Go2Engle/Gantry/stargazers">
+    <img alt="GitHub Stars" src="https://img.shields.io/github/stars/Go2Engle/Gantry?style=flat-square&logo=github&color=f59e0b&labelColor=1e1b4b">
+  </a>
+  <a href="https://github.com/Go2Engle/Gantry/pkgs/container/gantry">
+    <img alt="Docker" src="https://img.shields.io/badge/docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white&labelColor=1e1b4b">
+  </a>
+</p>
+
+<p>
+  <a href="https://go2engle.com/Gantry/docs/">📖 Documentation</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/Go2Engle/Gantry/releases">🚀 Releases</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/Go2Engle/Gantry/issues/new">🐛 Report a Bug</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/Go2Engle/Gantry/issues/new">✨ Request a Feature</a>
+</p>
+
+</div>
+
+---
+
+## What is Gantry?
+
+Gantry is a self-hostable **internal developer platform (IDP)** — a lightweight alternative to Backstage that runs as a single Go binary with no external dependencies. It gives engineering teams a unified service catalog, self-service actions, GitOps-native configuration management, and a plugin ecosystem without the operational overhead.
+
+| | Gantry | Backstage |
+|---|---|---|
+| Setup time | ~5 minutes | Hours to days |
+| Runtime dependencies | **None** — single binary | Node.js, PostgreSQL, often Kubernetes |
+| Hosting | Any server or Docker | Kubernetes recommended |
+| Embedded database | SQLite, zero config | External DB required |
+| GitOps apply | `gantry apply` built-in | YAML ingestion via plugins |
+
+## Features
+
+- **Service Catalog** — Typed, validated, and searchable entities for every service, API, team, and infrastructure component in your org
+- **Self-Service Actions** — Schema-driven forms so developers can trigger deployments or run workflows without opening a ticket
+- **Plugin Ecosystem** — First-party integrations for [Kubernetes](https://go2engle.com/Gantry/docs/plugins/kubernetes), [GitHub](https://go2engle.com/Gantry/docs/plugins/github), [ArgoCD](https://go2engle.com/Gantry/docs/plugins/argocd), Status Monitor, and Microsoft Teams
+- **GitOps Native** — Manage your catalog as YAML with `gantry apply`; diff, review, and roll back like code
+- **Full-Text Search** — Find any entity in milliseconds via SQLite FTS5 — no Elasticsearch required
+- **Single Binary** — CGO-free Go binary with an embedded React frontend, SQLite database, and all assets baked in
+- **API Keys & JWT Auth** — Browser sessions + Bearer token auth for CLI and automation; GitHub OAuth SSO optional
+- **Audit Log** — Every write operation is captured with before/after state and source IP
+- **Prometheus Metrics** — Built-in `/metrics` endpoint, no extra instrumentation needed
+
+---
 
 ## Quick Start
 
+### Install Script (Linux / macOS)
+
 ```bash
-# Build everything (frontend + backend)
+curl -fsSL https://raw.githubusercontent.com/go2engle/gantry/main/install.sh | sh
+gantry serve
+```
+
+### Docker
+
+```bash
+docker run -p 8080:8080 ghcr.io/go2engle/gantry:latest
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/Go2Engle/Gantry.git && cd Gantry
 make build
-
-# Start the server
 bin/gantry serve --dev
-
-# Open http://localhost:8080
-# Login: admin / changeme
 ```
 
-## Prerequisites
+Open **http://localhost:8080** — default login: `admin` / `changeme`
 
-- **Go 1.22+**
-- **Node.js 18+** and npm
+> Full installation options: [go2engle.com/Gantry/docs/getting-started/installation](https://go2engle.com/Gantry/docs/getting-started/installation)
 
-## Development
-
-### Backend
-
-```bash
-# Build the Go binary
-go build -o bin/gantry ./cmd/gantry
-
-# Run the server in dev mode
-bin/gantry serve --dev
-
-# Run all Go tests
-go test ./...
-
-# Run a specific test
-go test ./internal/db -run TestCreateEntity -v
-
-# Lint (requires golangci-lint)
-golangci-lint run ./...
-
-# Format
-gofmt -w .
-```
-
-### Frontend
-
-The React app lives in `web/`. In dev mode, Vite proxies API requests to the Go server on port 8080.
-
-```bash
-cd web
-
-# Install dependencies
-npm install
-
-# Dev server with hot reload (port 3000, proxies /api to :8080)
-npm run dev
-
-# Type check
-npx tsc --noEmit
-
-# Production build (outputs to web/dist/)
-npm run build
-```
-
-### Live Reload (recommended for development)
-
-For the fastest feedback loop, use `air` for Go hot-reload combined with Vite's HMR for the frontend — no manual rebuilds needed.
-
-**One-time setup:**
-
-```bash
-go install github.com/air-verse/air@latest
-```
-
-**Then just run:**
-
-```bash
-make dev-watch
-```
-
-This starts both processes together:
-- **Backend** (`air`) — watches `*.go` files, rebuilds and restarts automatically on save
-- **Frontend** (Vite) — hot module replacement at `http://localhost:3000`, proxies `/api` to `:8080`
-
-Open `http://localhost:3000` in your browser. `Ctrl+C` stops both processes.
-
-### Full Build
-
-```bash
-# Frontend + backend in one step
-make build
-
-# Clean build artifacts
-make clean
-```
+---
 
 ## CLI
 
-The `gantry` binary doubles as both server and client (like `kubectl`):
+The `gantry` binary is both server and client — think `kubectl` but for your developer platform.
 
 ```bash
 # Start the server
 gantry serve
 gantry serve --port 9090 --dev
-gantry serve --db postgres://user:pass@host/gantry
+gantry serve --admin-password mysecret
 
-# Apply entities from YAML
+# Apply entities from YAML — GitOps style
 gantry apply -f services.yaml
+gantry apply -f ./catalog/
 
-# List entities
+# Query the catalog
 gantry get services
 gantry get Service payments-api -o yaml
-
-# Describe an entity
 gantry describe Service payments-api
 
-# Version
+# Check version / manage installation
 gantry version
+gantry upgrade
+gantry uninstall
 ```
 
+---
+
 ## Configuration
+
+All options can be set via environment variable, CLI flag, or a YAML config file.
 
 | Env Var | Flag | Default | Description |
 |---------|------|---------|-------------|
 | `GANTRY_PORT` | `--port` | `8080` | HTTP listen port |
-| `GANTRY_DB` | `--db` | `sqlite (./data/gantry.db)` | Database connection string |
-| `GANTRY_DEV` | `--dev` | `false` | Development mode (permissive CORS, verbose logging) |
+| `GANTRY_DB` | `--db` | `./data/gantry.db` | SQLite path or `postgres://` URL |
+| `GANTRY_DEV` | `--dev` | `false` | Permissive CORS + verbose logging |
 | `GANTRY_ADMIN_PASSWORD` | `--admin-password` | `changeme` | Initial admin password |
 | `GANTRY_JWT_SECRET` | — | auto-generated | JWT signing secret |
-| `GANTRY_DATA_DIR` | — | `./data` | Data directory for SQLite |
-| `GANTRY_ENCRYPTION_KEY` | — | auto-generated | AES-256-GCM key for encrypting plugin secrets at rest |
+| `GANTRY_DATA_DIR` | — | `./data` | Data directory |
+| `GANTRY_ENCRYPTION_KEY` | — | auto-generated | AES-256-GCM key for plugin secrets |
 
-Prefix a DB string with `postgres://` for PostgreSQL; otherwise it's treated as a SQLite file path.
+> Full configuration reference: [go2engle.com/Gantry/docs/getting-started/configuration](https://go2engle.com/Gantry/docs/getting-started/configuration)
 
-## API
+---
 
-Most endpoints under `/api/v1/` require authentication. Browser logins set a same-origin HttpOnly session cookie, while CLI and automation clients can keep using `Authorization: Bearer <jwt-or-api-key>`.
+## API Reference
+
+Auth uses `Authorization: Bearer <token>` for CLI/API clients, or an HttpOnly session cookie for browsers.
 
 ```bash
-# Login
+# Authenticate
 curl -X POST localhost:8080/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"changeme"}'
 
-# Create an entity
+# Create a catalog entity
 curl -X POST localhost:8080/api/v1/entities \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
     "kind": "Service",
-    "metadata": {
-      "name": "payments-api",
-      "title": "Payments API",
-      "owner": "team-payments",
-      "tags": ["backend", "go"]
-    },
-    "spec": {
-      "type": "backend",
-      "lifecycle": "production"
-    }
+    "metadata": { "name": "payments-api", "title": "Payments API", "owner": "team-payments" },
+    "spec": { "type": "backend", "lifecycle": "production" }
   }'
 
-# List entities
-curl localhost:8080/api/v1/entities -H "Authorization: Bearer $TOKEN"
-
-# Search
+# Search the catalog
 curl "localhost:8080/api/v1/search?q=payments" -H "Authorization: Bearer $TOKEN"
 ```
 
-### Endpoints
+<details>
+<summary><strong>Full endpoint reference</strong></summary>
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/healthz` | Health check |
 | `GET` | `/readyz` | Readiness check |
-| `GET` | `/metrics` | Metrics endpoint |
+| `GET` | `/metrics` | Prometheus metrics |
 | `POST` | `/api/v1/auth/login` | Login, returns JWT |
-| `POST` | `/api/v1/auth/logout` | Clear browser session cookie |
+| `POST` | `/api/v1/auth/logout` | Clear session cookie |
 | `GET` | `/api/v1/auth/me` | Current user info |
-| `GET` | `/api/v1/auth/apikeys` | List your API keys |
-| `POST` | `/api/v1/auth/apikeys` | Create a scoped API key |
+| `GET` | `/api/v1/apikeys` | List API keys |
+| `POST` | `/api/v1/apikeys` | Create a scoped API key |
+| `DELETE` | `/api/v1/apikeys/{id}` | Revoke an API key |
 | `GET` | `/api/v1/entities` | List all entities |
 | `GET` | `/api/v1/entities/{kind}` | List by kind |
 | `GET` | `/api/v1/entities/{kind}/{name}` | Get entity |
@@ -190,38 +191,61 @@ curl "localhost:8080/api/v1/search?q=payments" -H "Authorization: Bearer $TOKEN"
 | `PUT` | `/api/v1/entities/{kind}/{name}` | Update entity |
 | `DELETE` | `/api/v1/entities/{kind}/{name}` | Delete entity |
 | `GET` | `/api/v1/search?q=` | Full-text search |
-| `GET` | `/api/v1/schemas` | List all JSON schemas |
-| `GET` | `/api/v1/schemas/{kind}` | Get schema for kind |
-| `GET` | `/api/v1/plugins` | List bundled plugins and enabled state |
+| `GET` | `/api/v1/schemas/{kind}` | JSON Schema for a kind |
+| `GET` | `/api/v1/plugins` | List plugins and enabled state |
 | `POST` | `/api/v1/actions/{name}/execute` | Execute an action |
 | `GET` | `/api/v1/actions/{name}/runs` | List action runs |
 | `GET` | `/api/v1/audit` | Audit log |
-| `GET` | `/api/v1/ws` | WebSocket (session cookie or Authorization header auth) |
+| `GET` | `/api/v1/graph/{kind}/{name}` | Entity dependency graph |
+| `GET` | `/api/v1/ws` | WebSocket (real-time events) |
 
-## Project Structure
+</details>
 
+> Full API documentation: [go2engle.com/Gantry/docs/api](https://go2engle.com/Gantry/docs/api)
+
+---
+
+## Development
+
+**Prerequisites:** Go 1.22+, Node.js 18+, npm
+
+```bash
+# Recommended: live reload for both backend and frontend
+go install github.com/air-verse/air@latest
+make dev-watch
+# → Backend auto-rebuilds on .go changes (air)
+# → Frontend hot-reloads at http://localhost:3000 (Vite HMR)
+
+# Or run them separately:
+bin/gantry serve --dev          # Go server on :8080
+cd web && npm run dev           # Vite dev server on :3000
+
+# Tests & checks
+go test ./...
+cd web && npx tsc --noEmit
+golangci-lint run ./...
 ```
-cmd/gantry/          CLI entry point (serve, apply, get, describe, version)
-internal/
-  api/               HTTP server and routes
-    handlers/        REST handler functions
-    middleware/      Auth (JWT) and logging middleware
-    websocket/       WebSocket hub
-  auth/              Password hashing and JWT tokens
-  config/            Configuration loading
-  db/                Database layer, migrations, queries
-  entity/            Entity types, built-in kinds, JSON Schema validation
-    schemas/         JSON Schema files for each entity kind
-  events/            In-process event bus
-  search/            Full-text search (SQLite FTS5)
-web/                 React frontend (Vite + Tailwind)
-  src/
-    components/      Sidebar, CommandPalette, EntityCard, EntityTable, SchemaForm
-    hooks/           useAuth, useTheme
-    lib/             API client, types
-    pages/           Dashboard, Catalog, EntityDetail, Actions, Settings, Login
-```
+
+> Contributing guide: [go2engle.com/Gantry/docs/contributing](https://go2engle.com/Gantry/docs/contributing/overview)
+
+---
+
+## Star History
+
+<div align="center">
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Go2Engle/Gantry&type=Date)](https://star-history.com/#Go2Engle/Gantry&Date)
+
+</div>
+
+---
 
 ## License
 
-Apache 2.0
+Apache 2.0 — see [LICENSE](LICENSE).
+
+<div align="center">
+
+If Gantry is useful to you, give it a ⭐ — it helps others find it.
+
+</div>
