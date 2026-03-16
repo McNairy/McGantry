@@ -8,19 +8,45 @@ description: Install Gantry via binary, Docker, or from source.
 
 Gantry ships as a single self-contained binary. There is no Node.js, no PostgreSQL, no Kubernetes — just one executable.
 
-## Option 1: Install Script (Linux / macOS)
+## Option 1: One-Line Installer (Linux / macOS)
 
 ```bash
-curl -sSL https://github.com/go2engle/gantry/releases/latest/download/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/go2engle/gantry/main/install.sh | sh
 ```
 
-This downloads the latest binary for your OS/arch to `/usr/local/bin/gantry`.
+This script:
+
+- Detects your OS and CPU architecture
+- Downloads the matching Gantry release archive
+- Verifies its SHA-256 checksum
+- Extracts the binary and runs `gantry install`
+
+`gantry install` then handles the actual machine setup: creating the Gantry service, writing the env file, copying the binary into `/usr/local/bin/gantry`, and starting the service.
 
 Verify:
 
 ```bash
 gantry version
-# gantry v0.1.0 (commit abc1234, built 2025-01-01)
+```
+
+Open [http://localhost:8080](http://localhost:8080) after the installer finishes.
+
+Pass any `gantry install` flags through the script with `sh -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/go2engle/gantry/main/install.sh | sh -s -- --port 9090 --no-start
+```
+
+For non-interactive installs, set `GANTRY_ADMIN_PASSWORD` on the shell that runs the script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/go2engle/gantry/main/install.sh | env GANTRY_ADMIN_PASSWORD='replace-me' sh -s -- --port 9090
+```
+
+To install a specific release instead of the latest one:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/go2engle/gantry/main/install.sh | env GANTRY_VERSION='v0.2.0' sh
 ```
 
 ## Option 2: Manual Download
@@ -35,11 +61,11 @@ Download the binary for your platform from [GitHub Releases](https://github.com/
 | macOS arm64 (Apple Silicon) | `gantry_darwin_arm64.tar.gz` |
 | Windows amd64 | `gantry_windows_amd64.zip` |
 
-Extract and move to your `PATH`:
+Extract and run the built-in installer:
 
 ```bash
 tar -xzf gantry_linux_amd64.tar.gz
-sudo mv gantry /usr/local/bin/
+sudo ./gantry install
 ```
 
 ## Option 3: Docker
@@ -107,23 +133,21 @@ See [Development Setup](../contributing/development-setup) for a full local dev 
 
 ## Starting the Server
 
+After installation, open [http://localhost:8080](http://localhost:8080) in your browser. Log in with:
+- **Username:** `admin`
+- **Password:** the password you entered during install, or `changeme` if you skipped it
+
+If you used `--no-start`, start the service manually:
+
 ```bash
-# Start with defaults (port 8080, SQLite at ./data/gantry.db)
-gantry serve
-
-# Start in development mode (verbose logging, open CORS)
-gantry serve --dev
-
-# Custom port and database
-gantry serve --port 9000 --db ./mydata/gantry.db
-
-# Change the default admin password
-gantry serve --admin-password my-secure-password
+sudo systemctl start gantry
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in your browser. Log in with:
-- **Username:** `admin`
-- **Password:** `changeme` (or your `--admin-password` value)
+On macOS:
+
+```bash
+sudo launchctl load -w /Library/LaunchDaemons/com.gantry.server.plist
+```
 
 :::info First Run
 On first start, Gantry automatically creates the SQLite database, runs migrations, creates the default `admin` user, and loads built-in entity schemas. No setup required.

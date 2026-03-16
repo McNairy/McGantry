@@ -232,7 +232,18 @@ jobs:
 
       - name: Install Gantry CLI
         run: |
-          curl -sSL https://github.com/go2engle/gantry/releases/latest/download/install.sh | sh
+          TAG="$(curl -fsSL https://api.github.com/repos/go2engle/gantry/releases/latest | tr -d '\n' | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+          VERSION="${TAG#v}"
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            x86_64|amd64) ARCH="amd64" ;;
+            arm64|aarch64) ARCH="arm64" ;;
+            *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+          esac
+          curl -fsSL "https://github.com/go2engle/gantry/releases/download/$TAG/gantry_${VERSION}_linux_${ARCH}.tar.gz" | tar -xz
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 gantry "$HOME/.local/bin/gantry"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Apply catalog
         env:
@@ -253,7 +264,14 @@ sync-catalog:
   only:
     - main
   script:
-    - curl -sSL https://github.com/go2engle/gantry/releases/latest/download/install.sh | sh
+    - TAG="$(curl -fsSL https://api.github.com/repos/go2engle/gantry/releases/latest | tr -d '\n' | sed -n 's/.*\"tag_name\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p')"
+    - VERSION="${TAG#v}"
+    - ARCH="$(uname -m)"
+    - case "$ARCH" in x86_64|amd64) ARCH="amd64" ;; arm64|aarch64) ARCH="arm64" ;; *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;; esac
+    - curl -fsSL "https://github.com/go2engle/gantry/releases/download/$TAG/gantry_${VERSION}_linux_${ARCH}.tar.gz" | tar -xz
+    - mkdir -p "$HOME/.local/bin"
+    - install -m 0755 gantry "$HOME/.local/bin/gantry"
+    - export PATH="$HOME/.local/bin:$PATH"
     - |
       for f in catalog/**/*.yaml; do
         GANTRY_SERVER=$GANTRY_SERVER GANTRY_TOKEN=$GANTRY_TOKEN gantry apply -f "$f"

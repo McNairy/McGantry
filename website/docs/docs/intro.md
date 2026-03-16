@@ -46,15 +46,14 @@ Gantry is built for teams that want the *benefits* of an IDP without dedicated p
 ## Quick Start
 
 ```bash
-# Download and run (Linux/macOS)
-curl -sSL https://github.com/go2engle/gantry/releases/latest/download/install.sh | sh
-gantry serve
+# Install and start the Gantry service (Linux/macOS)
+curl -fsSL https://raw.githubusercontent.com/go2engle/gantry/main/install.sh | sh
 
 # Or with Docker
 docker run -p 8080:8080 ghcr.io/go2engle/gantry:latest
 ```
 
-Open [http://localhost:8080](http://localhost:8080). Default credentials: `admin` / `changeme`.
+Open [http://localhost:8080](http://localhost:8080). Default credentials: `admin` / the password you set during install, or `changeme` if you skipped it.
 
 See the [Installation guide](./getting-started/installation) for more options.
 
