@@ -1,7 +1,7 @@
 // @ts-check
 const { themes: prismThemes } = require('prism-react-renderer');
 
-const siteUrl = process.env.DOCS_SITE_URL || 'https://go2engle.com';
+const siteUrl = process.env.DOCS_SITE_URL || 'https://GantryIDP.dev';
 const baseUrl = process.env.DOCS_BASE_URL || '/docs/';
 const homeUrl = process.env.DOCS_HOME_URL || baseUrl.replace(/docs\/?$/, '');
 const absoluteHomeUrl = new URL(homeUrl || '/', siteUrl).toString();

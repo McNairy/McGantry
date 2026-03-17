@@ -33,7 +33,7 @@
 </p>
 
 <p>
-  <a href="https://go2engle.com/Gantry/docs/">📖 Documentation</a>
+  <a href="https://GantryIDP.dev/docs/">📖 Documentation</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/Go2Engle/Gantry/releases">🚀 Releases</a>
   &nbsp;·&nbsp;
@@ -62,7 +62,7 @@ Gantry is a self-hostable **internal developer platform (IDP)** — a lightweigh
 
 - **Service Catalog** — Typed, validated, and searchable entities for every service, API, team, and infrastructure component in your org
 - **Self-Service Actions** — Schema-driven forms so developers can trigger deployments or run workflows without opening a ticket
-- **Plugin Ecosystem** — First-party integrations for [Kubernetes](https://go2engle.com/Gantry/docs/plugins/kubernetes), [GitHub](https://go2engle.com/Gantry/docs/plugins/github), [ArgoCD](https://go2engle.com/Gantry/docs/plugins/argocd), Status Monitor, and Microsoft Teams
+- **Plugin Ecosystem** — First-party integrations for [Kubernetes](https://GantryIDP.dev/docs/plugins/kubernetes), [GitHub](https://GantryIDP.dev/docs/plugins/github), [ArgoCD](https://GantryIDP.dev/docs/plugins/argocd), Status Monitor, and Microsoft Teams
 - **GitOps Native** — Manage your catalog as YAML with `gantry apply`; diff, review, and roll back like code
 - **Full-Text Search** — Find any entity in milliseconds via SQLite FTS5 — no Elasticsearch required
 - **Single Binary** — CGO-free Go binary with an embedded React frontend, SQLite database, and all assets baked in
@@ -97,7 +97,7 @@ bin/gantry serve --dev
 
 Open **http://localhost:8080** — default login: `admin` / `changeme`
 
-> Full installation options: [go2engle.com/Gantry/docs/getting-started/installation](https://go2engle.com/Gantry/docs/getting-started/installation)
+> Full installation options: [GantryIDP.dev/docs/getting-started/installation](https://GantryIDP.dev/docs/getting-started/installation)
 
 ---
 
@@ -142,7 +142,7 @@ All options can be set via environment variable, CLI flag, or a YAML config file
 | `GANTRY_DATA_DIR` | — | `./data` | Data directory |
 | `GANTRY_ENCRYPTION_KEY` | — | auto-generated | AES-256-GCM key for plugin secrets |
 
-> Full configuration reference: [go2engle.com/Gantry/docs/getting-started/configuration](https://go2engle.com/Gantry/docs/getting-started/configuration)
+> Full configuration reference: [GantryIDP.dev/docs/getting-started/configuration](https://GantryIDP.dev/docs/getting-started/configuration)
 
 ---
 
@@ -201,7 +201,7 @@ curl "localhost:8080/api/v1/search?q=payments" -H "Authorization: Bearer $TOKEN"
 
 </details>
 
-> Full API documentation: [go2engle.com/Gantry/docs/api](https://go2engle.com/Gantry/docs/api)
+> Full API documentation: [GantryIDP.dev/docs/api](https://GantryIDP.dev/docs/api)
 
 ---
 
@@ -226,7 +226,7 @@ cd web && npx tsc --noEmit
 golangci-lint run ./...
 ```
 
-> Contributing guide: [go2engle.com/Gantry/docs/contributing](https://go2engle.com/Gantry/docs/contributing/overview)
+> Contributing guide: [GantryIDP.dev/docs/contributing](https://GantryIDP.dev/docs/contributing/overview)
 
 ---
 
