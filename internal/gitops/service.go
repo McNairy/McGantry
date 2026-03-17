@@ -65,6 +65,7 @@ type FileEntry struct {
 	Kind      string `json:"kind"`
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
+	Error     string `json:"error,omitempty"`
 }
 
 // PullResult holds the result of a pull + reconcile operation.
@@ -940,16 +941,61 @@ func (s *Service) ListFiles() ([]FileEntry, error) {
 			return nil
 		}
 
-		files = append(files, FileEntry{
+		entry := FileEntry{
 			Path:      relPath,
 			Kind:      kind,
 			Namespace: namespace,
 			Name:      name,
-		})
+		}
+		// Validate the file by attempting to parse it.
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			entry.Error = fmt.Sprintf("read failed: %v", readErr)
+		} else if _, parseErr := DeserializeEntity(data); parseErr != nil {
+			entry.Error = fmt.Sprintf("parse failed: %v", parseErr)
+		}
+		files = append(files, entry)
 		return nil
 	})
 
 	return files, nil
+}
+
+// GetFileContent returns the raw YAML content of a tracked entity file.
+func (s *Service) GetFileContent(relPath string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.repo == nil {
+		return "", fmt.Errorf("not connected to repository")
+	}
+
+	w, err := s.repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("getting worktree: %w", err)
+	}
+
+	// Sanitize the path to prevent directory traversal.
+	cleaned := filepath.Clean(relPath)
+	if strings.Contains(cleaned, "..") {
+		return "", fmt.Errorf("invalid path")
+	}
+
+	fullPath := filepath.Join(w.Filesystem.Root(), cleaned)
+	// Ensure the path stays within the repo root.
+	if !strings.HasPrefix(fullPath, w.Filesystem.Root()) {
+		return "", fmt.Errorf("invalid path")
+	}
+
+	if !strings.HasSuffix(fullPath, ".yaml") {
+		return "", fmt.Errorf("not a yaml file")
+	}
+
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("reading file: %w", err)
+	}
+	return string(data), nil
 }
 
 // Status returns the current sync status.

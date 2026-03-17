@@ -444,6 +444,7 @@ export interface GitOpsFileEntry {
   kind: string;
   namespace: string;
   name: string;
+  error?: string;
 }
 
 // ─── Groups & RBAC ────────────────────────────────────────────────────────

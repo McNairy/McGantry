@@ -167,8 +167,10 @@ export const api = {
   getGitOpsStatus: () => request<GitOpsStatus>('GET', '/plugins/gitops/status'),
   getGitOpsHistory: () => request<GitOpsSyncEntry[]>('GET', '/plugins/gitops/history'),
   getGitOpsFiles: () => request<GitOpsFileEntry[]>('GET', '/plugins/gitops/files'),
+  getGitOpsFileContent: (path: string) => request<{ content: string }>('GET', `/plugins/gitops/file-content?path=${encodeURIComponent(path)}`),
   triggerGitOpsSync: () => request<{ message: string }>('POST', '/plugins/gitops/sync'),
   triggerGitOpsPull: () => request<{ message: string }>('POST', '/plugins/gitops/pull'),
+  triggerGitOpsBidisync: () => request<{ message: string }>('POST', '/plugins/gitops/bidisync'),
 
   // Groups
   listGroups: () => request<Group[]>('GET', '/groups'),

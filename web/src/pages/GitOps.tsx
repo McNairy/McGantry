@@ -11,6 +11,13 @@ import {
   Clock,
   FileText,
   XCircle,
+  GitPullRequest,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  FileCode,
+  X,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { GitOpsStatus, GitOpsSyncEntry, GitOpsFileEntry } from '../lib/types';
@@ -23,6 +30,62 @@ function relativeTime(ts: string): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+interface FileTreeNodeProps {
+  kind: string;
+  files: GitOpsFileEntry[];
+  onSelectFile: (file: GitOpsFileEntry) => void;
+  selectedPath: string | null;
+}
+
+function FileTreeNode({ kind, files, onSelectFile, selectedPath }: FileTreeNodeProps) {
+  const [expanded, setExpanded] = useState(true);
+  const hasErrors = files.some(f => f.error);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-colors hover:bg-[var(--gantry-bg-tertiary)]"
+      >
+        {expanded ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--gantry-text-secondary)]" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--gantry-text-secondary)]" />
+        )}
+        {expanded ? (
+          <FolderOpen className="h-4 w-4 shrink-0 text-[var(--gantry-accent)]" />
+        ) : (
+          <Folder className="h-4 w-4 shrink-0 text-[var(--gantry-accent)]" />
+        )}
+        <span className="flex-1 text-[var(--gantry-text-primary)]">{kind}</span>
+        <span className="text-xs text-[var(--gantry-text-secondary)]">{files.length}</span>
+        {hasErrors && (
+          <AlertCircle className="h-3.5 w-3.5 text-[var(--gantry-danger)]" />
+        )}
+      </button>
+      {expanded && (
+        <div className="ml-6 mt-0.5 space-y-0.5 border-l border-[var(--gantry-border)] pl-2">
+          {files.map(file => (
+            <button
+              key={file.path}
+              onClick={() => onSelectFile(file)}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--gantry-bg-tertiary)] ${
+                selectedPath === file.path ? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]' : 'text-[var(--gantry-text-secondary)]'
+              }`}
+            >
+              <FileCode className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1 truncate font-mono">{file.name}</span>
+              {file.error && (
+                <AlertCircle className="h-3 w-3 shrink-0 text-[var(--gantry-danger)]" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function GitOps() {
   const [status, setStatus] = useState<GitOpsStatus | null>(null);
   const [history, setHistory] = useState<GitOpsSyncEntry[]>([]);
@@ -31,9 +94,11 @@ export default function GitOps() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [pulling, setPulling] = useState(false);
   const [tab, setTab] = useState<'history' | 'files'>('history');
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<GitOpsFileEntry | null>(null);
+  const [fileContent, setFileContent] = useState<string>('');
+  const [loadingContent, setLoadingContent] = useState(false);
 
   const fetchData = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
@@ -64,7 +129,7 @@ export default function GitOps() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await api.triggerGitOpsSync();
+      await api.triggerGitOpsBidisync();
       setTimeout(() => fetchData(), 2000);
     } catch (err: any) {
       setError(err.message);
@@ -73,15 +138,17 @@ export default function GitOps() {
     }
   };
 
-  const handlePull = async () => {
-    setPulling(true);
+  const handleSelectFile = async (file: GitOpsFileEntry) => {
+    setSelectedFile(file);
+    setFileContent('');
+    setLoadingContent(true);
     try {
-      await api.triggerGitOpsPull();
-      setTimeout(() => fetchData(), 2000);
+      const result = await api.getGitOpsFileContent(file.path);
+      setFileContent(result.content);
     } catch (err: any) {
-      setError(err.message);
+      setFileContent(`# Error loading file\n# ${err.message}`);
     } finally {
-      setPulling(false);
+      setLoadingContent(false);
     }
   };
 
@@ -226,16 +293,8 @@ export default function GitOps() {
           disabled={syncing || !status?.connected}
           className="flex items-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] transition-colors hover:bg-[var(--gantry-accent-hover)] disabled:opacity-50"
         >
-          {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpCircle className="h-4 w-4" />}
-          Full Sync
-        </button>
-        <button
-          onClick={handlePull}
-          disabled={pulling || !status?.connected}
-          className="flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm font-medium text-[var(--gantry-text-primary)] transition-colors hover:border-[var(--gantry-accent)] hover:text-[var(--gantry-accent)] disabled:opacity-50"
-        >
-          {pulling ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowDownCircle className="h-4 w-4" />}
-          Pull from Git
+          {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitPullRequest className="h-4 w-4" />}
+          Sync
         </button>
       </div>
 
@@ -348,38 +407,83 @@ export default function GitOps() {
       )}
 
       {tab === 'files' && (
-        <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] overflow-hidden">
-          {files.length === 0 ? (
-            <div className="p-8 text-center">
-              <FolderGit2 className="mx-auto mb-3 h-8 w-8 text-[var(--gantry-text-secondary)]" />
-              <p className="text-sm text-[var(--gantry-text-secondary)]">No entity files in the repository yet.</p>
+        <div className="flex gap-4" style={{ minHeight: '400px' }}>
+          {/* File tree */}
+          <div className="w-64 shrink-0 rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] overflow-hidden flex flex-col">
+            <div className="border-b border-[var(--gantry-border)] px-3 py-2">
+              <p className="text-xs font-medium text-[var(--gantry-text-secondary)]">Repository Files</p>
             </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)]">
-                  <th className="px-4 py-2 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Path</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Kind</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Namespace</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-[var(--gantry-text-secondary)]">Name</th>
-                </tr>
-              </thead>
-              <tbody>
-                {files.map((file) => (
-                  <tr key={file.path} className="border-b border-[var(--gantry-border)] last:border-0">
-                    <td className="px-4 py-2 font-mono text-xs text-[var(--gantry-text-secondary)]">{file.path}</td>
-                    <td className="px-4 py-2">
-                      <span className="rounded bg-[var(--gantry-accent)]/10 px-1.5 py-0.5 text-xs font-medium text-[var(--gantry-accent)]">
-                        {file.kind}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-[var(--gantry-text-secondary)]">{file.namespace}</td>
-                    <td className="px-4 py-2 text-xs font-medium text-[var(--gantry-text-primary)]">{file.name}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+            {files.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+                <FolderGit2 className="mb-2 h-7 w-7 text-[var(--gantry-text-secondary)]" />
+                <p className="text-xs text-[var(--gantry-text-secondary)]">No entity files yet.</p>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {(() => {
+                  const byKind = files.reduce<Record<string, GitOpsFileEntry[]>>((acc, f) => {
+                    (acc[f.kind] = acc[f.kind] || []).push(f);
+                    return acc;
+                  }, {});
+                  return Object.entries(byKind).sort(([a], [b]) => a.localeCompare(b)).map(([kind, kindFiles]) => (
+                    <FileTreeNode
+                      key={kind}
+                      kind={kind}
+                      files={kindFiles}
+                      onSelectFile={handleSelectFile}
+                      selectedPath={selectedFile?.path ?? null}
+                    />
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* YAML viewer */}
+          <div className="flex-1 rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] overflow-hidden flex flex-col">
+            {selectedFile ? (
+              <>
+                <div className="flex items-center gap-3 border-b border-[var(--gantry-border)] px-4 py-2">
+                  <FileCode className="h-4 w-4 shrink-0 text-[var(--gantry-accent)]" />
+                  <span className="flex-1 truncate font-mono text-xs text-[var(--gantry-text-secondary)]">{selectedFile.path}</span>
+                  {selectedFile.error && (
+                    <div className="flex items-center gap-1 rounded-md border border-[var(--gantry-danger)]/30 bg-[var(--gantry-danger)]/10 px-2 py-0.5">
+                      <AlertCircle className="h-3 w-3 text-[var(--gantry-danger)]" />
+                      <span className="text-[11px] font-medium text-[var(--gantry-danger)]">Parse error</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { setSelectedFile(null); setFileContent(''); }}
+                    className="rounded p-0.5 text-[var(--gantry-text-secondary)] transition-colors hover:text-[var(--gantry-text-primary)]"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {selectedFile.error && (
+                  <div className="border-b border-[var(--gantry-border)] bg-[var(--gantry-danger)]/10 px-4 py-2">
+                    <p className="font-mono text-xs text-[var(--gantry-danger)]">{selectedFile.error}</p>
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-auto p-4">
+                  {loadingContent ? (
+                    <div className="flex h-full items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-[var(--gantry-accent)]" />
+                    </div>
+                  ) : (
+                    <pre className="text-xs leading-relaxed text-[var(--gantry-text-primary)] font-mono whitespace-pre-wrap break-all">{fileContent}</pre>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+                <FileCode className="mb-3 h-10 w-10 text-[var(--gantry-text-secondary)]" />
+                <p className="text-sm font-medium text-[var(--gantry-text-primary)]">Select a file to view its YAML</p>
+                <p className="mt-1 text-xs text-[var(--gantry-text-secondary)]">Click any file in the tree on the left</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

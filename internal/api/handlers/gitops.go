@@ -170,3 +170,68 @@ func (h *Handlers) GetGitOpsFiles(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, files)
 }
+
+// TriggerGitOpsBidirectionalSync performs a bidirectional sync — pulls remote changes
+// into the database, then pushes all local entities back to the repo.
+func (h *Handlers) TriggerGitOpsBidirectionalSync(w http.ResponseWriter, r *http.Request) {
+	p, err := h.DB.GetPlugin(r.Context(), "gitops")
+	if err != nil || p == nil {
+		writeError(w, http.StatusNotFound, "gitops plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "gitops plugin not enabled")
+		return
+	}
+	if h.GitOps == nil {
+		writeError(w, http.StatusBadRequest, "gitops service not initialized")
+		return
+	}
+
+	// Run bidirectional sync in a goroutine; return 202 immediately.
+	go func() {
+		// Step 1: Pull remote changes and reconcile the database.
+		if _, err := h.GitOps.Pull(); err != nil {
+			log.Printf("[gitops] bidisync pull error: %v", err)
+		}
+		// Step 2: Push all local entities back to the repo.
+		if _, err := h.GitOps.FullSync(); err != nil {
+			log.Printf("[gitops] bidisync sync error: %v", err)
+		}
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"message": "bidirectional sync started — check status for progress",
+	})
+}
+
+// GetGitOpsFileContent returns the raw YAML content of a tracked entity file.
+func (h *Handlers) GetGitOpsFileContent(w http.ResponseWriter, r *http.Request) {
+	p, err := h.DB.GetPlugin(r.Context(), "gitops")
+	if err != nil || p == nil {
+		writeError(w, http.StatusNotFound, "gitops plugin not installed")
+		return
+	}
+	if !p.Enabled {
+		writeError(w, http.StatusBadRequest, "gitops plugin not enabled")
+		return
+	}
+	if h.GitOps == nil {
+		writeError(w, http.StatusBadRequest, "gitops service not initialized")
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		writeError(w, http.StatusBadRequest, "path query parameter required")
+		return
+	}
+
+	content, err := h.GitOps.GetFileContent(filePath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"content": content})
+}

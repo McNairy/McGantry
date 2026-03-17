@@ -204,8 +204,10 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.With(middleware.RequireRole("admin")).Get("/plugins/gitops/status", h.GetGitOpsStatus)
 			protected.With(middleware.RequireRole("admin")).Get("/plugins/gitops/history", h.GetGitOpsHistory)
 			protected.With(middleware.RequireRole("admin")).Get("/plugins/gitops/files", h.GetGitOpsFiles)
+			protected.With(middleware.RequireRole("admin")).Get("/plugins/gitops/file-content", h.GetGitOpsFileContent)
 			protected.With(middleware.RequireRole("admin")).Post("/plugins/gitops/sync", h.TriggerGitOpsSync)
 			protected.With(middleware.RequireRole("admin")).Post("/plugins/gitops/pull", h.TriggerGitOpsPull)
+			protected.With(middleware.RequireRole("admin")).Post("/plugins/gitops/bidisync", h.TriggerGitOpsBidirectionalSync)
 			// ArgoCD-specific plugin endpoints.
 			protected.Get("/plugins/argocd/entity-apps", h.GetArgoCDEntityApps)
 			protected.Get("/plugins/argocd/apps/{appName}", h.GetArgoCDApp)
