@@ -34,6 +34,7 @@ type authUserResponse struct {
 	DisplayName   string          `json:"displayName,omitempty"`
 	Email         string          `json:"email,omitempty"`
 	Role          string          `json:"role"`
+	SSOOnly       bool            `json:"ssoOnly"`
 	EffectiveRole string          `json:"effectiveRole"`
 	Groups        []string        `json:"groups"`
 	Permissions   map[string]bool `json:"permissions"`
@@ -46,6 +47,7 @@ type registerRequest struct {
 	DisplayName string `json:"displayName,omitempty"`
 	Email       string `json:"email,omitempty"`
 	Role        string `json:"role,omitempty"`
+	SSOOnly     bool   `json:"ssoOnly,omitempty"`
 }
 
 // Login handles POST /auth/login. It verifies the username and password
@@ -65,6 +67,13 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	// Look up the user in the database.
 	user, err := h.DB.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	// SSO-only users cannot log in with username/password.
+	// Return the same generic error to avoid leaking SSO membership.
+	if user.SSOOnly {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -150,6 +159,8 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 
 // Register handles POST /auth/register. It creates a new user account.
 // This endpoint requires admin privileges (enforced by RequireRole middleware).
+// When ssoOnly is true, the user is created without a password and can only
+// authenticate through an SSO provider (e.g. GitHub OAuth).
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -157,15 +168,30 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "username and password are required")
+	if req.Username == "" {
+		writeError(w, http.StatusBadRequest, "username is required")
 		return
 	}
 
-	hash, err := h.Auth.HashPassword(req.Password)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to hash password")
-		return
+	var hash string
+	if req.SSOOnly {
+		// SSO-only users get no usable password.
+		hash = ""
+	} else {
+		if req.Password == "" {
+			writeError(w, http.StatusBadRequest, "password is required for non-SSO users")
+			return
+		}
+		if len(req.Password) < 8 {
+			writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+			return
+		}
+		var err error
+		hash, err = h.Auth.HashPassword(req.Password)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to hash password")
+			return
+		}
 	}
 
 	// All new users start as viewer. Role elevation is managed through
@@ -176,6 +202,7 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 		DisplayName:  req.DisplayName,
 		Email:        req.Email,
 		Role:         "viewer",
+		SSOOnly:      req.SSOOnly,
 	}
 
 	if err := h.DB.CreateUser(r.Context(), user); err != nil {
@@ -226,6 +253,7 @@ type updateUserRequest struct {
 	DisplayName string `json:"displayName"`
 	Email       string `json:"email"`
 	Role        string `json:"role"`
+	SSOOnly     *bool  `json:"ssoOnly,omitempty"`
 }
 
 func (h *Handlers) buildAuthUserResponse(ctx context.Context, user *db.User) authUserResponse {
@@ -236,6 +264,7 @@ func (h *Handlers) buildAuthUserResponse(ctx context.Context, user *db.User) aut
 		DisplayName: user.DisplayName,
 		Email:       user.Email,
 		Role:        user.Role,
+		SSOOnly:     user.SSOOnly,
 		Groups:      []string{},
 	}
 
@@ -283,6 +312,17 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Role != "" {
 		user.Role = req.Role
+	}
+	if req.SSOOnly != nil {
+		// When toggling false→true, clear the stored password hash so no
+		// lingering credentials remain for the now-SSO-only account.
+		if *req.SSOOnly && !user.SSOOnly {
+			if err := h.DB.UpdateUserPassword(r.Context(), user.ID, ""); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to clear password for SSO-only conversion")
+				return
+			}
+		}
+		user.SSOOnly = *req.SSOOnly
 	}
 
 	if err := h.DB.UpdateUser(r.Context(), user); err != nil {
@@ -349,6 +389,12 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SSO-only users cannot change their password (they don't have one).
+	if user.SSOOnly {
+		writeError(w, http.StatusForbidden, "SSO-only accounts cannot change passwords")
+		return
+	}
+
 	if err := h.Auth.CheckPassword(user.PasswordHash, req.CurrentPassword); err != nil {
 		writeError(w, http.StatusUnauthorized, "current password is incorrect")
 		return
@@ -366,4 +412,82 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
+}
+
+// resetPasswordRequest is the body for admin password resets.
+type resetPasswordRequest struct {
+	NewPassword string `json:"newPassword"`
+}
+
+// ResetPassword handles PUT /auth/users/{id}/password. Allows admins to reset
+// any user's password without knowing the current password. Cannot be used on
+// SSO-only accounts.
+func (h *Handlers) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	user, err := h.DB.GetUserByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	if user.SSOOnly {
+		writeError(w, http.StatusBadRequest, "cannot reset password for SSO-only accounts")
+		return
+	}
+
+	var req resetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "newPassword is required")
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+		return
+	}
+
+	hash, err := h.Auth.HashPassword(req.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
+	if err := h.DB.UpdateUserPassword(r.Context(), id, hash); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reset password")
+		return
+	}
+
+	// Audit log — record who reset whose password (never log the plaintext).
+	// db.User.PasswordHash is tagged json:"-" so it is automatically excluded.
+	beforeState, _ := json.Marshal(user)
+	afterState := beforeState // only password hash changed (excluded from JSON)
+	if updated, err := h.DB.GetUserByID(r.Context(), id); err == nil {
+		afterState, _ = json.Marshal(updated)
+	}
+	claims := middleware.GetClaims(r.Context())
+	userName := ""
+	userID := ""
+	if claims != nil {
+		userName = claims.Username
+		userID = claims.UserID
+	}
+	h.DB.CreateAuditEntry(r.Context(), &db.AuditEntry{
+		UserID:       userID,
+		UserName:     userName,
+		Action:       "user.password_reset",
+		ResourceType: "user",
+		ResourceID:   user.ID,
+		ResourceName: user.Username,
+		BeforeState:  string(beforeState),
+		AfterState:   string(afterState),
+		Source:       "api",
+		IPAddress:    clientIP(r),
+	})
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "password reset successfully"})
 }

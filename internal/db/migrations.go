@@ -55,6 +55,7 @@ func allMigrations(dbType string) []string {
 			display_name  TEXT,
 			email         TEXT,
 			role          TEXT NOT NULL DEFAULT 'viewer',
+			sso_only      INTEGER NOT NULL DEFAULT 0,
 			created_at    TIMESTAMP,
 			updated_at    TIMESTAMP
 		)`,
@@ -212,6 +213,13 @@ func allMigrations(dbType string) []string {
 			updated_by TEXT
 		)`,
 	}
+
+	// ------------------------------------------------------------------
+	// Migration: add sso_only column to users table.
+	// ------------------------------------------------------------------
+	migrations = append(migrations,
+		`ALTER TABLE users ADD COLUMN sso_only INTEGER NOT NULL DEFAULT 0`,
+	)
 
 	// Default admin user — dialect-aware upsert.
 	if dbType == "postgres" {
