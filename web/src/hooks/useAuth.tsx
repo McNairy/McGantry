@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { api, setToken, getToken } from '../lib/api';
+import { api, setToken, getToken, AUTH_UNAUTHORIZED_EVENT } from '../lib/api';
 import type { User } from '../lib/types';
 
 interface AuthContextValue {
@@ -49,6 +49,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setToken(null);
+      setTokenState(null);
+      setUser(null);
+    };
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
