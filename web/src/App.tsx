@@ -19,6 +19,8 @@ import GitOps from './pages/GitOps';
 import Harbor from './pages/Harbor';
 import Nexus from './pages/Nexus';
 import RBAC from './pages/RBAC';
+import TopologyExplorer from './pages/TopologyExplorer';
+
 
 function AuthenticatedLayout() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -37,26 +39,31 @@ function AuthenticatedLayout() {
             <Menu className="h-5 w-5" />
           </button>
         </div>
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
-          <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/catalog" element={<Catalog />} />
-              <Route path="/catalog/:kind" element={<Catalog />} />
-              <Route path="/catalog/:kind/:name" element={<EntityDetail />} />
-              <Route path="/actions" element={<Actions />} />
-              <Route path="/audit" element={<AuditLog />} />
-              <Route path="/users" element={<UsersPage />} />
-              <Route path="/plugins" element={<Plugins />} />
-              <Route path="/status" element={<StatusMonitor />} />
-              <Route path="/gitops" element={<GitOps />} />
-              <Route path="/harbor" element={<Harbor />} />
-              <Route path="/nexus" element={<Nexus />} />
-              <Route path="/rbac" element={<RBAC />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
-          </ErrorBoundary>
-        </div>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/topology" element={<div className="px-4 py-6 sm:px-6 sm:py-8"><TopologyExplorer /></div>} />
+            <Route path="*" element={
+              <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/catalog" element={<Catalog />} />
+                  <Route path="/catalog/:kind" element={<Catalog />} />
+                  <Route path="/catalog/:kind/:name" element={<EntityDetail />} />
+                  <Route path="/actions" element={<Actions />} />
+                  <Route path="/audit" element={<AuditLog />} />
+                  <Route path="/users" element={<UsersPage />} />
+                  <Route path="/plugins" element={<Plugins />} />
+                  <Route path="/status" element={<StatusMonitor />} />
+                  <Route path="/gitops" element={<GitOps />} />
+                  <Route path="/harbor" element={<Harbor />} />
+                  <Route path="/nexus" element={<Nexus />} />
+                  <Route path="/rbac" element={<RBAC />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </div>
+            } />
+          </Routes>
+        </ErrorBoundary>
       </main>
       <CommandPalette />
     </div>

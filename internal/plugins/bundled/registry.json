@@ -758,5 +758,52 @@
     },
     "entityPanels": ["Service", "Infrastructure"],
     "actionTypes": []
+  },
+  {
+    "name": "topology-explorer",
+    "title": "Topology Explorer",
+    "description": "Interactive org-wide topology view of all entities across environments with dependency mapping and live status overlays.",
+    "longDescription": "The Topology Explorer plugin provides a visual, interactive map of your entire service catalog organized by environment.\n\nEnvironments appear as vertical columns (lanes) with entities grouped by kind. Services are shown as top-level items with expandable children showing related Infrastructure and API entities. Cross-environment dependencies are visible in the detail panel.\n\nWhen other plugins like Status Monitor are enabled, health status indicators are overlaid on each entity so you can spot issues at a glance. The view auto-refreshes and includes filtering by entity kind, search, and customizable lane ordering.",
+    "features": [
+      "Org-wide column view with environment lanes",
+      "Expandable service tree with nested Infrastructure and API children",
+      "Live health status overlays from Status Monitor plugin",
+      "Filter by entity kind and search within the topology",
+      "Drag-and-drop environment lane ordering in plugin settings",
+      "Dashboard widget with environment summary",
+      "Auto-refresh with 30-second server-side caching"
+    ],
+    "version": "1.0.0",
+    "author": "Gantry",
+    "category": "widget",
+    "homepage": "https://github.com/go2engle/gantry",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "refreshInterval": {
+          "type": "number",
+          "title": "Auto-Refresh Interval (seconds)",
+          "description": "How often to refresh topology data. Set to 0 to disable auto-refresh.",
+          "default": 60
+        },
+        "laneOrder": {
+          "type": "array",
+          "title": "Environment Lane Order",
+          "description": "Custom ordering of environment lanes. Add environment names and reorder them. Environments not listed appear at the end.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "hideUnassigned": {
+          "type": "boolean",
+          "title": "Hide Unassigned Lane",
+          "description": "Hide the 'Unassigned' column that shows entities not deployed to any environment.",
+          "default": false
+        }
+      }
+    },
+    "entityPanels": [],
+    "actionTypes": []
   }
 ]
