@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -121,14 +122,14 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Exchange code → GitHub access token.
 	accessToken, err := ghplugin.ExchangeOAuthCode(code, clientID, clientSecret)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "failed to exchange oauth code: "+err.Error())
+		writeSSOProviderError(w, "GitHub", "exchange oauth code", err)
 		return
 	}
 
 	// Fetch GitHub user profile.
 	ghUser, err := ghplugin.FetchUserWithToken(accessToken)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "failed to fetch GitHub user: "+err.Error())
+		writeSSOProviderError(w, "GitHub", "fetch GitHub user", err)
 		return
 	}
 
@@ -139,7 +140,16 @@ func (h *Handlers) GitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	gantryUser, _ := h.DB.GetUserByUsername(ctx, username)
 
 	if gantryUser == nil && ghUser.Email != "" {
-		gantryUser, _ = h.DB.GetUserByEmail(ctx, ghUser.Email)
+		usersByEmail, err := h.DB.GetUsersByEmail(ctx, ghUser.Email)
+		if err == nil {
+			switch len(usersByEmail) {
+			case 1:
+				gantryUser = usersByEmail[0]
+			case 0:
+			default:
+				log.Printf("github auth: email hash %s matched %d Gantry users; refusing ambiguous SSO lookup", hashEmailForLog(ghUser.Email), len(usersByEmail))
+			}
+		}
 	}
 
 	// Determine the return URL for redirects (including error redirects).

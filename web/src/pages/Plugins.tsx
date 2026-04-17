@@ -12,7 +12,7 @@ const SYNCABLE_PLUGINS = new Set(['kubernetes', 'github', 'argocd']);
 
 // Plugins with full backend + frontend implementations.
 // Anything not in this set is shown as "Coming Soon" and cannot be enabled.
-const IMPLEMENTED_PLUGINS = new Set(['github', 'kubernetes', 'argocd', 'status-monitor', 'gitops', 'teams', 'harbor', 'nexus-repository-manager', 'topology-explorer']);
+const IMPLEMENTED_PLUGINS = new Set(['github', 'microsoft-azure', 'kubernetes', 'argocd', 'status-monitor', 'gitops', 'teams', 'harbor', 'nexus-repository-manager', 'topology-explorer']);
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -122,6 +122,40 @@ const PLUGIN_SECTIONS: Record<string, Array<{
       },
     },
   ],
+  'microsoft-azure': [
+    {
+      title: 'Microsoft Azure SSO',
+      description: 'Let users sign in to Gantry with Microsoft Entra ID / Azure AD via OAuth 2.0 and Microsoft Graph.',
+      fields: ['ssoEnabled', 'tenantId', 'clientId', 'clientSecret', 'scopes', 'autoProvision', 'defaultRole'],
+      renderBanner: () => {
+        const origin = window.location.origin;
+        return (
+          <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-tertiary)] px-4 py-3 space-y-3">
+            <div className="flex items-start gap-2">
+              <span className="text-[var(--gantry-accent)] text-base leading-none mt-0.5">ℹ</span>
+              <div>
+                <p className="text-sm font-medium text-[var(--gantry-text-primary)]">Azure app registration required</p>
+                <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
+                  Create an app registration in the Azure portal, add the Microsoft Graph <code>User.Read</code> delegated permission, and configure this redirect URI:
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 pl-6">
+              <div>
+                <p className="text-xs font-semibold text-[var(--gantry-text-primary)] mb-0.5">Redirect URI</p>
+                <code className="block text-xs bg-[var(--gantry-bg-secondary)] text-[var(--gantry-text-primary)] font-mono px-2.5 py-1.5 rounded border border-[var(--gantry-border)]">
+                  {origin}/api/v1/auth/azure/callback
+                </code>
+              </div>
+              <p className="text-xs text-[var(--gantry-text-secondary)]">
+                Use <code>common</code> as the tenant ID for multi-tenant sign-in, or set a specific tenant ID / domain to restrict access.
+              </p>
+            </div>
+          </div>
+        );
+      },
+    },
+  ],
   teams: [
     {
       title: 'Delivery',
@@ -154,6 +188,14 @@ const FIELD_VISIBILITY: Record<string, Record<string, VisibilityFn>> = {
     installationId:     (v) => v.authMode === 'app',
     oauthClientId:      (v) => !!v.ssoEnabled,
     oauthClientSecret:  (v) => !!v.ssoEnabled,
+    defaultRole:        (v) => !!v.ssoEnabled,
+  },
+  'microsoft-azure': {
+    tenantId:           (v) => !!v.ssoEnabled,
+    clientId:           (v) => !!v.ssoEnabled,
+    clientSecret:       (v) => !!v.ssoEnabled,
+    scopes:             (v) => !!v.ssoEnabled,
+    autoProvision:      (v) => !!v.ssoEnabled,
     defaultRole:        (v) => !!v.ssoEnabled,
   },
 };
