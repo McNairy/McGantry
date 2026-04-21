@@ -156,16 +156,16 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                       </>
                     )}
                     <rect
-                      x={labelPos.x - (twoWay ? 44 : 30)}
+                      x={labelPos.x - 30}
                       y={labelPos.y - 17}
-                      width={twoWay ? 88 : 60}
+                      width={60}
                       height={22}
                       rx={11}
                       fill="var(--gantry-bg-primary)"
                       stroke={twoWay ? '#64748B' : 'var(--gantry-border)'}
                     />
                     <text x={labelPos.x} y={labelPos.y - 2} textAnchor="middle" className="fill-[var(--gantry-text-secondary)] text-[11px] font-medium">
-                      {twoWay ? `${edge.label || edge.relation} <->` : edge.label || edge.relation}
+                      {edge.label || edge.relation}
                     </text>
                   </g>
                 );

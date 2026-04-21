@@ -87,6 +87,8 @@ export function ensureFlowSpec(spec: Record<string, any> | undefined): FlowSpec 
         direction: edge.direction === 'two-way' ? 'two-way' : 'one-way',
         label: typeof edge.label === 'string' ? edge.label : '',
         animated: typeof edge.animated === 'boolean' ? edge.animated : true,
+        sourceHandle: ['top', 'right', 'bottom', 'left'].includes(edge.sourceHandle) ? edge.sourceHandle : undefined,
+        targetHandle: ['top', 'right', 'bottom', 'left'].includes(edge.targetHandle) ? edge.targetHandle : undefined,
       }))
       .filter((edge) => Boolean(edge.source && edge.target && edge.relation)),
   };
@@ -368,9 +370,17 @@ export function edgeLabelPosition(
 ) {
   const p1 = connectionPoint(sourceAbsPos, sourceSize, sourceHandle);
   const p2 = connectionPoint(targetAbsPos, targetSize, targetHandle);
+  const dist = Math.max(80, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.45);
+  const c1o = controlOffset(sourceHandle, dist);
+  const c2o = controlOffset(targetHandle, dist);
+  const c1x = p1.x + c1o.dx;
+  const c1y = p1.y + c1o.dy;
+  const c2x = p2.x + c2o.dx;
+  const c2y = p2.y + c2o.dy;
+  // Cubic bezier at t=0.5: B = 0.125*P0 + 0.375*C1 + 0.375*C2 + 0.125*P3
   return {
-    x: (p1.x + p2.x) / 2,
-    y: (p1.y + p2.y) / 2 - 10,
+    x: 0.125 * p1.x + 0.375 * c1x + 0.375 * c2x + 0.125 * p2.x,
+    y: 0.125 * p1.y + 0.375 * c1y + 0.375 * c2y + 0.125 * p2.y - 10,
   };
 }
 
