@@ -193,6 +193,7 @@ export default function Flow() {
     canEdit: true,
   });
   const [availableEntities, setAvailableEntities] = useState<Entity[]>([]);
+  const [healthStatuses, setHealthStatuses] = useState<Map<string, boolean | null>>(new Map());
   const [flows, setFlows] = useState<Entity[]>([]);
   const [currentFlowName, setCurrentFlowName] = useState<string | null>(null);
   const [currentNamespace, setCurrentNamespace] = useState('default');
@@ -340,6 +341,43 @@ export default function Flow() {
       active = false;
     };
   }, [requestedFlow, requestedNamespace, requestedMode]);
+
+  // Periodically check health for entities on the canvas that have healthCheckUrl.
+  useEffect(() => {
+    let active = true;
+    const entityMapLocal = new Map(availableEntities.map((e) => [entityKey(e), e]));
+    const urls = new Map<string, string>();
+    for (const node of flowSpec.nodes) {
+      if (isMockNode(node)) continue;
+      const key = nodeEntityKey(node);
+      const ent = entityMapLocal.get(key);
+      const url = ent?.spec?.healthCheckUrl;
+      if (typeof url === 'string' && url.trim()) urls.set(key, url);
+    }
+
+    if (urls.size === 0) {
+      setHealthStatuses(new Map());
+      return;
+    }
+
+    const check = async () => {
+      const next = new Map<string, boolean | null>();
+      await Promise.all(
+        [...urls.entries()].map(async ([key, url]) => {
+          try {
+            const res = await api.checkHealth(url);
+            if (active) next.set(key, res.reachable);
+          } catch {
+            if (active) next.set(key, null);
+          }
+        })
+      );
+      if (active) setHealthStatuses(next);
+    };
+    void check();
+    const interval = setInterval(check, 30_000);
+    return () => { active = false; clearInterval(interval); };
+  }, [availableEntities, flowSpec.nodes]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -1568,7 +1606,18 @@ export default function Flow() {
                                   <ExternalLink className="h-3.5 w-3.5" />
                                 </button>
                               </div>
-                              <div className="break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
+                              <div className="flex items-center gap-1.5 break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
+                                {(() => {
+                                  const healthKey = isEntityNode(node) ? nodeEntityKey(node) : '';
+                                  const health = healthStatuses.get(healthKey);
+                                  if (health === undefined) return null;
+                                  return (
+                                    <span
+                                      className={`inline-block h-2 w-2 shrink-0 rounded-full ${health === true ? 'bg-emerald-500' : health === false ? 'bg-red-500' : 'bg-gray-400'}`}
+                                      title={health === true ? 'Healthy' : health === false ? 'Unhealthy' : 'Unknown'}
+                                    />
+                                  );
+                                })()}
                                 {subtitle}
                               </div>
                             </div>

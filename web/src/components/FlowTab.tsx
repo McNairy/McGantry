@@ -19,6 +19,7 @@ import {
 
 const CANVAS_WIDTH = 1280;
 const CANVAS_HEIGHT = 720;
+const FIT_PADDING = 32;
 
 function flowHref(entity: Entity, mode: 'view' | 'edit') {
   const params = new URLSearchParams({
@@ -35,6 +36,33 @@ function nodeTitle(node: Parameters<typeof nodeColor>[0]): string {
 
 export default function FlowTab({ entity }: { entity: Entity }) {
   const flowSpec = ensureFlowSpec(entity.spec);
+
+  // Compute fit-view transform so all nodes are visible within the fixed canvas.
+  const nodeMap = new Map(flowSpec.nodes.map((n) => [n.id, n]));
+  let fitScale = 1;
+  let fitTx = 0;
+  let fitTy = 0;
+  if (flowSpec.nodes.length > 0) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const node of flowSpec.nodes) {
+      const size = getNodeDimensions(node);
+      const abs = getAbsolutePosition(node, nodeMap);
+      minX = Math.min(minX, abs.x);
+      minY = Math.min(minY, abs.y);
+      maxX = Math.max(maxX, abs.x + size.width);
+      maxY = Math.max(maxY, abs.y + size.height);
+    }
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const availW = CANVAS_WIDTH - FIT_PADDING * 2;
+    const availH = CANVAS_HEIGHT - FIT_PADDING * 2;
+    fitScale = Math.min(1, availW / contentW, availH / contentH);
+    fitTx = (CANVAS_WIDTH - contentW * fitScale) / 2 - minX * fitScale;
+    fitTy = (CANVAS_HEIGHT - contentH * fitScale) / 2 - minY * fitScale;
+  }
 
   return (
     <div className="space-y-6">
@@ -82,15 +110,17 @@ export default function FlowTab({ entity }: { entity: Entity }) {
         </div>
         <div className="overflow-auto bg-[var(--gantry-bg-secondary)] p-4">
           <div
-            className="relative rounded-2xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]"
+            className="relative overflow-hidden rounded-2xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]"
             style={{
               width: CANVAS_WIDTH,
               height: CANVAS_HEIGHT,
               backgroundImage: 'linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px)',
-              backgroundSize: '32px 32px',
+              backgroundSize: `${32 * fitScale}px ${32 * fitScale}px`,
+              backgroundPosition: `${fitTx}px ${fitTy}px`,
             }}
           >
-            <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+           <div style={{ transform: `translate(${fitTx}px, ${fitTy}px) scale(${fitScale})`, transformOrigin: '0 0', position: 'absolute', inset: 0 }}>
+            <svg className="pointer-events-none absolute inset-0 overflow-visible" style={{ width: CANVAS_WIDTH / fitScale, height: CANVAS_HEIGHT / fitScale }}>
               <defs>
                 <marker id="catalog-flow-arrow-end" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B" />
@@ -100,7 +130,6 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                 </marker>
               </defs>
               {(() => {
-                const nodeMap = new Map(flowSpec.nodes.map((n) => [n.id, n]));
                 return flowSpec.edges.map((edge) => {
                 const source = flowSpec.nodes.find((node) => node.id === edge.source);
                 const target = flowSpec.nodes.find((node) => node.id === edge.target);
@@ -174,7 +203,6 @@ export default function FlowTab({ entity }: { entity: Entity }) {
             </svg>
 
             {flowSpec.nodes.map((node) => {
-              const nodeMap = new Map(flowSpec.nodes.map((n) => [n.id, n]));
               const color = nodeColor(node);
               const badge = nodeBadge(node);
               const subtitle = nodeSubtitle(node);
@@ -249,6 +277,7 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                 </div>
               );
             })}
+           </div>
 
             {flowSpec.nodes.length === 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
