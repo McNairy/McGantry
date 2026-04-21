@@ -873,6 +873,8 @@ export default function Flow() {
       direction: 'one-way',
       label: '',
       animated: true,
+      sourceHandle: 'right',
+      targetHandle: 'left',
     };
 
     setFlowSpec((prev) => ({ ...prev, edges: [...prev.edges, edge] }));
@@ -920,6 +922,8 @@ export default function Flow() {
         direction: 'one-way',
         label: '',
         animated: true,
+        sourceHandle: 'right',
+        targetHandle: 'left',
       });
       added++;
     };
@@ -1333,12 +1337,12 @@ export default function Flow() {
                       const targetAbs = getAbsolutePosition(target, nodeMap);
                       const sourceSize = getNodeDimensions(source);
                       const targetSize = getNodeDimensions(target);
-                      const path = edgePath(sourceAbs, sourceSize, targetAbs, targetSize);
-                      const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize);
+                      const path = edgePath(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
+                      const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
                       const active = edge.id === selectedEdgeId;
                       const twoWay = edge.direction === 'two-way';
-                      const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3) : undefined;
-                      const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3) : undefined;
+                      const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3, edge.sourceHandle, edge.targetHandle) : undefined;
+                      const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3, edge.sourceHandle, edge.targetHandle) : undefined;
 
                       return (
                         <g key={edge.id}>
@@ -2176,6 +2180,34 @@ export default function Flow() {
                   <option value="two-way">Two-way</option>
                 </select>
               </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Source Side</span>
+                  <select
+                    value={selectedEdge.sourceHandle || 'right'}
+                    onChange={(event) => updateEdge(selectedEdge.id, { sourceHandle: event.target.value as 'top' | 'right' | 'bottom' | 'left' })}
+                    className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
+                  >
+                    <option value="top">Top</option>
+                    <option value="right">Right</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Target Side</span>
+                  <select
+                    value={selectedEdge.targetHandle || 'left'}
+                    onChange={(event) => updateEdge(selectedEdge.id, { targetHandle: event.target.value as 'top' | 'right' | 'bottom' | 'left' })}
+                    className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
+                  >
+                    <option value="top">Top</option>
+                    <option value="right">Right</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                  </select>
+                </label>
+              </div>
               <label className="flex items-center justify-between rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-[var(--gantry-text-primary)]">Animated edge</div>

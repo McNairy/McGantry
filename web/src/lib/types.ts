@@ -183,6 +183,8 @@ export interface FlowMockNode {
 
 export type FlowNode = FlowEntityNode | FlowMockNode;
 
+export type FlowHandleSide = 'top' | 'right' | 'bottom' | 'left';
+
 export interface FlowEdge {
   id: string;
   source: string;
@@ -191,6 +193,8 @@ export interface FlowEdge {
   direction: 'one-way' | 'two-way';
   label?: string;
   animated: boolean;
+  sourceHandle?: FlowHandleSide;
+  targetHandle?: FlowHandleSide;
 }
 
 export interface FlowSpec {

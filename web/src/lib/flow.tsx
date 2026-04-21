@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { FlowEdge, FlowEntityNode, FlowMockNode, FlowMockShape, FlowNode, FlowSpec } from './types';
+import type { FlowEdge, FlowEntityNode, FlowHandleSide, FlowMockNode, FlowMockShape, FlowNode, FlowSpec } from './types';
 
 export const ENTITY_NODE_WIDTH = 208;
 export const ENTITY_NODE_HEIGHT = 92;
@@ -308,29 +308,69 @@ export function collectDescendants(nodeId: string, nodes: FlowNode[]): Set<strin
   return descendants;
 }
 
+/** Compute connection point on a node's bounding box for a given handle side. */
+function connectionPoint(
+  absPos: { x: number; y: number },
+  size: { width: number; height: number },
+  side: FlowHandleSide
+): { x: number; y: number } {
+  switch (side) {
+    case 'top':
+      return { x: absPos.x + size.width / 2, y: absPos.y };
+    case 'bottom':
+      return { x: absPos.x + size.width / 2, y: absPos.y + size.height };
+    case 'left':
+      return { x: absPos.x, y: absPos.y + size.height / 2 };
+    case 'right':
+    default:
+      return { x: absPos.x + size.width, y: absPos.y + size.height / 2 };
+  }
+}
+
+/** Compute the control-point offset direction for a given handle side. */
+function controlOffset(side: FlowHandleSide, magnitude: number): { dx: number; dy: number } {
+  switch (side) {
+    case 'top':
+      return { dx: 0, dy: -magnitude };
+    case 'bottom':
+      return { dx: 0, dy: magnitude };
+    case 'left':
+      return { dx: -magnitude, dy: 0 };
+    case 'right':
+    default:
+      return { dx: magnitude, dy: 0 };
+  }
+}
+
 export function edgePath(
   sourceAbsPos: { x: number; y: number },
   sourceSize: { width: number; height: number },
   targetAbsPos: { x: number; y: number },
-  targetSize: { width: number; height: number }
+  targetSize: { width: number; height: number },
+  sourceHandle: FlowHandleSide = 'right',
+  targetHandle: FlowHandleSide = 'left'
 ): string {
-  const x1 = sourceAbsPos.x + sourceSize.width;
-  const y1 = sourceAbsPos.y + sourceSize.height / 2;
-  const x2 = targetAbsPos.x;
-  const y2 = targetAbsPos.y + targetSize.height / 2;
-  const dx = Math.max(80, Math.abs(x2 - x1) * 0.45);
-  return `M ${x1} ${y1} C ${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
+  const p1 = connectionPoint(sourceAbsPos, sourceSize, sourceHandle);
+  const p2 = connectionPoint(targetAbsPos, targetSize, targetHandle);
+  const dist = Math.max(80, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.45);
+  const c1 = controlOffset(sourceHandle, dist);
+  const c2 = controlOffset(targetHandle, dist);
+  return `M ${p1.x} ${p1.y} C ${p1.x + c1.dx} ${p1.y + c1.dy} ${p2.x + c2.dx} ${p2.y + c2.dy} ${p2.x} ${p2.y}`;
 }
 
 export function edgeLabelPosition(
   sourceAbsPos: { x: number; y: number },
   sourceSize: { width: number; height: number },
   targetAbsPos: { x: number; y: number },
-  targetSize: { width: number; height: number }
+  targetSize: { width: number; height: number },
+  sourceHandle: FlowHandleSide = 'right',
+  targetHandle: FlowHandleSide = 'left'
 ) {
+  const p1 = connectionPoint(sourceAbsPos, sourceSize, sourceHandle);
+  const p2 = connectionPoint(targetAbsPos, targetSize, targetHandle);
   return {
-    x: (sourceAbsPos.x + sourceSize.width + targetAbsPos.x) / 2,
-    y: (sourceAbsPos.y + targetAbsPos.y) / 2 + (sourceSize.height + targetSize.height) / 4 - 10,
+    x: (p1.x + p2.x) / 2,
+    y: (p1.y + p2.y) / 2 - 10,
   };
 }
 
@@ -339,14 +379,14 @@ export function edgeOffsetTransform(
   sourceSize: { width: number; height: number },
   targetAbsPos: { x: number; y: number },
   targetSize: { width: number; height: number },
-  offset: number
+  offset: number,
+  sourceHandle: FlowHandleSide = 'right',
+  targetHandle: FlowHandleSide = 'left'
 ): string {
-  const x1 = sourceAbsPos.x + sourceSize.width;
-  const y1 = sourceAbsPos.y + sourceSize.height / 2;
-  const x2 = targetAbsPos.x;
-  const y2 = targetAbsPos.y + targetSize.height / 2;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
+  const p1 = connectionPoint(sourceAbsPos, sourceSize, sourceHandle);
+  const p2 = connectionPoint(targetAbsPos, targetSize, targetHandle);
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
   const length = Math.hypot(dx, dy) || 1;
   const nx = -dy / length;
   const ny = dx / length;

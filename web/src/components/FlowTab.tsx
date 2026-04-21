@@ -109,11 +109,11 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                 const targetAbs = getAbsolutePosition(target, nodeMap);
                 const sourceSize = getNodeDimensions(source);
                 const targetSize = getNodeDimensions(target);
-                const path = edgePath(sourceAbs, sourceSize, targetAbs, targetSize);
-                const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize);
+                const path = edgePath(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
+                const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
                 const twoWay = edge.direction === 'two-way';
-                const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3) : undefined;
-                const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3) : undefined;
+                const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3, edge.sourceHandle, edge.targetHandle) : undefined;
+                const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3, edge.sourceHandle, edge.targetHandle) : undefined;
 
                 return (
                   <g key={edge.id}>

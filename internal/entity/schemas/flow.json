@@ -175,6 +175,16 @@
           "animated": {
             "type": "boolean",
             "default": true
+          },
+          "sourceHandle": {
+            "type": "string",
+            "enum": ["top", "right", "bottom", "left"],
+            "default": "right"
+          },
+          "targetHandle": {
+            "type": "string",
+            "enum": ["top", "right", "bottom", "left"],
+            "default": "left"
           }
         },
         "required": ["id", "source", "target", "relation", "direction", "animated"],
