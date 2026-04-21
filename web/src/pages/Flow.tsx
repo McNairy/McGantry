@@ -768,13 +768,14 @@ export default function Flow() {
   }
 
   function unnestSelected() {
-    if (!flowSettings.canEdit || !selectedNodeId) return;
+    if (!flowSettings.canEdit || selectedNodeIds.size === 0) return;
+    const ids = selectedNodeIds;
     setFlowSpec((prev) => {
       const nodeMap = new Map(prev.nodes.map((n) => [n.id, n]));
       return {
         ...prev,
         nodes: prev.nodes.map((node) => {
-          if (node.id !== selectedNodeId || !node.parentId) return node;
+          if (!ids.has(node.id) || !node.parentId) return node;
           const absPos = getAbsolutePosition(node, nodeMap);
           return { ...node, position: absPos, parentId: undefined };
         }),
@@ -804,6 +805,7 @@ export default function Flow() {
     const existingNode = flowSpec.nodes.find((node) => nodeEntityKey(node) === entityKey(entity));
     if (existingNode) {
       setSelectedNodeId(existingNode.id);
+      setSelectedNodeIds(new Set([existingNode.id]));
       setSelectedEdgeId(null);
       return;
     }
@@ -824,6 +826,7 @@ export default function Flow() {
 
     setFlowSpec((prev) => ({ ...prev, nodes: [...prev.nodes, nextNode] }));
     setSelectedNodeId(nextNode.id);
+    setSelectedNodeIds(new Set([nextNode.id]));
     setSelectedEdgeId(null);
     setConnectFromId(null);
     setDirty(true);
@@ -848,6 +851,7 @@ export default function Flow() {
 
     setFlowSpec((prev) => ({ ...prev, nodes: [...prev.nodes, nextNode] }));
     setSelectedNodeId(nextNode.id);
+    setSelectedNodeIds(new Set([nextNode.id]));
     setSelectedEdgeId(null);
     setConnectFromId(null);
     setDirty(true);
