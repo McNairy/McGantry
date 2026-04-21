@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Workflow } from 'lucide-react';
 import type { Entity } from '../lib/types';
@@ -64,6 +65,24 @@ export default function FlowTab({ entity }: { entity: Entity }) {
     fitTy = (CANVAS_HEIGHT - contentH * fitScale) / 2 - minY * fitScale;
   }
 
+  // Track container width to scale the fixed-size virtual canvas into available space.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(CANVAS_WIDTH);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const containerScale = Math.min(1, containerWidth / CANVAS_WIDTH);
+  const displayHeight = CANVAS_HEIGHT * containerScale;
+
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] p-6">
@@ -108,18 +127,19 @@ export default function FlowTab({ entity }: { entity: Entity }) {
             {flowSpec.nodes.length} node{flowSpec.nodes.length === 1 ? '' : 's'} · {flowSpec.edges.length} edge{flowSpec.edges.length === 1 ? '' : 's'}
           </div>
         </div>
-        <div className="overflow-auto bg-[var(--gantry-bg-secondary)] p-4">
+        <div ref={containerRef} className="bg-[var(--gantry-bg-secondary)] p-4">
           <div
             className="relative overflow-hidden rounded-2xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]"
             style={{
-              width: CANVAS_WIDTH,
-              height: CANVAS_HEIGHT,
+              width: '100%',
+              height: displayHeight,
               backgroundImage: 'linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px)',
-              backgroundSize: `${32 * fitScale}px ${32 * fitScale}px`,
-              backgroundPosition: `${fitTx}px ${fitTy}px`,
+              backgroundSize: `${32 * fitScale * containerScale}px ${32 * fitScale * containerScale}px`,
+              backgroundPosition: `${fitTx * containerScale}px ${fitTy * containerScale}px`,
             }}
           >
-           <div style={{ transform: `translate(${fitTx}px, ${fitTy}px) scale(${fitScale})`, transformOrigin: '0 0', position: 'absolute', inset: 0 }}>
+           <div className="absolute origin-top-left" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${containerScale})` }}>
+            <div style={{ transform: `translate(${fitTx}px, ${fitTy}px) scale(${fitScale})`, transformOrigin: '0 0', width: CANVAS_WIDTH / fitScale, height: CANVAS_HEIGHT / fitScale }}>
             <svg className="pointer-events-none absolute inset-0 overflow-visible" style={{ width: CANVAS_WIDTH / fitScale, height: CANVAS_HEIGHT / fitScale }}>
               <defs>
                 <marker id="catalog-flow-arrow-end" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
@@ -277,7 +297,7 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                 </div>
               );
             })}
-           </div>
+            </div>
 
             {flowSpec.nodes.length === 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
@@ -290,6 +310,7 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                 </div>
               </div>
             )}
+           </div>
           </div>
         </div>
       </div>
