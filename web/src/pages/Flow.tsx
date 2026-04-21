@@ -343,16 +343,27 @@ export default function Flow() {
   }, [requestedFlow, requestedNamespace, requestedMode]);
 
   // Periodically check health for entities on the canvas that have healthCheckUrl.
-  useEffect(() => {
-    let active = true;
+  // Build a stable key from the sorted set of (entityKey|url) pairs so the effect
+  // only re-subscribes when the monitored URLs actually change, not on every drag.
+  const healthUrlKey = useMemo(() => {
     const entityMapLocal = new Map(availableEntities.map((e) => [entityKey(e), e]));
-    const urls = new Map<string, string>();
+    const pairs: string[] = [];
     for (const node of flowSpec.nodes) {
       if (isMockNode(node)) continue;
       const key = nodeEntityKey(node);
       const ent = entityMapLocal.get(key);
       const url = ent?.spec?.healthCheckUrl;
-      if (typeof url === 'string' && url.trim()) urls.set(key, url);
+      if (typeof url === 'string' && url.trim()) pairs.push(`${key}|${url.trim()}`);
+    }
+    return pairs.sort().join('\n');
+  }, [availableEntities, flowSpec.nodes]);
+
+  useEffect(() => {
+    let active = true;
+    const urls = new Map<string, string>();
+    for (const pair of healthUrlKey.split('\n').filter(Boolean)) {
+      const sep = pair.indexOf('|');
+      urls.set(pair.slice(0, sep), pair.slice(sep + 1));
     }
 
     if (urls.size === 0) {
@@ -377,7 +388,7 @@ export default function Flow() {
     void check();
     const interval = setInterval(check, 30_000);
     return () => { active = false; clearInterval(interval); };
-  }, [availableEntities, flowSpec.nodes]);
+  }, [healthUrlKey]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -1995,9 +2006,12 @@ export default function Flow() {
               <label className="space-y-1.5">
                 <span className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Badge</span>
                 <input
-                  value={selectedNode.badge ?? nodeBadge(selectedNode)}
-                  onChange={(event) => updateNode(selectedNode.id, { badge: event.target.value })}
-                  placeholder="Leave empty to hide"
+                  value={selectedNode.badge ?? ''}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    updateNode(selectedNode.id, { badge: val.trim() === '' ? undefined : val });
+                  }}
+                  placeholder={nodeBadge(selectedNode)}
                   className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
                 />
               </label>
