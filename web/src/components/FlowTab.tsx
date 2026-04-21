@@ -6,11 +6,12 @@ import {
   edgeOffsetTransform,
   edgePath,
   ensureFlowSpec,
+  getAbsolutePosition,
   getNodeDimensions,
   isMockNode,
   mockContentClasses,
   mockContentStyle,
-  mockShapeLabel,
+  nodeBadge,
   nodeColor,
   nodeSubtitle,
   renderMockNodeShell,
@@ -98,15 +99,21 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B" />
                 </marker>
               </defs>
-              {flowSpec.edges.map((edge) => {
+              {(() => {
+                const nodeMap = new Map(flowSpec.nodes.map((n) => [n.id, n]));
+                return flowSpec.edges.map((edge) => {
                 const source = flowSpec.nodes.find((node) => node.id === edge.source);
                 const target = flowSpec.nodes.find((node) => node.id === edge.target);
                 if (!source || !target) return null;
-                const path = edgePath(source, target);
-                const labelPos = edgeLabelPosition(source, target);
+                const sourceAbs = getAbsolutePosition(source, nodeMap);
+                const targetAbs = getAbsolutePosition(target, nodeMap);
+                const sourceSize = getNodeDimensions(source);
+                const targetSize = getNodeDimensions(target);
+                const path = edgePath(sourceAbs, sourceSize, targetAbs, targetSize);
+                const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize);
                 const twoWay = edge.direction === 'two-way';
-                const forwardTransform = twoWay ? edgeOffsetTransform(source, target, 3) : undefined;
-                const reverseTransform = twoWay ? edgeOffsetTransform(source, target, -3) : undefined;
+                const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3) : undefined;
+                const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3) : undefined;
 
                 return (
                   <g key={edge.id}>
@@ -162,21 +169,25 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                     </text>
                   </g>
                 );
-              })}
+              });
+              })()}
             </svg>
 
             {flowSpec.nodes.map((node) => {
+              const nodeMap = new Map(flowSpec.nodes.map((n) => [n.id, n]));
               const color = nodeColor(node);
-              const badge = isMockNode(node) ? mockShapeLabel(node.shape) : node.entityRef.kind;
+              const badge = nodeBadge(node);
+              const subtitle = nodeSubtitle(node);
               const baseBorderColor = 'var(--gantry-border)';
               const nodeSize = getNodeDimensions(node);
+              const absPos = getAbsolutePosition(node, nodeMap);
               return (
                 <div
                   key={node.id}
                   className="absolute rounded-2xl shadow-sm"
                   style={{
-                    left: node.position.x,
-                    top: node.position.y,
+                    left: absPos.x,
+                    top: absPos.y,
                     width: nodeSize.width,
                     height: nodeSize.height,
                   }}
@@ -194,36 +205,44 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                           className={`${node.shape === 'diamond' ? 'w-full space-y-2' : ''} min-w-0`}
                           style={mockContentStyle(node.shape, nodeSize.width)}
                         >
-                          <div
-                            className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                            style={{ backgroundColor: `${color}1A`, color }}
-                          >
-                            {badge}
-                          </div>
-                          <div className={`mt-2 break-words whitespace-pre-wrap text-sm font-semibold leading-5 text-[var(--gantry-text-primary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}>
+                          {badge && (
+                            <div
+                              className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                              style={{ backgroundColor: `${color}1A`, color }}
+                            >
+                              {badge}
+                            </div>
+                          )}
+                          <div className={`${badge ? 'mt-2' : ''} break-words whitespace-pre-wrap text-sm font-semibold leading-5 text-[var(--gantry-text-primary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}>
                             {nodeTitle(node)}
                           </div>
                         </div>
-                        <div
-                          className={`min-w-0 break-words whitespace-pre-wrap text-xs leading-4 text-[var(--gantry-text-secondary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}
-                          style={mockContentStyle(node.shape, nodeSize.width)}
-                        >
-                          {nodeSubtitle(node)}
-                        </div>
+                        {subtitle && (
+                          <div
+                            className={`min-w-0 break-words whitespace-pre-wrap text-xs leading-4 text-[var(--gantry-text-secondary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}
+                            style={mockContentStyle(node.shape, nodeSize.width)}
+                          >
+                            {subtitle}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="relative flex h-full flex-col justify-between p-3">
                         <div>
-                          <div className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: `${color}1A`, color }}>
-                            {badge}
-                          </div>
-                          <div className="mt-2 break-words text-sm font-semibold leading-5 text-[var(--gantry-text-primary)]">
+                          {badge && (
+                            <div className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: `${color}1A`, color }}>
+                              {badge}
+                            </div>
+                          )}
+                          <div className={`${badge ? 'mt-2' : ''} break-words text-sm font-semibold leading-5 text-[var(--gantry-text-primary)]`}>
                             {nodeTitle(node)}
                           </div>
                         </div>
-                        <div className="break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
-                          {nodeSubtitle(node)}
-                        </div>
+                        {subtitle && (
+                          <div className="break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
+                            {subtitle}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -67,6 +67,18 @@
                 },
                 "required": ["x", "y"],
                 "additionalProperties": false
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "zIndex": {
+                "type": "number"
+              },
+              "parentId": {
+                "type": "string"
+              },
+              "badge": {
+                "type": "string"
               }
             },
             "required": ["id", "entityRef", "position"],
@@ -115,6 +127,18 @@
                 },
                 "required": ["x", "y"],
                 "additionalProperties": false
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "zIndex": {
+                "type": "number"
+              },
+              "parentId": {
+                "type": "string"
+              },
+              "badge": {
+                "type": "string"
               }
             },
             "required": ["id", "nodeType", "label", "shape", "position"],

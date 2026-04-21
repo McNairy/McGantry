@@ -156,6 +156,10 @@ export interface FlowEntityNode {
     x: number;
     y: number;
   };
+  locked?: boolean;
+  zIndex?: number;
+  parentId?: string;
+  badge?: string;
 }
 
 export interface FlowMockNode {
@@ -171,6 +175,10 @@ export interface FlowMockNode {
     x: number;
     y: number;
   };
+  locked?: boolean;
+  zIndex?: number;
+  parentId?: string;
+  badge?: string;
 }
 
 export type FlowNode = FlowEntityNode | FlowMockNode;
