@@ -595,7 +595,7 @@ export default function Flow() {
         setSelectedNodeIds(new Set());
         setSelectedEdgeId(null);
         setConnectFromId(null);
-      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      } else if (event.key === 'Delete') {
         removeSelectedNodes();
       }
     }
@@ -749,16 +749,18 @@ export default function Flow() {
     if (!flowSettings.canEdit || selectedNodeIds.size === 0) return;
     const ids = selectedNodeIds;
     setFlowSpec((prev) => {
-      const maxZ = Math.max(0, ...prev.nodes.map((n) => n.zIndex ?? 0));
+      const allZ = prev.nodes.map((n) => n.zIndex ?? 0);
+      const maxZ = Math.max(0, ...allZ);
+      const minZ = Math.min(0, ...allZ);
       return {
         ...prev,
         nodes: prev.nodes.map((node) => {
           if (!ids.has(node.id)) return node;
-          let next: number | undefined;
+          let next: number;
           if (delta === 'front') next = maxZ + 1;
-          else if (delta === 'back') next = 0;
-          else next = Math.max(0, (node.zIndex ?? 0) + delta);
-          return { ...node, zIndex: next === 0 ? undefined : next };
+          else if (delta === 'back') next = minZ - 1;
+          else next = (node.zIndex ?? 0) + delta;
+          return { ...node, zIndex: next };
         }),
       };
     });
@@ -1151,7 +1153,7 @@ export default function Flow() {
 
   function renderCanvas(readOnly: boolean) {
     const hasSelection = selectedNodeIds.size > 0;
-    const selectedIslocked = selectedNodeId ? flowSpec.nodes.find((n) => n.id === selectedNodeId)?.locked : false;
+    const selectedIsLocked = selectedNodeId ? flowSpec.nodes.find((n) => n.id === selectedNodeId)?.locked : false;
     const selectedHasParent = selectedNodeId ? Boolean(flowSpec.nodes.find((n) => n.id === selectedNodeId)?.parentId) : false;
     const containerChildren = selectedNodeId ? flowSpec.nodes.filter((n) => n.parentId === selectedNodeId) : [];
 
@@ -1232,10 +1234,10 @@ export default function Flow() {
                 onClick={toggleLockSelected}
                 disabled={!hasSelection}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                title={selectedIslocked ? 'Unlock selected node(s)' : 'Lock selected node(s) in place'}
+                title={selectedIsLocked ? 'Unlock selected node(s)' : 'Lock selected node(s) in place'}
               >
-                {selectedIslocked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-                {selectedIslocked ? 'Unlock' : 'Lock'}
+                {selectedIsLocked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                {selectedIsLocked ? 'Unlock' : 'Lock'}
               </button>
 
               <div className="inline-flex items-center gap-0.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-0.5">
@@ -1503,7 +1505,7 @@ export default function Flow() {
                           active || connectSource ? 'shadow-lg' : 'hover:shadow-md'
                         } ${isNestTarget ? 'ring-2 ring-[var(--gantry-accent)] ring-offset-1' : ''} ${
                           multiSelected && !active ? 'ring-2 ring-[var(--gantry-accent)]/60' : ''
-                        } ${isContainer && !isMockNode(node) ? 'ring-1 ring-dashed ring-[var(--gantry-border)]' : ''}`}
+                        } ${isContainer && !isMockNode(node) ? 'outline outline-1 outline-dashed outline-[var(--gantry-border)]' : ''}`}
                         style={nodeOuterStyle}
                         onMouseDown={(event) => {
                           if (readOnly || !flowSettings.canEdit) return;
