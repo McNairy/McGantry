@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Workflow } from 'lucide-react';
 import type { Entity } from '../lib/types';
@@ -6,11 +7,12 @@ import {
   edgeOffsetTransform,
   edgePath,
   ensureFlowSpec,
+  getAbsolutePosition,
   getNodeDimensions,
   isMockNode,
   mockContentClasses,
   mockContentStyle,
-  mockShapeLabel,
+  nodeBadge,
   nodeColor,
   nodeSubtitle,
   renderMockNodeShell,
@@ -18,6 +20,7 @@ import {
 
 const CANVAS_WIDTH = 1280;
 const CANVAS_HEIGHT = 720;
+const FIT_PADDING = 32;
 
 function flowHref(entity: Entity, mode: 'view' | 'edit') {
   const params = new URLSearchParams({
@@ -34,6 +37,51 @@ function nodeTitle(node: Parameters<typeof nodeColor>[0]): string {
 
 export default function FlowTab({ entity }: { entity: Entity }) {
   const flowSpec = ensureFlowSpec(entity.spec);
+
+  // Compute fit-view transform so all nodes are visible within the fixed canvas.
+  const nodeMap = new Map(flowSpec.nodes.map((n) => [n.id, n]));
+  let fitScale = 1;
+  let fitTx = 0;
+  let fitTy = 0;
+  if (flowSpec.nodes.length > 0) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const node of flowSpec.nodes) {
+      const size = getNodeDimensions(node);
+      const abs = getAbsolutePosition(node, nodeMap);
+      minX = Math.min(minX, abs.x);
+      minY = Math.min(minY, abs.y);
+      maxX = Math.max(maxX, abs.x + size.width);
+      maxY = Math.max(maxY, abs.y + size.height);
+    }
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const availW = CANVAS_WIDTH - FIT_PADDING * 2;
+    const availH = CANVAS_HEIGHT - FIT_PADDING * 2;
+    fitScale = Math.min(1, availW / contentW, availH / contentH);
+    fitTx = (CANVAS_WIDTH - contentW * fitScale) / 2 - minX * fitScale;
+    fitTy = (CANVAS_HEIGHT - contentH * fitScale) / 2 - minY * fitScale;
+  }
+
+  // Track container width to scale the fixed-size virtual canvas into available space.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(CANVAS_WIDTH);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const containerScale = Math.min(1, containerWidth / CANVAS_WIDTH);
+  const displayHeight = CANVAS_HEIGHT * containerScale;
 
   return (
     <div className="space-y-6">
@@ -79,17 +127,20 @@ export default function FlowTab({ entity }: { entity: Entity }) {
             {flowSpec.nodes.length} node{flowSpec.nodes.length === 1 ? '' : 's'} · {flowSpec.edges.length} edge{flowSpec.edges.length === 1 ? '' : 's'}
           </div>
         </div>
-        <div className="overflow-auto bg-[var(--gantry-bg-secondary)] p-4">
+        <div ref={containerRef} className="bg-[var(--gantry-bg-secondary)] p-4">
           <div
-            className="relative rounded-2xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]"
+            className="relative overflow-hidden rounded-2xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]"
             style={{
-              width: CANVAS_WIDTH,
-              height: CANVAS_HEIGHT,
+              width: '100%',
+              height: displayHeight,
               backgroundImage: 'linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px)',
-              backgroundSize: '32px 32px',
+              backgroundSize: `${32 * fitScale * containerScale}px ${32 * fitScale * containerScale}px`,
+              backgroundPosition: `${fitTx * containerScale}px ${fitTy * containerScale}px`,
             }}
           >
-            <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+           <div className="absolute origin-top-left" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${containerScale})` }}>
+            <div style={{ transform: `translate(${fitTx}px, ${fitTy}px) scale(${fitScale})`, transformOrigin: '0 0', width: CANVAS_WIDTH / fitScale, height: CANVAS_HEIGHT / fitScale }}>
+            <svg className="pointer-events-none absolute inset-0 overflow-visible" style={{ width: CANVAS_WIDTH / fitScale, height: CANVAS_HEIGHT / fitScale }}>
               <defs>
                 <marker id="catalog-flow-arrow-end" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B" />
@@ -98,15 +149,20 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B" />
                 </marker>
               </defs>
-              {flowSpec.edges.map((edge) => {
+              {(() => {
+                return flowSpec.edges.map((edge) => {
                 const source = flowSpec.nodes.find((node) => node.id === edge.source);
                 const target = flowSpec.nodes.find((node) => node.id === edge.target);
                 if (!source || !target) return null;
-                const path = edgePath(source, target);
-                const labelPos = edgeLabelPosition(source, target);
+                const sourceAbs = getAbsolutePosition(source, nodeMap);
+                const targetAbs = getAbsolutePosition(target, nodeMap);
+                const sourceSize = getNodeDimensions(source);
+                const targetSize = getNodeDimensions(target);
+                const path = edgePath(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
+                const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
                 const twoWay = edge.direction === 'two-way';
-                const forwardTransform = twoWay ? edgeOffsetTransform(source, target, 3) : undefined;
-                const reverseTransform = twoWay ? edgeOffsetTransform(source, target, -3) : undefined;
+                const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3, edge.sourceHandle, edge.targetHandle) : undefined;
+                const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3, edge.sourceHandle, edge.targetHandle) : undefined;
 
                 return (
                   <g key={edge.id}>
@@ -149,34 +205,37 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                       </>
                     )}
                     <rect
-                      x={labelPos.x - (twoWay ? 44 : 30)}
+                      x={labelPos.x - 30}
                       y={labelPos.y - 17}
-                      width={twoWay ? 88 : 60}
+                      width={60}
                       height={22}
                       rx={11}
                       fill="var(--gantry-bg-primary)"
                       stroke={twoWay ? '#64748B' : 'var(--gantry-border)'}
                     />
                     <text x={labelPos.x} y={labelPos.y - 2} textAnchor="middle" className="fill-[var(--gantry-text-secondary)] text-[11px] font-medium">
-                      {twoWay ? `${edge.label || edge.relation} <->` : edge.label || edge.relation}
+                      {edge.label || edge.relation}
                     </text>
                   </g>
                 );
-              })}
+              });
+              })()}
             </svg>
 
             {flowSpec.nodes.map((node) => {
               const color = nodeColor(node);
-              const badge = isMockNode(node) ? mockShapeLabel(node.shape) : node.entityRef.kind;
+              const badge = nodeBadge(node);
+              const subtitle = nodeSubtitle(node);
               const baseBorderColor = 'var(--gantry-border)';
               const nodeSize = getNodeDimensions(node);
+              const absPos = getAbsolutePosition(node, nodeMap);
               return (
                 <div
                   key={node.id}
                   className="absolute rounded-2xl shadow-sm"
                   style={{
-                    left: node.position.x,
-                    top: node.position.y,
+                    left: absPos.x,
+                    top: absPos.y,
                     width: nodeSize.width,
                     height: nodeSize.height,
                   }}
@@ -194,42 +253,51 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                           className={`${node.shape === 'diamond' ? 'w-full space-y-2' : ''} min-w-0`}
                           style={mockContentStyle(node.shape, nodeSize.width)}
                         >
-                          <div
-                            className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                            style={{ backgroundColor: `${color}1A`, color }}
-                          >
-                            {badge}
-                          </div>
-                          <div className={`mt-2 break-words whitespace-pre-wrap text-sm font-semibold leading-5 text-[var(--gantry-text-primary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}>
+                          {badge && (
+                            <div
+                              className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                              style={{ backgroundColor: `${color}1A`, color }}
+                            >
+                              {badge}
+                            </div>
+                          )}
+                          <div className={`${badge ? 'mt-2' : ''} break-words whitespace-pre-wrap text-sm font-semibold leading-5 text-[var(--gantry-text-primary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}>
                             {nodeTitle(node)}
                           </div>
                         </div>
-                        <div
-                          className={`min-w-0 break-words whitespace-pre-wrap text-xs leading-4 text-[var(--gantry-text-secondary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}
-                          style={mockContentStyle(node.shape, nodeSize.width)}
-                        >
-                          {nodeSubtitle(node)}
-                        </div>
+                        {subtitle && (
+                          <div
+                            className={`min-w-0 break-words whitespace-pre-wrap text-xs leading-4 text-[var(--gantry-text-secondary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}
+                            style={mockContentStyle(node.shape, nodeSize.width)}
+                          >
+                            {subtitle}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="relative flex h-full flex-col justify-between p-3">
                         <div>
-                          <div className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: `${color}1A`, color }}>
-                            {badge}
-                          </div>
-                          <div className="mt-2 break-words text-sm font-semibold leading-5 text-[var(--gantry-text-primary)]">
+                          {badge && (
+                            <div className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: `${color}1A`, color }}>
+                              {badge}
+                            </div>
+                          )}
+                          <div className={`${badge ? 'mt-2' : ''} break-words text-sm font-semibold leading-5 text-[var(--gantry-text-primary)]`}>
                             {nodeTitle(node)}
                           </div>
                         </div>
-                        <div className="break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
-                          {nodeSubtitle(node)}
-                        </div>
+                        {subtitle && (
+                          <div className="break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
+                            {subtitle}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               );
             })}
+            </div>
 
             {flowSpec.nodes.length === 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
@@ -242,6 +310,7 @@ export default function FlowTab({ entity }: { entity: Entity }) {
                 </div>
               </div>
             )}
+           </div>
           </div>
         </div>
       </div>

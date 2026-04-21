@@ -3,25 +3,37 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRightLeft,
+  ChevronDown,
+  ChevronUp,
+  ChevronsDown,
+  ChevronsUp,
   ExternalLink,
   GitBranch,
+  Grid3X3,
+  Layers,
   Loader2,
+  Lock,
   Minus,
   Network,
   Plus,
   Save,
   Search,
   Trash2,
+  Unlock,
   Unplug,
+  Wand2,
   Workflow,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Entity, FlowEdge, FlowMockNode, FlowMockShape, FlowNode, FlowPluginSettings, FlowSpec } from '../lib/types';
 import {
+  autoArrangeNodes,
+  collectDescendants,
   edgeLabelPosition,
   edgeOffsetTransform,
   edgePath,
   ensureFlowSpec,
+  getAbsolutePosition,
   getNodeDimensions,
   isEntityNode,
   isMockNode,
@@ -30,6 +42,7 @@ import {
   mockContentStyle,
   mockShapeLabel,
   MOCK_SHAPE_OPTIONS,
+  nodeBadge,
   nodeColor,
   nodeSubtitle,
   renderMockNodeShell,
@@ -104,6 +117,7 @@ function getFlowBounds(spec: FlowSpec) {
     };
   }
 
+  const nodeMap = new Map(spec.nodes.map((n) => [n.id, n]));
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -111,10 +125,11 @@ function getFlowBounds(spec: FlowSpec) {
 
   for (const node of spec.nodes) {
     const size = getNodeDimensions(node);
-    minX = Math.min(minX, node.position.x);
-    minY = Math.min(minY, node.position.y);
-    maxX = Math.max(maxX, node.position.x + size.width);
-    maxY = Math.max(maxY, node.position.y + size.height);
+    const absPos = getAbsolutePosition(node, nodeMap);
+    minX = Math.min(minX, absPos.x);
+    minY = Math.min(minY, absPos.y);
+    maxX = Math.max(maxX, absPos.x + size.width);
+    maxY = Math.max(maxY, absPos.y + size.height);
   }
 
   minX -= CONTENT_PADDING;
@@ -178,6 +193,7 @@ export default function Flow() {
     canEdit: true,
   });
   const [availableEntities, setAvailableEntities] = useState<Entity[]>([]);
+  const [healthStatuses, setHealthStatuses] = useState<Map<string, boolean | null>>(new Map());
   const [flows, setFlows] = useState<Entity[]>([]);
   const [currentFlowName, setCurrentFlowName] = useState<string | null>(null);
   const [currentNamespace, setCurrentNamespace] = useState('default');
@@ -193,7 +209,11 @@ export default function Flow() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [dirty, setDirty] = useState(false);
-  const [dragging, setDragging] = useState<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [nestTarget, setNestTarget] = useState<string | null>(null);
+  const nestTargetRef = useRef<string | null>(null);
+  const [dragging, setDragging] = useState<{ nodeId: string; nodeIds: string[]; offsetX: number; offsetY: number } | null>(null);
   const [resizing, setResizing] = useState<{ nodeId: string; startClientX: number; startClientY: number; startWidth: number; startHeight: number } | null>(null);
   const [panning, setPanning] = useState<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [canvasZoom, setCanvasZoom] = useState(1);
@@ -322,35 +342,173 @@ export default function Flow() {
     };
   }, [requestedFlow, requestedNamespace, requestedMode]);
 
+  // Periodically check health for entities on the canvas that have healthCheckUrl.
+  // Build a stable key from the sorted set of (entityKey|url) pairs so the effect
+  // only re-subscribes when the monitored URLs actually change, not on every drag.
+  const healthUrlKey = useMemo(() => {
+    const entityMapLocal = new Map(availableEntities.map((e) => [entityKey(e), e]));
+    const pairs: string[] = [];
+    for (const node of flowSpec.nodes) {
+      if (isMockNode(node)) continue;
+      const key = nodeEntityKey(node);
+      const ent = entityMapLocal.get(key);
+      const url = ent?.spec?.healthCheckUrl;
+      if (typeof url === 'string' && url.trim()) pairs.push(`${key}|${url.trim()}`);
+    }
+    return pairs.sort().join('\n');
+  }, [availableEntities, flowSpec.nodes]);
+
+  useEffect(() => {
+    let active = true;
+    const urls = new Map<string, string>();
+    for (const pair of healthUrlKey.split('\n').filter(Boolean)) {
+      const sep = pair.indexOf('|');
+      urls.set(pair.slice(0, sep), pair.slice(sep + 1));
+    }
+
+    if (urls.size === 0) {
+      setHealthStatuses(new Map());
+      return;
+    }
+
+    const check = async () => {
+      const next = new Map<string, boolean | null>();
+      await Promise.all(
+        [...urls.entries()].map(async ([key, url]) => {
+          try {
+            const res = await api.checkHealth(url);
+            if (active) next.set(key, res.reachable);
+          } catch {
+            if (active) next.set(key, null);
+          }
+        })
+      );
+      if (active) setHealthStatuses(next);
+    };
+    void check();
+    const interval = setInterval(check, 30_000);
+    return () => { active = false; clearInterval(interval); };
+  }, [healthUrlKey]);
+
   useEffect(() => {
     if (!dragging) return;
     const currentDrag = dragging;
 
+    function snapVal(v: number): number {
+      return snapToGrid ? Math.round(v / 32) * 32 : v;
+    }
+
     function handleMove(event: MouseEvent) {
       if (!viewportRef.current) return;
       suppressNodeClickRef.current = true;
-      const nextPoint = clientPointToCanvas(event.clientX, event.clientY);
-      const nextX = nextPoint.x - currentDrag.offsetX;
-      const nextY = nextPoint.y - currentDrag.offsetY;
 
-      setFlowSpec((prev) => ({
-        ...prev,
-        nodes: prev.nodes.map((node) =>
-          node.id === currentDrag.nodeId
-            ? {
-                ...node,
-                position: {
-                  x: nextX,
-                  y: nextY,
-                },
-              }
-            : node
-        ),
-      }));
+      setFlowSpec((prev) => {
+        const nodeMap = new Map(prev.nodes.map((n) => [n.id, n]));
+        const primaryNode = nodeMap.get(currentDrag.nodeId);
+        if (!primaryNode) return prev;
+
+        // Compute where the primary node wants to go
+        const nextPoint = clientPointToCanvas(event.clientX, event.clientY);
+        let nextX = snapVal(nextPoint.x - currentDrag.offsetX);
+        let nextY = snapVal(nextPoint.y - currentDrag.offsetY);
+
+        // If the primary node has a parent, constrain movement to relative space
+        // (the absolute canvas position minus parent absolute position)
+        const parentId = primaryNode.parentId;
+        if (parentId) {
+          const parent = nodeMap.get(parentId);
+          if (parent) {
+            const parentAbs = getAbsolutePosition(parent, nodeMap);
+            nextX = snapVal(nextPoint.x - currentDrag.offsetX - parentAbs.x);
+            nextY = snapVal(nextPoint.y - currentDrag.offsetY - parentAbs.y);
+          }
+        }
+
+        const dx = nextX - primaryNode.position.x;
+        const dy = nextY - primaryNode.position.y;
+
+        const draggingSet = new Set(currentDrag.nodeIds);
+
+        const updatedNodes = prev.nodes.map((node) => {
+          if (!draggingSet.has(node.id)) return node;
+
+          if (node.id === currentDrag.nodeId) {
+            return { ...node, position: { x: nextX, y: nextY } };
+          }
+
+          // For other selected nodes: apply same delta
+          // If they have a parent that is also being dragged, skip (parent drag carries them)
+          if (node.parentId && draggingSet.has(node.parentId)) return node;
+
+          return { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } };
+        });
+
+        // Detect nest target: top-level node hovering over another non-selected, non-descendant node
+        if (!primaryNode.parentId) {
+          const absX = nextPoint.x - currentDrag.offsetX;
+          const absY = nextPoint.y - currentDrag.offsetY;
+          const primarySize = getNodeDimensions(primaryNode);
+          const midX = absX + primarySize.width / 2;
+          const midY = absY + primarySize.height / 2;
+          const descendants = collectDescendants(primaryNode.id, prev.nodes);
+
+          let target: string | null = null;
+          for (const node of prev.nodes) {
+            if (draggingSet.has(node.id)) continue;
+            if (descendants.has(node.id)) continue;
+            const nodeAbs = getAbsolutePosition(node, nodeMap);
+            const nodeSize = getNodeDimensions(node);
+            if (
+              midX > nodeAbs.x && midX < nodeAbs.x + nodeSize.width &&
+              midY > nodeAbs.y && midY < nodeAbs.y + nodeSize.height
+            ) {
+              target = node.id;
+              break;
+            }
+          }
+          if (nestTargetRef.current !== target) {
+            nestTargetRef.current = target;
+            setNestTarget(target);
+          }
+        }
+
+        return { ...prev, nodes: updatedNodes };
+      });
       setDirty(true);
     }
 
     function handleUp() {
+      // Nest dragged node into nestTarget if applicable
+      const pendingNest = nestTargetRef.current;
+      if (pendingNest) {
+        const targetId = pendingNest;
+        setFlowSpec((prev) => {
+          const nodeMap = new Map(prev.nodes.map((n) => [n.id, n]));
+          const primaryNode = nodeMap.get(currentDrag.nodeId);
+          const targetNode = nodeMap.get(targetId);
+          if (!primaryNode || !targetNode) return prev;
+          // Defensive cycle check: reject if target is primary itself or a descendant
+          if (targetId === primaryNode.id) return prev;
+          const descendants = collectDescendants(primaryNode.id, prev.nodes);
+          if (descendants.has(targetId)) return prev;
+          // Convert absolute position of primary to relative within target
+          const targetAbs = getAbsolutePosition(targetNode, nodeMap);
+          const primaryAbs = getAbsolutePosition(primaryNode, nodeMap);
+          const relX = primaryAbs.x - targetAbs.x;
+          const relY = primaryAbs.y - targetAbs.y;
+          return {
+            ...prev,
+            nodes: prev.nodes.map((node) =>
+              node.id === currentDrag.nodeId
+                ? { ...node, position: { x: relX, y: relY }, parentId: targetId }
+                : node
+            ),
+          };
+        });
+        setDirty(true);
+      }
+      nestTargetRef.current = null;
+      setNestTarget(null);
       setDragging(null);
     }
 
@@ -361,7 +519,7 @@ export default function Flow() {
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
     };
-  }, [dragging, canvasZoom]);
+  }, [dragging, canvasZoom, snapToGrid]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -426,6 +584,27 @@ export default function Flow() {
   }, [panning]);
 
   useEffect(() => {
+    if (mode !== 'edit') return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement;
+      if (target.closest('input, textarea, select')) return;
+
+      if (event.key === 'Escape') {
+        setSelectedNodeId(null);
+        setSelectedNodeIds(new Set());
+        setSelectedEdgeId(null);
+        setConnectFromId(null);
+      } else if (event.key === 'Delete') {
+        removeSelectedNodes();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mode, selectedNodeIds, selectedEdgeId, connectFromId]);
+
+  useEffect(() => {
     if (!viewportRef.current) return;
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -480,8 +659,10 @@ export default function Flow() {
     setFlowOwner('');
     setFlowSpec(defaultFlowSpec());
     setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
     setSelectedEdgeId(null);
     setConnectFromId(null);
+    setNestTarget(null);
     setDirty(false);
     setNotice('');
     setError('');
@@ -498,8 +679,10 @@ export default function Flow() {
     setFlowOwner(flow.metadata.owner || '');
     setFlowSpec(ensureFlowSpec(flow.spec));
     setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
     setSelectedEdgeId(null);
     setConnectFromId(null);
+    setNestTarget(null);
     setDirty(false);
     setNotice('');
     setError('');
@@ -547,11 +730,82 @@ export default function Flow() {
     setNotice('');
   }
 
+  function toggleLockSelected() {
+    if (!flowSettings.canEdit || selectedNodeIds.size === 0) return;
+    const ids = selectedNodeIds;
+    setFlowSpec((prev) => {
+      const someUnlocked = prev.nodes.some((n) => ids.has(n.id) && !n.locked);
+      return {
+        ...prev,
+        nodes: prev.nodes.map((node) =>
+          ids.has(node.id) ? { ...node, locked: someUnlocked ? true : undefined } : node
+        ),
+      };
+    });
+    setDirty(true);
+  }
+
+  function adjustZIndex(delta: number | 'front' | 'back') {
+    if (!flowSettings.canEdit || selectedNodeIds.size === 0) return;
+    const ids = selectedNodeIds;
+    setFlowSpec((prev) => {
+      const allZ = prev.nodes.map((n) => n.zIndex ?? 0);
+      const maxZ = Math.max(0, ...allZ);
+      const minZ = Math.min(0, ...allZ);
+      return {
+        ...prev,
+        nodes: prev.nodes.map((node) => {
+          if (!ids.has(node.id)) return node;
+          let next: number;
+          if (delta === 'front') next = maxZ + 1;
+          else if (delta === 'back') next = minZ - 1;
+          else next = (node.zIndex ?? 0) + delta;
+          return { ...node, zIndex: next };
+        }),
+      };
+    });
+    setDirty(true);
+  }
+
+  function unnestSelected() {
+    if (!flowSettings.canEdit || selectedNodeIds.size === 0) return;
+    const ids = selectedNodeIds;
+    setFlowSpec((prev) => {
+      const nodeMap = new Map(prev.nodes.map((n) => [n.id, n]));
+      return {
+        ...prev,
+        nodes: prev.nodes.map((node) => {
+          if (!ids.has(node.id) || !node.parentId) return node;
+          const absPos = getAbsolutePosition(node, nodeMap);
+          return { ...node, position: absPos, parentId: undefined };
+        }),
+      };
+    });
+    setDirty(true);
+  }
+
+  function unnestAllChildren(parentId: string) {
+    if (!flowSettings.canEdit) return;
+    setFlowSpec((prev) => {
+      const nodeMap = new Map(prev.nodes.map((n) => [n.id, n]));
+      return {
+        ...prev,
+        nodes: prev.nodes.map((node) => {
+          if (node.parentId !== parentId) return node;
+          const absPos = getAbsolutePosition(node, nodeMap);
+          return { ...node, position: absPos, parentId: undefined };
+        }),
+      };
+    });
+    setDirty(true);
+  }
+
   function addEntityNode(entity: Entity) {
     if (!flowSettings.canEdit) return;
     const existingNode = flowSpec.nodes.find((node) => nodeEntityKey(node) === entityKey(entity));
     if (existingNode) {
       setSelectedNodeId(existingNode.id);
+      setSelectedNodeIds(new Set([existingNode.id]));
       setSelectedEdgeId(null);
       return;
     }
@@ -572,6 +826,7 @@ export default function Flow() {
 
     setFlowSpec((prev) => ({ ...prev, nodes: [...prev.nodes, nextNode] }));
     setSelectedNodeId(nextNode.id);
+    setSelectedNodeIds(new Set([nextNode.id]));
     setSelectedEdgeId(null);
     setConnectFromId(null);
     setDirty(true);
@@ -596,6 +851,7 @@ export default function Flow() {
 
     setFlowSpec((prev) => ({ ...prev, nodes: [...prev.nodes, nextNode] }));
     setSelectedNodeId(nextNode.id);
+    setSelectedNodeIds(new Set([nextNode.id]));
     setSelectedEdgeId(null);
     setConnectFromId(null);
     setDirty(true);
@@ -616,12 +872,39 @@ export default function Flow() {
     if (!flowSettings.canEdit) return;
     setFlowSpec((prev) => ({
       ...prev,
-      nodes: prev.nodes.filter((node) => node.id !== nodeId),
+      nodes: prev.nodes
+        .filter((node) => node.id !== nodeId)
+        .map((node) => node.parentId === nodeId ? { ...node, parentId: undefined } : node),
       edges: prev.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
     }));
     setSelectedNodeId(null);
+    setSelectedNodeIds((prev) => { const next = new Set(prev); next.delete(nodeId); return next; });
     setSelectedEdgeId(null);
     if (connectFromId === nodeId) setConnectFromId(null);
+    setDirty(true);
+    setNotice('');
+  }
+
+  function removeSelectedNodes() {
+    if (!flowSettings.canEdit) return;
+    const idsToRemove = new Set(selectedNodeIds);
+    if (idsToRemove.size === 0 && !selectedEdgeId) return;
+    if (idsToRemove.size > 0) {
+      setFlowSpec((prev) => ({
+        ...prev,
+        nodes: prev.nodes
+          .filter((node) => !idsToRemove.has(node.id))
+          .map((node) => node.parentId && idsToRemove.has(node.parentId) ? { ...node, parentId: undefined } : node),
+        edges: prev.edges.filter((edge) => !idsToRemove.has(edge.source) && !idsToRemove.has(edge.target)),
+      }));
+      setSelectedNodeId(null);
+      setSelectedNodeIds(new Set());
+      if (connectFromId && idsToRemove.has(connectFromId)) setConnectFromId(null);
+    }
+    if (selectedEdgeId) {
+      setFlowSpec((prev) => ({ ...prev, edges: prev.edges.filter((edge) => edge.id !== selectedEdgeId) }));
+      setSelectedEdgeId(null);
+    }
     setDirty(true);
     setNotice('');
   }
@@ -645,6 +928,8 @@ export default function Flow() {
       direction: 'one-way',
       label: '',
       animated: true,
+      sourceHandle: 'right',
+      targetHandle: 'left',
     };
 
     setFlowSpec((prev) => ({ ...prev, edges: [...prev.edges, edge] }));
@@ -692,6 +977,8 @@ export default function Flow() {
         direction: 'one-way',
         label: '',
         animated: true,
+        sourceHandle: 'right',
+        targetHandle: 'left',
       });
       added++;
     };
@@ -800,6 +1087,22 @@ export default function Flow() {
   const selectedEdge = flowSpec.edges.find((edge) => edge.id === selectedEdgeId) || null;
   const entityMap = new Map(availableEntities.map((entity) => [entityKey(entity), entity]));
 
+  const nodeMap = useMemo(
+    () => new Map(flowSpec.nodes.map((n) => [n.id, n])),
+    [flowSpec.nodes]
+  );
+
+  const sortedNodes = useMemo(() => {
+    const parentIds = new Set(flowSpec.nodes.filter((n) => n.parentId).map((n) => n.parentId!));
+    return [...flowSpec.nodes].sort((a, b) => {
+      const aIsContainer = parentIds.has(a.id);
+      const bIsContainer = parentIds.has(b.id);
+      if (aIsContainer && !bIsContainer) return -1;
+      if (!aIsContainer && bIsContainer) return 1;
+      return (a.zIndex ?? 0) - (b.zIndex ?? 0);
+    });
+  }, [flowSpec.nodes]);
+
   const filteredEntities = availableEntities
     .filter((entity) => {
       if (!entityQuery.trim()) return true;
@@ -853,50 +1156,157 @@ export default function Flow() {
   }
 
   function renderCanvas(readOnly: boolean) {
+    const hasSelection = selectedNodeIds.size > 0;
+    const selectedIsLocked = selectedNodeId ? flowSpec.nodes.find((n) => n.id === selectedNodeId)?.locked : false;
+    const selectedHasParent = selectedNodeId ? Boolean(flowSpec.nodes.find((n) => n.id === selectedNodeId)?.parentId) : false;
+    const containerChildren = selectedNodeId ? flowSpec.nodes.filter((n) => n.parentId === selectedNodeId) : [];
+
     return (
       <div className="overflow-hidden rounded-2xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)]">
-        <div className="flex items-center justify-between border-b border-[var(--gantry-border)] px-4 py-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--gantry-text-primary)]">{readOnly ? 'Preview' : 'Canvas'}</h2>
-            <p className="mt-1 text-xs text-[var(--gantry-text-secondary)]">
-              {readOnly
-                ? 'Browse the flow diagram, scroll to zoom, and select nodes or edges for details.'
-                : 'Drag nodes to arrange the diagram. Scroll to zoom, then click one node and another while connecting to create an edge.'}
-            </p>
+        <div className="border-b border-[var(--gantry-border)] px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--gantry-text-primary)]">{readOnly ? 'Preview' : 'Canvas'}</h2>
+              <p className="mt-1 text-xs text-[var(--gantry-text-secondary)]">
+                {readOnly
+                  ? 'Browse the flow diagram, scroll to zoom, and select nodes or edges for details.'
+                  : 'Drag nodes to arrange. Shift+click to multi-select. Drag onto another node to nest it inside.'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="text-xs text-[var(--gantry-text-secondary)]">
+                {flowSpec.nodes.length} node{flowSpec.nodes.length === 1 ? '' : 's'} · {flowSpec.edges.length} edge{flowSpec.edges.length === 1 ? '' : 's'}
+              </div>
+              <div className="inline-flex items-center gap-1 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-1">
+                <button
+                  onClick={() => applyManualZoom(canvasZoom - ZOOM_STEP)}
+                  disabled={canvasZoom <= MIN_ZOOM}
+                  className="rounded-md p-1 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Zoom out"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={fitCanvas}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+                  title="Fit to view"
+                >
+                  Fit
+                </button>
+                <button
+                  onClick={() => applyManualZoom(canvasZoom + ZOOM_STEP)}
+                  disabled={canvasZoom >= MAX_ZOOM}
+                  className="rounded-md p-1 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Zoom in"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-w-[3.5rem] text-right text-xs tabular-nums text-[var(--gantry-text-secondary)]">
+                {Math.round(canvasZoom * 100)}%
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-xs text-[var(--gantry-text-secondary)]">
-              {flowSpec.nodes.length} node{flowSpec.nodes.length === 1 ? '' : 's'} · {flowSpec.edges.length} edge{flowSpec.edges.length === 1 ? '' : 's'}
-            </div>
-            <div className="inline-flex items-center gap-1 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-1">
+
+          {!readOnly && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <button
-                onClick={() => applyManualZoom(canvasZoom - ZOOM_STEP)}
-                disabled={canvasZoom <= MIN_ZOOM}
-                className="rounded-md p-1 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                title="Zoom out"
+                onClick={() => { setFlowSpec(autoArrangeNodes(flowSpec)); setDirty(true); }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]"
+                title="Auto-arrange nodes by edge relationships"
               >
-                <Minus className="h-4 w-4" />
+                <Wand2 className="h-3.5 w-3.5" />
+                Auto-arrange
               </button>
+
               <button
-                onClick={fitCanvas}
-                className="rounded-md px-2 py-1 text-xs font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
-                title="Fit to view"
+                onClick={() => setSnapToGrid((v) => !v)}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  snapToGrid
+                    ? 'border-[var(--gantry-accent)] bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]'
+                    : 'border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]'
+                }`}
+                title="Snap nodes to 32px grid"
               >
-                Fit
+                <Grid3X3 className="h-3.5 w-3.5" />
+                Snap
               </button>
+
+              <div className="mx-1 h-4 w-px bg-[var(--gantry-border)]" />
+
               <button
-                onClick={() => applyManualZoom(canvasZoom + ZOOM_STEP)}
-                disabled={canvasZoom >= MAX_ZOOM}
-                className="rounded-md p-1 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                title="Zoom in"
+                onClick={toggleLockSelected}
+                disabled={!hasSelection}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                title={selectedIsLocked ? 'Unlock selected node(s)' : 'Lock selected node(s) in place'}
               >
-                <Plus className="h-4 w-4" />
+                {selectedIsLocked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                {selectedIsLocked ? 'Unlock' : 'Lock'}
               </button>
+
+              <div className="inline-flex items-center gap-0.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-0.5">
+                <button
+                  onClick={() => adjustZIndex('back')}
+                  disabled={!hasSelection}
+                  className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Send to back"
+                >
+                  <ChevronsDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => adjustZIndex(-1)}
+                  disabled={!hasSelection}
+                  className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Send backward"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => adjustZIndex(1)}
+                  disabled={!hasSelection}
+                  className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Bring forward"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => adjustZIndex('front')}
+                  disabled={!hasSelection}
+                  className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Bring to front"
+                >
+                  <ChevronsUp className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <button
+                onClick={unnestSelected}
+                disabled={!selectedHasParent}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                title="Remove selected node from its parent container"
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Unnest
+              </button>
+
+              {containerChildren.length > 0 && (
+                <button
+                  onClick={() => unnestAllChildren(selectedNodeId!)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]"
+                  title="Remove all children from this container"
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  Unnest children ({containerChildren.length})
+                </button>
+              )}
+
+              {selectedNodeIds.size > 1 && (
+                <span className="rounded-full bg-[var(--gantry-accent)]/10 px-2.5 py-1 text-xs font-medium text-[var(--gantry-accent)]">
+                  {selectedNodeIds.size} selected
+                </span>
+              )}
             </div>
-            <div className="min-w-[3.5rem] text-right text-xs tabular-nums text-[var(--gantry-text-secondary)]">
-              {Math.round(canvasZoom * 100)}%
-            </div>
-          </div>
+          )}
         </div>
         <div className="bg-[var(--gantry-bg-secondary)] p-4">
           <div
@@ -953,6 +1363,7 @@ export default function Flow() {
                     return;
                   }
                   setSelectedNodeId(null);
+                  setSelectedNodeIds(new Set());
                   setSelectedEdgeId(null);
                 }}
               >
@@ -977,12 +1388,16 @@ export default function Flow() {
                       const source = flowSpec.nodes.find((node) => node.id === edge.source);
                       const target = flowSpec.nodes.find((node) => node.id === edge.target);
                       if (!source || !target) return null;
-                      const path = edgePath(source, target);
-                      const labelPos = edgeLabelPosition(source, target);
+                      const sourceAbs = getAbsolutePosition(source, nodeMap);
+                      const targetAbs = getAbsolutePosition(target, nodeMap);
+                      const sourceSize = getNodeDimensions(source);
+                      const targetSize = getNodeDimensions(target);
+                      const path = edgePath(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
+                      const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
                       const active = edge.id === selectedEdgeId;
                       const twoWay = edge.direction === 'two-way';
-                      const forwardTransform = twoWay ? edgeOffsetTransform(source, target, 3) : undefined;
-                      const reverseTransform = twoWay ? edgeOffsetTransform(source, target, -3) : undefined;
+                      const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3, edge.sourceHandle, edge.targetHandle) : undefined;
+                      const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3, edge.sourceHandle, edge.targetHandle) : undefined;
 
                       return (
                         <g key={edge.id}>
@@ -1035,40 +1450,50 @@ export default function Flow() {
                               event.stopPropagation();
                               setSelectedEdgeId(edge.id);
                               setSelectedNodeId(null);
+                              setSelectedNodeIds(new Set());
                             }}
                           />
                           <rect
-                            x={labelPos.x - (twoWay ? 44 : 30)}
+                            x={labelPos.x - 30}
                             y={labelPos.y - 17}
-                            width={twoWay ? 88 : 60}
+                            width={60}
                             height={22}
                             rx={11}
                             fill="var(--gantry-bg-primary)"
                             stroke={twoWay ? '#64748B' : 'var(--gantry-border)'}
                           />
                           <text x={labelPos.x} y={labelPos.y - 2} textAnchor="middle" className="fill-[var(--gantry-text-secondary)] text-[11px] font-medium">
-                            {twoWay ? `${edge.label || edge.relation} <->` : edge.label || edge.relation}
+                            {edge.label || edge.relation}
                           </text>
                         </g>
                       );
                     })}
                   </svg>
 
-                  {flowSpec.nodes.map((node) => {
+                  {sortedNodes.map((node) => {
                     const active = node.id === selectedNodeId;
+                    const multiSelected = selectedNodeIds.has(node.id);
                     const connectSource = node.id === connectFromId;
+                    const isNestTarget = node.id === nestTarget;
+                    const isContainer = flowSpec.nodes.some((n) => n.parentId === node.id);
                     const color = nodeColor(node);
                     const title = nodeTitle(node, entityMap);
                     const subtitle = nodeSubtitle(node);
-                    const badge = isMockNode(node) ? `Mock ${mockShapeLabel(node.shape)}` : node.entityRef.kind;
+                    const badge = nodeBadge(node);
                     const nodeSize = getNodeDimensions(node);
+                    const absPos = getAbsolutePosition(node, nodeMap);
                     const nodeOuterStyle: CSSProperties = {
-                      left: node.position.x,
-                      top: node.position.y,
+                      left: absPos.x,
+                      top: absPos.y,
                       width: nodeSize.width,
                       height: nodeSize.height,
+                      zIndex: node.zIndex ?? 0,
                     };
-                    const baseBorderColor = active || connectSource ? color : 'var(--gantry-border)';
+                    const baseBorderColor = active || connectSource || isNestTarget
+                      ? (isNestTarget ? 'var(--gantry-accent)' : color)
+                      : multiSelected
+                      ? 'var(--gantry-accent)'
+                      : 'var(--gantry-border)';
                     const cardStyle: CSSProperties = {
                       borderColor: baseBorderColor,
                       background: 'var(--gantry-bg-primary)',
@@ -1078,20 +1503,34 @@ export default function Flow() {
                       <div
                         key={node.id}
                         data-flow-node="true"
-                        className={`group absolute rounded-2xl shadow-sm transition-shadow ${
+                        draggable={false}
+                        onDragStart={(event) => event.preventDefault()}
+                        className={`group absolute select-none rounded-2xl shadow-sm transition-shadow ${
                           active || connectSource ? 'shadow-lg' : 'hover:shadow-md'
-                        }`}
+                        } ${isNestTarget ? 'ring-2 ring-[var(--gantry-accent)] ring-offset-1' : ''} ${
+                          multiSelected && !active ? 'ring-2 ring-[var(--gantry-accent)]/60' : ''
+                        } ${isContainer && !isMockNode(node) ? 'outline outline-1 outline-dashed outline-[var(--gantry-border)]' : ''}`}
                         style={nodeOuterStyle}
                         onMouseDown={(event) => {
                           if (readOnly || !flowSettings.canEdit) return;
+                          if (node.locked) return;
+                          event.preventDefault();
                           event.stopPropagation();
+                          if (typeof window !== 'undefined') window.getSelection?.()?.removeAllRanges();
                           suppressNodeClickRef.current = false;
                           setRenderBounds(flowBounds);
+                          const absNodePos = getAbsolutePosition(node, nodeMap);
                           const point = clientPointToCanvas(event.clientX, event.clientY);
+
+                          const nodeIds = selectedNodeIds.has(node.id) && !event.shiftKey
+                            ? [...selectedNodeIds]
+                            : [node.id];
+
                           setDragging({
                             nodeId: node.id,
-                            offsetX: point.x - node.position.x,
-                            offsetY: point.y - node.position.y,
+                            nodeIds,
+                            offsetX: point.x - absNodePos.x,
+                            offsetY: point.y - absNodePos.y,
                           });
                         }}
                         onClick={(event) => {
@@ -1104,11 +1543,29 @@ export default function Flow() {
                             createEdge(connectFromId, node.id);
                             return;
                           }
-                          setSelectedNodeId(node.id);
-                          setSelectedEdgeId(null);
+                          if (event.shiftKey && !readOnly) {
+                            setSelectedNodeIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(node.id)) next.delete(node.id);
+                              else next.add(node.id);
+                              return next;
+                            });
+                            setSelectedNodeId(node.id);
+                            setSelectedEdgeId(null);
+                          } else {
+                            setSelectedNodeId(node.id);
+                            setSelectedNodeIds(new Set([node.id]));
+                            setSelectedEdgeId(null);
+                          }
                         }}
                       >
                         <div className="relative h-full w-full">
+                          {isContainer && isMockNode(node) && (
+                            <div
+                              className="pointer-events-none absolute inset-0 rounded-2xl"
+                              style={{ background: `${color}08`, border: `1.5px dashed ${color}60` }}
+                            />
+                          )}
                           {isMockNode(node) ? (
                             renderMockNodeShell(node.shape, baseBorderColor, color, nodeSize.width, nodeSize.height)
                           ) : (
@@ -1121,31 +1578,37 @@ export default function Flow() {
                                 className={`${node.shape === 'diamond' ? 'w-full space-y-2' : ''} min-w-0`}
                                 style={mockContentStyle(node.shape, nodeSize.width)}
                               >
-                                <div
-                                  className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                                  style={{ backgroundColor: `${color}1A`, color }}
-                                >
-                                  {badge}
-                                </div>
-                                <div className={`mt-2 break-words whitespace-pre-wrap text-sm font-semibold leading-5 text-[var(--gantry-text-primary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}>
+                                {badge && (
+                                  <div
+                                    className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                                    style={{ backgroundColor: `${color}1A`, color }}
+                                  >
+                                    {badge}
+                                  </div>
+                                )}
+                                <div className={`${badge ? 'mt-2' : ''} break-words whitespace-pre-wrap text-sm font-semibold leading-5 text-[var(--gantry-text-primary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}>
                                   {title}
                                 </div>
                               </div>
-                              <div
-                                className={`min-w-0 break-words whitespace-pre-wrap text-xs leading-4 text-[var(--gantry-text-secondary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}
-                                style={mockContentStyle(node.shape, nodeSize.width)}
-                              >
-                                {subtitle}
-                              </div>
+                              {subtitle && (
+                                <div
+                                  className={`min-w-0 break-words whitespace-pre-wrap text-xs leading-4 text-[var(--gantry-text-secondary)] ${node.shape === 'diamond' ? 'text-center' : ''}`}
+                                  style={mockContentStyle(node.shape, nodeSize.width)}
+                                >
+                                  {subtitle}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="relative flex h-full flex-col justify-between p-3">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
-                                  <div className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: `${color}1A`, color }}>
-                                    {badge}
-                                  </div>
-                                  <div className="mt-2 break-words text-sm font-semibold leading-5 text-[var(--gantry-text-primary)]">
+                                  {badge && (
+                                    <div className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: `${color}1A`, color }}>
+                                      {badge}
+                                    </div>
+                                  )}
+                                  <div className={`${badge ? 'mt-2' : ''} break-words text-sm font-semibold leading-5 text-[var(--gantry-text-primary)]`}>
                                     {title}
                                   </div>
                                 </div>
@@ -1160,11 +1623,29 @@ export default function Flow() {
                                   <ExternalLink className="h-3.5 w-3.5" />
                                 </button>
                               </div>
-                              <div className="break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
+                              <div className="flex items-center gap-1.5 break-words text-xs leading-4 text-[var(--gantry-text-secondary)]">
+                                {(() => {
+                                  const healthKey = isEntityNode(node) ? nodeEntityKey(node) : '';
+                                  const health = healthStatuses.get(healthKey);
+                                  if (health === undefined) return null;
+                                  return (
+                                    <span
+                                      className={`inline-block h-2 w-2 shrink-0 rounded-full ${health === true ? 'bg-emerald-500' : health === false ? 'bg-red-500' : 'bg-gray-400'}`}
+                                      title={health === true ? 'Healthy' : health === false ? 'Unhealthy' : 'Unknown'}
+                                    />
+                                  );
+                                })()}
                                 {subtitle}
                               </div>
                             </div>
                           )}
+
+                          {node.locked && (
+                            <div className="pointer-events-none absolute right-1.5 top-1.5 rounded-full bg-[var(--gantry-bg-secondary)] p-1 opacity-80">
+                              <Lock className="h-2.5 w-2.5 text-[var(--gantry-text-secondary)]" />
+                            </div>
+                          )}
+
                           {!readOnly && flowSettings.canEdit && isMockNode(node) && (
                             <button
                               type="button"
@@ -1528,6 +2009,18 @@ export default function Flow() {
                   {nodeMeta(selectedNode)}
                 </p>
               </div>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Badge</span>
+                <input
+                  value={selectedNode.badge ?? ''}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    updateNode(selectedNode.id, { badge: val.trim() === '' ? undefined : val });
+                  }}
+                  placeholder={nodeBadge(selectedNode)}
+                  className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
+                />
+              </label>
               {isMockNode(selectedNode) && (
                 <>
                   <label className="space-y-1.5">
@@ -1543,6 +2036,7 @@ export default function Flow() {
                     <input
                       value={selectedNode.subtitle || ''}
                       onChange={(event) => updateNode(selectedNode.id, { subtitle: event.target.value } as Partial<FlowMockNode>)}
+                      placeholder="Leave empty to hide"
                       className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
                     />
                   </label>
@@ -1617,6 +2111,71 @@ export default function Flow() {
                   />
                 </label>
               </div>
+
+              <label className="flex items-center justify-between rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2.5">
+                <div className="flex items-center gap-2 text-sm font-medium text-[var(--gantry-text-primary)]">
+                  <Lock className="h-3.5 w-3.5 text-[var(--gantry-text-secondary)]" />
+                  Lock position
+                </div>
+                <input
+                  type="checkbox"
+                  checked={Boolean(selectedNode.locked)}
+                  onChange={(event) => updateNode(selectedNode.id, { locked: event.target.checked || undefined })}
+                  className="h-4 w-4 rounded border-[var(--gantry-border)] text-[var(--gantry-accent)] focus:ring-[var(--gantry-accent)]"
+                />
+              </label>
+
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Layer (z-index)</span>
+                <div className="inline-flex items-center gap-0.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-0.5">
+                  <button onClick={() => adjustZIndex('back')} className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)]" title="Send to back"><ChevronsDown className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => adjustZIndex(-1)} className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)]" title="Send backward"><ChevronDown className="h-3.5 w-3.5" /></button>
+                  <span className="px-2 text-xs tabular-nums text-[var(--gantry-text-primary)]">{selectedNode.zIndex ?? 0}</span>
+                  <button onClick={() => adjustZIndex(1)} className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)]" title="Bring forward"><ChevronUp className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => adjustZIndex('front')} className="rounded-md p-1.5 text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)]" title="Bring to front"><ChevronsUp className="h-3.5 w-3.5" /></button>
+                </div>
+              </div>
+
+              {selectedNode.parentId && (
+                <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Nested inside</div>
+                      <div className="mt-0.5 text-sm text-[var(--gantry-text-primary)]">
+                        {nodeTitle(flowSpec.nodes.find((n) => n.id === selectedNode.parentId) || selectedNode, entityMap)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={unnestSelected}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Unnest
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {flowSpec.nodes.some((n) => n.parentId === selectedNode.id) && (
+                <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Container</div>
+                      <div className="mt-0.5 text-sm text-[var(--gantry-text-primary)]">
+                        {flowSpec.nodes.filter((n) => n.parentId === selectedNode.id).length} nested node{flowSpec.nodes.filter((n) => n.parentId === selectedNode.id).length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => unnestAllChildren(selectedNode.id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Unnest all
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setConnectFromId(connectFromId === selectedNode.id ? null : selectedNode.id)}
@@ -1690,6 +2249,34 @@ export default function Flow() {
                   <option value="two-way">Two-way</option>
                 </select>
               </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Source Side</span>
+                  <select
+                    value={selectedEdge.sourceHandle || 'right'}
+                    onChange={(event) => updateEdge(selectedEdge.id, { sourceHandle: event.target.value as 'top' | 'right' | 'bottom' | 'left' })}
+                    className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
+                  >
+                    <option value="top">Top</option>
+                    <option value="right">Right</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium uppercase tracking-wide text-[var(--gantry-text-secondary)]">Target Side</span>
+                  <select
+                    value={selectedEdge.targetHandle || 'left'}
+                    onChange={(event) => updateEdge(selectedEdge.id, { targetHandle: event.target.value as 'top' | 'right' | 'bottom' | 'left' })}
+                    className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] focus:border-[var(--gantry-accent)] focus:outline-none"
+                  >
+                    <option value="top">Top</option>
+                    <option value="right">Right</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                  </select>
+                </label>
+              </div>
               <label className="flex items-center justify-between rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-3">
                 <div>
                   <div className="text-sm font-medium text-[var(--gantry-text-primary)]">Animated edge</div>
@@ -1796,9 +2383,11 @@ export default function Flow() {
                   </p>
                 </div>
                 {isMockNode(selectedNode) ? (
-                  <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-3 text-sm text-[var(--gantry-text-secondary)]">
-                    {selectedNode.subtitle || 'Mockup shape for planning and generalized flows.'}
-                  </div>
+                  selectedNode.subtitle ? (
+                    <div className="rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-3 text-sm text-[var(--gantry-text-secondary)]">
+                      {selectedNode.subtitle}
+                    </div>
+                  ) : null
                 ) : (
                   <button
                     onClick={() => navigate(entityPath(selectedNode.entityRef.kind, selectedNode.entityRef.name, selectedNode.entityRef.namespace))}

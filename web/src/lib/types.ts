@@ -156,6 +156,10 @@ export interface FlowEntityNode {
     x: number;
     y: number;
   };
+  locked?: boolean;
+  zIndex?: number;
+  parentId?: string;
+  badge?: string;
 }
 
 export interface FlowMockNode {
@@ -171,9 +175,15 @@ export interface FlowMockNode {
     x: number;
     y: number;
   };
+  locked?: boolean;
+  zIndex?: number;
+  parentId?: string;
+  badge?: string;
 }
 
 export type FlowNode = FlowEntityNode | FlowMockNode;
+
+export type FlowHandleSide = 'top' | 'right' | 'bottom' | 'left';
 
 export interface FlowEdge {
   id: string;
@@ -183,6 +193,8 @@ export interface FlowEdge {
   direction: 'one-way' | 'two-way';
   label?: string;
   animated: boolean;
+  sourceHandle?: FlowHandleSide;
+  targetHandle?: FlowHandleSide;
 }
 
 export interface FlowSpec {
