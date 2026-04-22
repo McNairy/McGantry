@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.13.0](https://github.com/Go2Engle/Gantry/compare/v0.12.1...v0.13.0) (2026-04-22)
+
+
+### Features
+
+* add write tools for entity management in MCP ([#87](https://github.com/Go2Engle/Gantry/issues/87)) ([a5edb7a](https://github.com/Go2Engle/Gantry/commit/a5edb7a0e58f35fa8df8d055bd0d7f9c671be733))
+
+## [0.12.1](https://github.com/Go2Engle/Gantry/compare/v0.12.0...v0.12.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* mcp bug ([#85](https://github.com/Go2Engle/Gantry/issues/85)) ([c848306](https://github.com/Go2Engle/Gantry/commit/c8483060005123e030feada578b8b5f9db0ae28b))
+
+## [0.12.0](https://github.com/Go2Engle/Gantry/compare/v0.11.2...v0.12.0) (2026-04-22)
+
+
+### Features
+
+* mcp support ([#84](https://github.com/Go2Engle/Gantry/issues/84)) ([687355d](https://github.com/Go2Engle/Gantry/commit/687355d88532e3641669fbd2ed935baa00118715))
+* support health check URLs on infrastructure entities ([#82](https://github.com/Go2Engle/Gantry/issues/82)) ([3305ce8](https://github.com/Go2Engle/Gantry/commit/3305ce89a0461d3e6408fe13f8dbcb68f8200f00))
+
+## [0.11.2](https://github.com/Go2Engle/Gantry/compare/v0.11.1...v0.11.2) (2026-04-21)
+
+
+### Features
+
+* Enhance log viewer with search functionality and improve lognormalization ([#80](https://github.com/Go2Engle/Gantry/issues/80)) ([d9e458a](https://github.com/Go2Engle/Gantry/commit/d9e458a9e2a98ae0b5c498e9109059a78894c51e))
+* flow enhancements ([#78](https://github.com/Go2Engle/Gantry/issues/78)) ([7079e6c](https://github.com/Go2Engle/Gantry/commit/7079e6c1ccc6c082c8de5fe2fccea5b0d3fc570d))
+
 ## [0.11.1](https://github.com/Go2Engle/Gantry/compare/v0.11.0...v0.11.1) (2026-04-20)
 
 

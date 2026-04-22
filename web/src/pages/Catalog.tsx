@@ -5,49 +5,57 @@ import {
   Search, LayoutGrid, List, Plus, X, ArrowLeft,
   Server, Globe, Database, Users, Cloud, FileText, Network,
 } from 'lucide-react';
-import { api } from '../lib/api';
-import { ENTITY_KINDS } from '../lib/types';
+import { api, PLUGINS_UPDATED_EVENT } from '../lib/api';
+import { ENTITY_KINDS, filterEntityKindsByPlugins } from '../lib/types';
 import { pruneEmpty } from '../lib/utils';
-import type { Entity, JsonSchema } from '../lib/types';
+import type { Entity, JsonSchema, PluginRegistryEntry } from '../lib/types';
 import EntityCard from '../components/EntityCard';
 import EntityTable from '../components/EntityTable';
 import SchemaForm from '../components/SchemaForm';
 
-const KIND_META: Record<string, { icon: React.ReactNode; description: string; color: string }> = {
+const KIND_COLOR_CLASSES = {
+  accent: 'text-[var(--gantry-accent)]',
+  accentHover: 'text-[var(--gantry-accent-hover)]',
+  textPrimary: 'text-[var(--gantry-text-primary)]',
+  textSecondary: 'text-[var(--gantry-text-secondary)]',
+  danger: 'text-[var(--gantry-danger)]',
+} as const;
+
+const KIND_META: Record<string, { icon: React.ReactNode; description: string; colorClass: string }> = {
   Service: {
     icon: <Server className="h-7 w-7" />,
     description: 'A deployable unit of software — microservice, monolith, or serverless function.',
-    color: 'text-blue-500',
+    colorClass: KIND_COLOR_CLASSES.accent,
   },
   API: {
     icon: <Globe className="h-7 w-7" />,
     description: 'An interface that services expose — REST, GraphQL, gRPC, or event stream.',
-    color: 'text-purple-500',
+    colorClass: KIND_COLOR_CLASSES.accentHover,
   },
   Infrastructure: {
     icon: <Database className="h-7 w-7" />,
     description: 'Cloud resources — databases, queues, storage, and other infrastructure.',
-    color: 'text-orange-500',
+    colorClass: KIND_COLOR_CLASSES.textPrimary,
   },
   Team: {
     icon: <Users className="h-7 w-7" />,
     description: 'A group of people who own and maintain services and resources.',
-    color: 'text-green-500',
+    colorClass: KIND_COLOR_CLASSES.textSecondary,
   },
   Environment: {
     icon: <Cloud className="h-7 w-7" />,
     description: 'A deployment target — production, staging, development, or preview.',
-    color: 'text-cyan-500',
+    colorClass: KIND_COLOR_CLASSES.accentHover,
   },
   Documentation: {
     icon: <FileText className="h-7 w-7" />,
     description: 'Technical docs, runbooks, ADRs, and knowledge base articles.',
-    color: 'text-yellow-500',
+    colorClass: KIND_COLOR_CLASSES.textSecondary,
   },
   Flow: {
     icon: <Network className="h-7 w-7" />,
     description: 'Editable system flow diagrams backed by real catalog entities and GitOps-friendly YAML.',
-    color: 'text-[var(--gantry-accent)]',
+    colorClass: KIND_COLOR_CLASSES.accent,
   },
 };
 
@@ -67,7 +75,7 @@ export default function Catalog() {
   const [createKind, setCreateKind] = useState('Service');
   const [schemas, setSchemas] = useState<Record<string, JsonSchema>>({});
   const [error, setError] = useState('');
-  const [enabledPlugins, setEnabledPlugins] = useState<Set<string>>(new Set());
+  const [plugins, setPlugins] = useState<PluginRegistryEntry[] | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -76,9 +84,62 @@ export default function Catalog() {
   }, [kind]);
 
   useEffect(() => {
+    const refreshPlugins = () => {
+      api.listPlugins()
+        .then((data) => {
+          if (data != null) {
+            setPlugins(data);
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to refresh plugin registry for catalog', err);
+        });
+    };
+
     api.listSchemas().then((data) => setSchemas(data || {})).catch(() => {});
-    api.listPlugins().then((plugins) => setEnabledPlugins(new Set(plugins.filter((p) => p.enabled).map((p) => p.name)))).catch(() => {});
+    refreshPlugins();
+    window.addEventListener(PLUGINS_UPDATED_EVENT, refreshPlugins);
+
+    return () => {
+      window.removeEventListener(PLUGINS_UPDATED_EVENT, refreshPlugins);
+    };
   }, []);
+
+  const enabledPlugins = useMemo(
+    () => new Set((plugins || []).filter((plugin) => plugin.enabled).map((plugin) => plugin.name)),
+    [plugins],
+  );
+
+  const visibleKinds = useMemo(
+    () => filterEntityKindsByPlugins(ENTITY_KINDS, plugins),
+    [plugins],
+  );
+  const visibleKindNames = useMemo(
+    () => new Set<string>(visibleKinds.map((entityKind) => entityKind.name)),
+    [visibleKinds],
+  );
+  const kindsResolved = plugins !== null;
+  const fallbackCreateKind = visibleKinds[0]?.name ?? 'Service';
+
+  useEffect(() => {
+    if (!kind || plugins === null) return;
+    const isCatalogKind = ENTITY_KINDS.some((entityKind) => entityKind.name === kind);
+    const isVisibleKind = visibleKinds.some((entityKind) => entityKind.name === kind);
+    if (isCatalogKind && !isVisibleKind) {
+      navigate('/catalog', { replace: true });
+    }
+  }, [kind, navigate, plugins, visibleKinds]);
+
+  useEffect(() => {
+    if (plugins === null) return;
+    const createKindIsVisible = visibleKinds.some((entityKind) => entityKind.name === createKind);
+    if (createKindIsVisible) return;
+
+    setCreateKind(fallbackCreateKind);
+    if (showCreate) {
+      setCreateStep('kind');
+    }
+  }, [plugins, visibleKinds, createKind, fallbackCreateKind, showCreate]);
 
   const allOwners = useMemo(() => {
     const owners = new Set(entities.map((e) => e.metadata.owner).filter(Boolean) as string[]);
@@ -92,6 +153,7 @@ export default function Catalog() {
 
   const filtered = useMemo(() => {
     return entities.filter((e) => {
+      if (!visibleKindNames.has(e.kind)) return false;
       if (ownerFilter && e.metadata.owner !== ownerFilter) return false;
       if (tagFilter && !(e.metadata.tags || []).includes(tagFilter)) return false;
       if (searchQuery) {
@@ -105,11 +167,14 @@ export default function Catalog() {
       }
       return true;
     });
-  }, [entities, searchQuery, ownerFilter, tagFilter]);
+  }, [entities, searchQuery, ownerFilter, tagFilter, visibleKindNames]);
 
   const hasFilters = searchQuery || ownerFilter || tagFilter;
 
   const openCreate = () => {
+    if (!visibleKinds.some((entityKind) => entityKind.name === createKind)) {
+      setCreateKind(fallbackCreateKind);
+    }
     setCreateStep('kind');
     setShowCreate(true);
   };
@@ -121,6 +186,13 @@ export default function Catalog() {
 
   const handleCreate = async (raw: Record<string, any>) => {
     try {
+      if (!visibleKinds.some((entityKind) => entityKind.name === createKind)) {
+        setError('The selected entity kind is no longer available. Please choose a kind again.');
+        setCreateKind(fallbackCreateKind);
+        setCreateStep('kind');
+        return;
+      }
+
       const name = (raw._name as string) || '';
       const title = (raw._title as string) || '';
       const owner = (raw._owner as string) || '';
@@ -277,31 +349,35 @@ export default function Catalog() {
       </div>
 
       {/* Kind tabs */}
-      <div className="mt-4 flex gap-1 overflow-x-auto border-b border-[var(--gantry-border)]">
-        <button
-          onClick={() => navigate('/catalog')}
-          className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-            !kind
-              ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
-              : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
-          }`}
-        >
-          All
-        </button>
-        {ENTITY_KINDS.map((k) => (
+      {kindsResolved ? (
+        <div className="mt-4 flex gap-1 overflow-x-auto border-b border-[var(--gantry-border)]">
           <button
-            key={k.name}
-            onClick={() => navigate(`/catalog/${k.name}`)}
+            onClick={() => navigate('/catalog')}
             className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              kind === k.name
+              !kind
                 ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
                 : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
             }`}
           >
-            {k.name}
+            All
           </button>
-        ))}
-      </div>
+          {visibleKinds.map((k) => (
+            <button
+              key={k.name}
+              onClick={() => navigate(`/catalog/${k.name}`)}
+              className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                kind === k.name
+                  ? 'border-[var(--gantry-accent)] text-[var(--gantry-accent)]'
+                  : 'border-transparent text-[var(--gantry-text-secondary)] hover:text-[var(--gantry-text-primary)]'
+              }`}
+            >
+              {k.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 h-10 animate-pulse rounded-lg bg-[var(--gantry-bg-secondary)]" />
+      )}
 
       {/* Error */}
       {error && (
@@ -384,33 +460,41 @@ export default function Catalog() {
             {/* Step 1: Kind picker */}
             {createStep === 'kind' && (
               <div className="flex-1 overflow-y-auto p-6">
-                <p className="mb-6 text-sm text-[var(--gantry-text-secondary)]">
-                  Select the type of entity you want to add to the catalog.
-                </p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {ENTITY_KINDS.map((k) => {
-                    const meta = KIND_META[k.name];
-                    return (
-                      <button
-                        key={k.name}
-                        onClick={() => { setCreateKind(k.name); setCreateStep('form'); }}
-                        className="group flex items-start gap-4 rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-4 text-left transition-all hover:border-[var(--gantry-accent)] hover:shadow-md"
-                      >
-                        <div className={`mt-0.5 shrink-0 ${meta?.color ?? 'text-[var(--gantry-accent)]'}`}>
-                          {meta?.icon}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-semibold text-[var(--gantry-text-primary)] group-hover:text-[var(--gantry-accent)]">
-                            {k.name}
-                          </div>
-                          <div className="mt-1 text-xs leading-relaxed text-[var(--gantry-text-secondary)]">
-                            {meta?.description}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                {kindsResolved ? (
+                  <>
+                    <p className="mb-6 text-sm text-[var(--gantry-text-secondary)]">
+                      Select the type of entity you want to add to the catalog.
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {visibleKinds.map((k) => {
+                        const meta = KIND_META[k.name];
+                        return (
+                          <button
+                            key={k.name}
+                            onClick={() => { setCreateKind(k.name); setCreateStep('form'); }}
+                            className="group flex items-start gap-4 rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] p-4 text-left transition-all hover:border-[var(--gantry-accent)] hover:shadow-md"
+                          >
+                            <div className={`mt-0.5 shrink-0 ${meta?.colorClass ?? KIND_COLOR_CLASSES.accent}`}>
+                              {meta?.icon}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-semibold text-[var(--gantry-text-primary)] group-hover:text-[var(--gantry-accent)]">
+                                {k.name}
+                              </div>
+                              <div className="mt-1 text-xs leading-relaxed text-[var(--gantry-text-secondary)]">
+                                {meta?.description}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex h-full min-h-48 items-center justify-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--gantry-accent)] border-t-transparent" />
+                  </div>
+                )}
               </div>
             )}
 
@@ -419,7 +503,7 @@ export default function Catalog() {
               <div className="flex-1 overflow-y-auto p-6">
                 {/* Kind badge */}
                 <div className="mb-6 flex items-center gap-3 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-4 py-3">
-                  <div className={`shrink-0 ${KIND_META[createKind]?.color ?? 'text-[var(--gantry-accent)]'}`}>
+                  <div className={`shrink-0 ${KIND_META[createKind]?.colorClass ?? KIND_COLOR_CLASSES.accent}`}>
                     {KIND_META[createKind]?.icon}
                   </div>
                   <div>

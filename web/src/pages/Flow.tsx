@@ -488,7 +488,6 @@ export default function Flow() {
         const draggingSet = new Set(currentDrag.nodeIds);
 
         const primaryHasSelectedParent = Boolean(primaryNode.parentId && draggingSet.has(primaryNode.parentId));
-
         const updatedNodes = prev.nodes.map((node) => {
           if (!draggingSet.has(node.id)) return node;
 
