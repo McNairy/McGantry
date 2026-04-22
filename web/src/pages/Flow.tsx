@@ -7,6 +7,7 @@ import {
   ChevronUp,
   ChevronsDown,
   ChevronsUp,
+  Copy,
   ExternalLink,
   GitBranch,
   Grid3X3,
@@ -55,6 +56,7 @@ const MAX_ZOOM = 1.8;
 const ZOOM_STEP = 0.15;
 const FIT_PADDING = 48;
 const CONTENT_PADDING = 64;
+const DUPLICATE_OFFSET = 32;
 const RELATION_OPTIONS = ['calls', 'dependsOn', 'readsFrom', 'writesTo', 'publishesTo', 'subscribesTo', 'consumes', 'provides'];
 const MOCK_NODE_LIBRARY: Array<{ label: string; subtitle: string; shape: FlowMockShape; color: string }> = [
   { label: 'Box', subtitle: 'Generic process step', shape: 'box', color: '#64748B' },
@@ -102,6 +104,62 @@ function nodeMeta(node: FlowNode): string {
 
 function entityPath(kind: string, name: string, namespace?: string): string {
   return `/catalog/${kind}/${name}${namespace && namespace !== 'default' ? `?namespace=${encodeURIComponent(namespace)}` : ''}`;
+}
+
+function sanitizeFlowName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function nextDuplicateFlowName(baseName: string, existingNames: Set<string>): string {
+  const normalizedBase = sanitizeFlowName(baseName) || 'flow';
+  const copyBase = `${normalizedBase}-copy`;
+  if (!existingNames.has(copyBase)) return copyBase;
+
+  let counter = 2;
+  while (existingNames.has(`${copyBase}-${counter}`)) {
+    counter++;
+  }
+  return `${copyBase}-${counter}`;
+}
+
+function nextDuplicateFlowTitle(baseTitle: string): string {
+  const trimmed = baseTitle.trim() || 'Flow';
+  const match = trimmed.match(/^(.*) Copy(?: (\d+))?$/);
+  if (!match) return `${trimmed} Copy`;
+  const prefix = (match[1] || '').trim() || 'Flow';
+  const next = match[2] ? Number(match[2]) + 1 : 2;
+  return `${prefix} Copy ${next}`;
+}
+
+function cloneFlowSpecWithNewIDs(spec: FlowSpec): FlowSpec {
+  const nodeIDMap = new Map<string, string>();
+  for (const node of spec.nodes) {
+    nodeIDMap.set(node.id, crypto.randomUUID());
+  }
+
+  return {
+    viewport: { ...spec.viewport },
+    nodes: spec.nodes.map((node) => ({
+      ...node,
+      id: nodeIDMap.get(node.id)!,
+      position: { ...node.position },
+      parentId: node.parentId ? nodeIDMap.get(node.parentId) : undefined,
+    })),
+    edges: spec.edges
+      .filter((edge) => nodeIDMap.has(edge.source) && nodeIDMap.has(edge.target))
+      .map((edge) => ({
+        ...edge,
+        id: crypto.randomUUID(),
+        source: nodeIDMap.get(edge.source)!,
+        target: nodeIDMap.get(edge.target)!,
+      })),
+  };
 }
 
 
@@ -724,6 +782,36 @@ export default function Flow() {
     setConnectFromId(null);
   }
 
+  function duplicateCurrentFlow() {
+    if (!flowSettings.canEdit) {
+      setError(`Editing flows requires the ${flowSettings.editorRole} role or higher.`);
+      return;
+    }
+
+    const baseName = currentFlowName || flowName.trim() || 'flow';
+    const existingNames = new Set(
+      flows
+        .filter((flow) => (flow.metadata.namespace || 'default') === currentNamespace)
+        .map((flow) => flow.metadata.name)
+    );
+    const duplicateName = nextDuplicateFlowName(baseName, existingNames);
+    const baseTitle = flowTitleValue.trim() || baseName;
+
+    setCurrentFlowName(null);
+    setFlowName(duplicateName);
+    setFlowTitleValue(nextDuplicateFlowTitle(baseTitle));
+    setFlowSpec(cloneFlowSpecWithNewIDs(flowSpec));
+    setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
+    setSelectedEdgeId(null);
+    setConnectFromId(null);
+    setNestTarget(null);
+    setMode('edit');
+    setDirty(true);
+    setError('');
+    setNotice(`Created a duplicate draft named "${duplicateName}". Save to create the new flow.`);
+  }
+
   function setMeta(updater: () => void) {
     updater();
     setDirty(true);
@@ -856,6 +944,61 @@ export default function Flow() {
     setConnectFromId(null);
     setDirty(true);
     setNotice('');
+  }
+
+  function duplicateSelectedNodes() {
+    if (!flowSettings.canEdit || selectedNodeIds.size === 0) return;
+
+    const idsToDuplicate = new Set(selectedNodeIds);
+    for (const nodeID of selectedNodeIds) {
+      for (const descendantID of collectDescendants(nodeID, flowSpec.nodes)) {
+        idsToDuplicate.add(descendantID);
+      }
+    }
+
+    const nodesToDuplicate = flowSpec.nodes.filter((node) => idsToDuplicate.has(node.id));
+    if (nodesToDuplicate.length === 0) return;
+
+    const nodeIDMap = new Map<string, string>();
+    for (const node of nodesToDuplicate) {
+      nodeIDMap.set(node.id, crypto.randomUUID());
+    }
+
+    const duplicatedNodes = nodesToDuplicate.map((node) => {
+      const parentDuplicated = Boolean(node.parentId && nodeIDMap.has(node.parentId));
+      return {
+        ...node,
+        id: nodeIDMap.get(node.id)!,
+        position: parentDuplicated
+          ? { ...node.position }
+          : { x: node.position.x + DUPLICATE_OFFSET, y: node.position.y + DUPLICATE_OFFSET },
+        parentId: node.parentId ? (nodeIDMap.get(node.parentId) || node.parentId) : undefined,
+      } as FlowNode;
+    });
+
+    const duplicatedEdges = flowSpec.edges
+      .filter((edge) => nodeIDMap.has(edge.source) && nodeIDMap.has(edge.target))
+      .map((edge) => ({
+        ...edge,
+        id: crypto.randomUUID(),
+        source: nodeIDMap.get(edge.source)!,
+        target: nodeIDMap.get(edge.target)!,
+      }));
+
+    const nextSelectedNodeIds = new Set(duplicatedNodes.map((node) => node.id));
+    const nextPrimaryNodeID = selectedNodeId ? nodeIDMap.get(selectedNodeId) || duplicatedNodes[0].id : duplicatedNodes[0].id;
+
+    setFlowSpec((prev) => ({
+      ...prev,
+      nodes: [...prev.nodes, ...duplicatedNodes],
+      edges: [...prev.edges, ...duplicatedEdges],
+    }));
+    setSelectedNodeIds(nextSelectedNodeIds);
+    setSelectedNodeId(nextPrimaryNodeID);
+    setSelectedEdgeId(null);
+    setConnectFromId(null);
+    setDirty(true);
+    setNotice(`Duplicated ${duplicatedNodes.length} node${duplicatedNodes.length === 1 ? '' : 's'}.`);
   }
 
   function updateNode(nodeId: string, patch: Partial<FlowNode>) {
@@ -1233,6 +1376,16 @@ export default function Flow() {
               </button>
 
               <div className="mx-1 h-4 w-px bg-[var(--gantry-border)]" />
+
+              <button
+                onClick={duplicateSelectedNodes}
+                disabled={!hasSelection}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                title="Duplicate the selected node(s) and any nested children"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Duplicate
+              </button>
 
               <button
                 onClick={toggleLockSelected}
@@ -1787,6 +1940,15 @@ export default function Flow() {
                     <Plus className="h-4 w-4" />
                     New Flow
                   </button>
+                  {currentFlowName && (
+                    <button
+                      onClick={duplicateCurrentFlow}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+                    >
+                      <Copy className="h-4 w-4" />
+                      Duplicate Flow
+                    </button>
+                  )}
                   <button
                     onClick={openEditor}
                     className="inline-flex items-center gap-2 rounded-lg bg-[var(--gantry-accent)] px-4 py-2 text-sm font-medium text-[var(--gantry-bg-primary)] hover:bg-[var(--gantry-accent-hover)]"
@@ -1812,6 +1974,14 @@ export default function Flow() {
               >
                 <Plus className="h-4 w-4" />
                 New Flow
+              </button>
+              <button
+                onClick={duplicateCurrentFlow}
+                disabled={!currentFlowName && flowSpec.nodes.length === 0 && flowSpec.edges.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-4 py-2 text-sm font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Copy className="h-4 w-4" />
+                Duplicate Flow
               </button>
               <button
                 onClick={deleteFlow}
@@ -2177,6 +2347,13 @@ export default function Flow() {
               )}
 
               <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={duplicateSelectedNodes}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2 text-sm font-medium text-[var(--gantry-text-primary)] hover:bg-[var(--gantry-bg-tertiary)]"
+                >
+                  <Copy className="h-4 w-4" />
+                  Duplicate Node
+                </button>
                 <button
                   onClick={() => setConnectFromId(connectFromId === selectedNode.id ? null : selectedNode.id)}
                   className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
