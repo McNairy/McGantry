@@ -487,10 +487,15 @@ export default function Flow() {
 
         const draggingSet = new Set(currentDrag.nodeIds);
 
+        const primaryHasSelectedParent = Boolean(primaryNode.parentId && draggingSet.has(primaryNode.parentId));
+
         const updatedNodes = prev.nodes.map((node) => {
           if (!draggingSet.has(node.id)) return node;
 
           if (node.id === currentDrag.nodeId) {
+            if (primaryHasSelectedParent) {
+              return { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } };
+            }
             return { ...node, position: { x: nextX, y: nextY } };
           }
 
@@ -787,6 +792,7 @@ export default function Flow() {
       setError(`Editing flows requires the ${flowSettings.editorRole} role or higher.`);
       return;
     }
+    if (!confirmDiscard()) return;
 
     const baseName = currentFlowName || flowName.trim() || 'flow';
     const existingNames = new Set(
@@ -1354,7 +1360,7 @@ export default function Flow() {
           {!readOnly && (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <button
-                onClick={() => { setFlowSpec(autoArrangeNodes(flowSpec)); setDirty(true); }}
+                onClick={() => { setFlowSpec((prev) => autoArrangeNodes(prev)); setDirty(true); }}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--gantry-text-secondary)] hover:bg-[var(--gantry-bg-tertiary)] hover:text-[var(--gantry-text-primary)]"
                 title="Auto-arrange nodes by edge relationships"
               >

@@ -203,6 +203,33 @@ export function getNodeDimensions(node: FlowNode): { width: number; height: numb
   }
 }
 
+function getNodeEffectiveBounds(root: FlowNode, nodes: FlowNode[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const rootAbs = getAbsolutePosition(root, nodeMap);
+  const included = collectDescendants(root.id, nodes);
+  included.add(root.id);
+
+  let minX = 0;
+  let minY = 0;
+  const rootSize = getNodeDimensions(root);
+  let maxX = rootSize.width;
+  let maxY = rootSize.height;
+
+  for (const node of nodes) {
+    if (!included.has(node.id)) continue;
+    const abs = getAbsolutePosition(node, nodeMap);
+    const dim = getNodeDimensions(node);
+    const relX = abs.x - rootAbs.x;
+    const relY = abs.y - rootAbs.y;
+    minX = Math.min(minX, relX);
+    minY = Math.min(minY, relY);
+    maxX = Math.max(maxX, relX + dim.width);
+    maxY = Math.max(maxY, relY + dim.height);
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
 export function renderMockNodeShell(shape: FlowMockShape, borderColor: string, color: string, width: number, height: number) {
   const fill = 'var(--gantry-bg-primary)';
 
@@ -498,15 +525,24 @@ export function autoArrangeNodes(spec: FlowSpec): FlowSpec {
     orderedByLevel.set(lv, sorted);
   }
 
-  // Compute each level's max height and total width
+  // Compute each level's max height and total width, accounting for descendant overflow.
   const levelHeights = new Map<number, number>();
   const levelWidths = new Map<number, number>();
+  const effectiveBounds = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
   let maxLevelWidth = 0;
   for (const lv of levels) {
     const nodes = orderedByLevel.get(lv)!;
-    const maxH = nodes.reduce((m, n) => Math.max(m, getNodeDimensions(n).height), 0);
+    const maxH = nodes.reduce((m, n) => {
+      const bounds = getNodeEffectiveBounds(n, spec.nodes);
+      effectiveBounds.set(n.id, bounds);
+      return Math.max(m, bounds.maxY - bounds.minY);
+    }, 0);
     const totalW =
-      nodes.reduce((s, n) => s + getNodeDimensions(n).width, 0) +
+      nodes.reduce((s, n) => {
+        const bounds = effectiveBounds.get(n.id) ?? getNodeEffectiveBounds(n, spec.nodes);
+        effectiveBounds.set(n.id, bounds);
+        return s + (bounds.maxX - bounds.minX);
+      }, 0) +
       Math.max(0, nodes.length - 1) * HORIZONTAL_GAP;
     levelHeights.set(lv, maxH);
     levelWidths.set(lv, totalW);
@@ -533,9 +569,14 @@ export function autoArrangeNodes(spec: FlowSpec): FlowSpec {
 
     let x = startX;
     for (const node of nodes) {
-      const dim = getNodeDimensions(node);
-      newPositions.set(node.id, { x, y: rowY + (levelH - dim.height) / 2 });
-      x += dim.width + HORIZONTAL_GAP;
+      const bounds = effectiveBounds.get(node.id) ?? getNodeEffectiveBounds(node, spec.nodes);
+      const width = bounds.maxX - bounds.minX;
+      const height = bounds.maxY - bounds.minY;
+      newPositions.set(node.id, {
+        x: x - bounds.minX,
+        y: rowY + (levelH - height) / 2 - bounds.minY,
+      });
+      x += width + HORIZONTAL_GAP;
     }
   }
 
