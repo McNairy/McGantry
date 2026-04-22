@@ -21,6 +21,7 @@ import (
 	"github.com/go2engle/gantry/internal/dispatcher"
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
+	gantrymcp "github.com/go2engle/gantry/internal/mcp"
 	"github.com/go2engle/gantry/internal/metrics"
 	"github.com/go2engle/gantry/internal/search"
 	"github.com/go2engle/gantry/web"
@@ -49,8 +50,8 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-			ExposedHeaders:   []string{"Link"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Mcp-Session-Id", "MCP-Protocol-Version"},
+			ExposedHeaders:   []string{"Link", "Mcp-Session-Id"},
 			AllowCredentials: true,
 			MaxAge:           300,
 		}))
@@ -58,8 +59,8 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   []string{""}, // same-origin only
 			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-			ExposedHeaders:   []string{"Link"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Mcp-Session-Id", "MCP-Protocol-Version"},
+			ExposedHeaders:   []string{"Link", "Mcp-Session-Id"},
 			AllowCredentials: true,
 			MaxAge:           300,
 		}))
@@ -165,6 +166,13 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 
 			// Relationship graph.
 			protected.Get("/graph/{kind}/{name}", h.GetEntityGraph)
+
+			// MCP endpoint for local AI agents. Streamable HTTP transport handles
+			// POST (client messages), GET (optional SSE streaming), and DELETE
+			// (session close) on a single path, so Handle covers all methods.
+			mcpHandler := gantrymcp.NewHandler(h)
+			protected.Handle("/mcp", mcpHandler)
+			protected.Handle("/mcp/*", mcpHandler)
 
 			// Schemas.
 			protected.Get("/schemas", h.ListSchemas)
