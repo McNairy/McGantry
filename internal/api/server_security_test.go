@@ -347,7 +347,7 @@ func TestWebSocketHandshakeAcceptsSessionCookieAuth(t *testing.T) {
 	}
 }
 
-func TestHealthCheckProxyRejectsLoopbackTargets(t *testing.T) {
+func TestHealthCheckProxyAllowsLoopbackTargets(t *testing.T) {
 	// Spin up a local server on loopback to act as the health endpoint.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -364,10 +364,22 @@ func TestHealthCheckProxyRejectsLoopbackTargets(t *testing.T) {
 	rec := httptest.NewRecorder()
 	env.server.Router().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "blocked IP range") {
-		t.Fatalf("expected blocked IP error, got %q", rec.Body.String())
+
+	var result map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if result["reachable"] != true {
+		t.Fatalf("expected reachable=true, got %v", result["reachable"])
+	}
+	if result["statusCode"] != float64(200) {
+		t.Fatalf("expected statusCode=200, got %v", result["statusCode"])
+	}
+	body, _ := result["body"].(string)
+	if body != `{"status":"UP"}` {
+		t.Fatalf("expected upstream body, got %q", body)
 	}
 }
