@@ -30,10 +30,16 @@ import type { Entity, FlowEdge, FlowMockNode, FlowMockShape, FlowNode, FlowPlugi
 import {
   autoArrangeNodes,
   collectDescendants,
+  connectedEdgeHealth,
+  edgeStrokeForHealth,
   edgeLabelPosition,
   edgeOffsetTransform,
   edgePath,
+  entityKey,
   ensureFlowSpec,
+  FLOW_EDGE_HEALTHY_STROKE,
+  FLOW_EDGE_STROKE,
+  FLOW_EDGE_UNHEALTHY_STROKE,
   getAbsolutePosition,
   getNodeDimensions,
   isEntityNode,
@@ -45,9 +51,11 @@ import {
   MOCK_SHAPE_OPTIONS,
   nodeBadge,
   nodeColor,
+  nodeEntityKey,
   nodeSubtitle,
   renderMockNodeShell,
 } from '../lib/flow';
+import { useFlowHealth } from '../hooks/useFlowHealth';
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 900;
@@ -80,15 +88,6 @@ function flowTitle(flow: Entity): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function entityKey(entity: Pick<Entity, 'kind' | 'metadata'>): string {
-  return `${entity.kind}:${entity.metadata.namespace || 'default'}:${entity.metadata.name}`;
-}
-
-function nodeEntityKey(node: FlowNode): string {
-  if (!isEntityNode(node)) return '';
-  return `${node.entityRef.kind}:${node.entityRef.namespace || 'default'}:${node.entityRef.name}`;
 }
 
 function nodeTitle(node: FlowNode, entityMap: Map<string, Entity>): string {
@@ -251,7 +250,6 @@ export default function Flow() {
     canEdit: true,
   });
   const [availableEntities, setAvailableEntities] = useState<Entity[]>([]);
-  const [healthStatuses, setHealthStatuses] = useState<Map<string, boolean | null>>(new Map());
   const [flows, setFlows] = useState<Entity[]>([]);
   const [currentFlowName, setCurrentFlowName] = useState<string | null>(null);
   const [currentNamespace, setCurrentNamespace] = useState('default');
@@ -284,6 +282,7 @@ export default function Flow() {
   const flowBounds = useMemo(() => getFlowBounds(flowSpec), [flowSpec]);
   const [renderBounds, setRenderBounds] = useState(flowBounds);
   const activeBounds = dragging || resizing ? renderBounds : flowBounds;
+  const healthStatuses = useFlowHealth(flowSpec.nodes, availableEntities);
   const stageMinX = Math.min(0, activeBounds.minX);
   const stageMinY = Math.min(0, activeBounds.minY);
   const stageMaxX = Math.max(CANVAS_WIDTH, activeBounds.maxX);
@@ -399,54 +398,6 @@ export default function Flow() {
       active = false;
     };
   }, [requestedFlow, requestedNamespace, requestedMode]);
-
-  // Periodically check health for entities on the canvas that have healthCheckUrl.
-  // Build a stable key from the sorted set of (entityKey|url) pairs so the effect
-  // only re-subscribes when the monitored URLs actually change, not on every drag.
-  const healthUrlKey = useMemo(() => {
-    const entityMapLocal = new Map(availableEntities.map((e) => [entityKey(e), e]));
-    const pairs: string[] = [];
-    for (const node of flowSpec.nodes) {
-      if (isMockNode(node)) continue;
-      const key = nodeEntityKey(node);
-      const ent = entityMapLocal.get(key);
-      const url = ent?.spec?.healthCheckUrl;
-      if (typeof url === 'string' && url.trim()) pairs.push(`${key}|${url.trim()}`);
-    }
-    return pairs.sort().join('\n');
-  }, [availableEntities, flowSpec.nodes]);
-
-  useEffect(() => {
-    let active = true;
-    const urls = new Map<string, string>();
-    for (const pair of healthUrlKey.split('\n').filter(Boolean)) {
-      const sep = pair.indexOf('|');
-      urls.set(pair.slice(0, sep), pair.slice(sep + 1));
-    }
-
-    if (urls.size === 0) {
-      setHealthStatuses(new Map());
-      return;
-    }
-
-    const check = async () => {
-      const next = new Map<string, boolean | null>();
-      await Promise.all(
-        [...urls.entries()].map(async ([key, url]) => {
-          try {
-            const res = await api.checkHealth(url);
-            if (active) next.set(key, res.reachable);
-          } catch {
-            if (active) next.set(key, null);
-          }
-        })
-      );
-      if (active) setHealthStatuses(next);
-    };
-    void check();
-    const interval = setInterval(check, 30_000);
-    return () => { active = false; clearInterval(interval); };
-  }, [healthUrlKey]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -1535,12 +1486,20 @@ export default function Flow() {
                 >
                   <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
                     <defs>
-                      <marker id="flow-arrow-end" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B" />
-                      </marker>
-                      <marker id="flow-arrow-start" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto-start-reverse">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B" />
-                      </marker>
+                      {[
+                        ['default', FLOW_EDGE_STROKE],
+                        ['healthy', FLOW_EDGE_HEALTHY_STROKE],
+                        ['unhealthy', FLOW_EDGE_UNHEALTHY_STROKE],
+                      ].map(([suffix, fill]) => (
+                        <g key={suffix}>
+                          <marker id={`flow-arrow-end-${suffix}`} markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill={fill} />
+                          </marker>
+                          <marker id={`flow-arrow-start-${suffix}`} markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill={fill} />
+                          </marker>
+                        </g>
+                      ))}
                     </defs>
                     {flowSpec.edges.map((edge) => {
                       const source = flowSpec.nodes.find((node) => node.id === edge.source);
@@ -1554,6 +1513,9 @@ export default function Flow() {
                       const labelPos = edgeLabelPosition(sourceAbs, sourceSize, targetAbs, targetSize, edge.sourceHandle, edge.targetHandle);
                       const active = edge.id === selectedEdgeId;
                       const twoWay = edge.direction === 'two-way';
+                      const health = connectedEdgeHealth(edge, nodeMap, healthStatuses);
+                      const edgeColor = edgeStrokeForHealth(health);
+                      const markerVariant = health === true ? 'healthy' : health === false ? 'unhealthy' : 'default';
                       const forwardTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, 3, edge.sourceHandle, edge.targetHandle) : undefined;
                       const reverseTransform = twoWay ? edgeOffsetTransform(sourceAbs, sourceSize, targetAbs, targetSize, -3, edge.sourceHandle, edge.targetHandle) : undefined;
 
@@ -1563,10 +1525,10 @@ export default function Flow() {
                             <path
                               d={path}
                               fill="none"
-                              stroke={active ? 'var(--gantry-text-primary)' : 'var(--gantry-text-secondary)'}
+                              stroke={edgeColor}
                               strokeWidth={active ? 3 : 2}
                               strokeDasharray={edge.animated ? '8 8' : undefined}
-                              markerEnd="url(#flow-arrow-end)"
+                              markerEnd={`url(#flow-arrow-end-${markerVariant})`}
                             >
                               {edge.animated && <animate attributeName="stroke-dashoffset" from="16" to="0" dur="1s" repeatCount="indefinite" />}
                             </path>
@@ -1577,10 +1539,10 @@ export default function Flow() {
                                 d={path}
                                 fill="none"
                                 transform={forwardTransform}
-                                stroke={active ? 'var(--gantry-text-primary)' : 'var(--gantry-text-secondary)'}
+                                stroke={edgeColor}
                                 strokeWidth={active ? 2.8 : 2.1}
                                 strokeDasharray={edge.animated ? '8 8' : undefined}
-                                markerEnd="url(#flow-arrow-end)"
+                                markerEnd={`url(#flow-arrow-end-${markerVariant})`}
                               >
                                 {edge.animated && <animate attributeName="stroke-dashoffset" from="16" to="0" dur="1s" repeatCount="indefinite" />}
                               </path>
@@ -1588,10 +1550,10 @@ export default function Flow() {
                                 d={path}
                                 fill="none"
                                 transform={reverseTransform}
-                                stroke={active ? 'var(--gantry-text-primary)' : 'var(--gantry-text-secondary)'}
+                                stroke={edgeColor}
                                 strokeWidth={active ? 2.6 : 1.9}
                                 strokeDasharray={edge.animated ? '8 8' : undefined}
-                                markerStart="url(#flow-arrow-start)"
+                                markerStart={`url(#flow-arrow-start-${markerVariant})`}
                               >
                                 {edge.animated && <animate attributeName="stroke-dashoffset" from="0" to="16" dur="1s" repeatCount="indefinite" />}
                               </path>
@@ -1618,7 +1580,7 @@ export default function Flow() {
                             height={22}
                             rx={11}
                             fill="var(--gantry-bg-primary)"
-                            stroke={twoWay ? '#64748B' : 'var(--gantry-border)'}
+                            stroke={health === undefined ? (twoWay ? FLOW_EDGE_STROKE : 'var(--gantry-border)') : edgeColor}
                           />
                           <text x={labelPos.x} y={labelPos.y - 2} textAnchor="middle" className="fill-[var(--gantry-text-secondary)] text-[11px] font-medium">
                             {edge.label || edge.relation}
