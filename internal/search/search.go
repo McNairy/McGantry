@@ -7,7 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
+
+	"github.com/go2engle/gantry/internal/search/fts"
 )
 
 // Result represents a single search hit from the FTS5 index.
@@ -30,20 +31,18 @@ func New(db *sql.DB) *Service {
 	return &Service{db: db}
 }
 
-// Search performs a full-text search against the entity catalog.
-// The query string uses FTS5 match syntax (e.g., "service", "api AND auth",
-// "namespace:production"). Results are ordered by relevance rank.
+// Search performs a full-text search against the entity catalog. Raw user input
+// is normalized into an FTS5-safe token query before execution. Results are
+// ordered by relevance rank.
 func (s *Service) Search(ctx context.Context, query string) ([]*Result, error) {
 	if query == "" {
 		return nil, nil
 	}
 
-	// Sanitize: FTS5 treats '-', '+', '"', '*', '(', ')' as operators.
-	// The tokenizer also splits on '-' and '_', so "dxc-portal" is indexed
-	// as tokens "dxc" and "portal". Replace those separators with spaces so
-	// the query mirrors how the text was indexed, then add '*' for prefix
-	// matching on the last token. e.g. "dxc-port" → "dxc port*".
-	ftsQuery := sanitizeFTS5(query)
+	// Sanitize: FTS5 treats punctuation such as ':', '-', '/', and '"' as
+	// syntax. Those characters also appear in common entity values like URLs,
+	// so normalize them into token boundaries before adding prefix matching.
+	ftsQuery := fts.SanitizeQuery(query)
 	if ftsQuery == "" {
 		return nil, nil
 	}
@@ -76,29 +75,6 @@ func (s *Service) Search(ctx context.Context, query string) ([]*Result, error) {
 	}
 
 	return results, nil
-}
-
-// sanitizeFTS5 converts a raw user query into a safe FTS5 MATCH expression.
-// It replaces characters that are both FTS5 operators and common name
-// separators (-, _, +, etc.) with spaces so they align with how the FTS5
-// unicode61 tokenizer indexed the text. The last token gets a '*' suffix for
-// prefix matching, enabling search-as-you-type behaviour.
-func sanitizeFTS5(q string) string {
-	var b strings.Builder
-	for _, r := range q {
-		switch r {
-		case '-', '_', '+', '"', '(', ')', '*', '\\':
-			b.WriteByte(' ')
-		default:
-			b.WriteRune(r)
-		}
-	}
-	parts := strings.Fields(b.String())
-	if len(parts) == 0 {
-		return ""
-	}
-	parts[len(parts)-1] += "*"
-	return strings.Join(parts, " ")
 }
 
 // Reindex rebuilds the FTS5 index from the underlying entities table.

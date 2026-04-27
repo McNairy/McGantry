@@ -162,7 +162,125 @@ func (d *DB) Migrate() error {
 			return fmt.Errorf("migration %d failed: %w", i+1, err)
 		}
 	}
+	if d.IsSQLite() {
+		if err := d.ensureEntitiesFTSSchema(); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (d *DB) ensureEntitiesFTSSchema() error {
+	ctx := context.Background()
+	columns := map[string]bool{}
+	rows, err := d.queryRows(ctx, `PRAGMA table_info(entities_fts)`)
+	if err != nil {
+		return fmt.Errorf("checking entities_fts schema: %w", err)
+	}
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return fmt.Errorf("scanning entities_fts schema: %w", err)
+		}
+		columns[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("closing entities_fts schema rows: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating entities_fts schema: %w", err)
+	}
+
+	required := []string{
+		"name",
+		"namespace",
+		"title",
+		"description",
+		"tags",
+		"kind",
+		"owner",
+		"annotations",
+		"labels",
+		"spec",
+		"api_version",
+		"created_by",
+	}
+	needsRebuild := len(columns) == 0
+	for _, col := range required {
+		if !columns[col] {
+			needsRebuild = true
+			break
+		}
+	}
+	if !needsRebuild {
+		triggersOK, err := d.entitiesFTSTriggersExist(ctx)
+		if err != nil {
+			return err
+		}
+		needsRebuild = !triggersOK
+	}
+	if !needsRebuild {
+		return nil
+	}
+
+	statements := []string{
+		`DROP TRIGGER IF EXISTS entities_ai`,
+		`DROP TRIGGER IF EXISTS entities_ad`,
+		`DROP TRIGGER IF EXISTS entities_au`,
+		`DROP TABLE IF EXISTS entities_fts`,
+		entitiesFTSTableSQL,
+		entitiesFTSInsertTriggerSQL,
+		entitiesFTSDeleteTriggerSQL,
+		entitiesFTSUpdateTriggerSQL,
+		`INSERT INTO entities_fts(entities_fts) VALUES('rebuild')`,
+	}
+	for _, stmt := range statements {
+		if _, err := d.exec(ctx, stmt); err != nil {
+			return fmt.Errorf("upgrading entities_fts schema: %w", err)
+		}
+	}
+	return nil
+}
+
+func (d *DB) entitiesFTSTriggersExist(ctx context.Context) (bool, error) {
+	rows, err := d.queryRows(ctx, `
+		SELECT name, sql
+		FROM sqlite_master
+		WHERE type = 'trigger'
+			AND tbl_name = 'entities'
+			AND name IN ('entities_ai', 'entities_ad', 'entities_au')`)
+	if err != nil {
+		return false, fmt.Errorf("checking entities_fts triggers: %w", err)
+	}
+	defer rows.Close()
+
+	found := map[string]bool{}
+	expected := map[string]string{
+		"entities_ai": normalizeSQLiteSchemaSQL(entitiesFTSInsertTriggerSQL),
+		"entities_ad": normalizeSQLiteSchemaSQL(entitiesFTSDeleteTriggerSQL),
+		"entities_au": normalizeSQLiteSchemaSQL(entitiesFTSUpdateTriggerSQL),
+	}
+	for rows.Next() {
+		var name, triggerSQL string
+		if err := rows.Scan(&name, &triggerSQL); err != nil {
+			return false, fmt.Errorf("scanning entities_fts trigger: %w", err)
+		}
+		found[name] = normalizeSQLiteSchemaSQL(triggerSQL) == expected[name]
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("iterating entities_fts triggers: %w", err)
+	}
+	return found["entities_ai"] && found["entities_ad"] && found["entities_au"], nil
+}
+
+func normalizeSQLiteSchemaSQL(sql string) string {
+	normalized := strings.Join(strings.Fields(sql), " ")
+	normalized = strings.Replace(normalized, "CREATE TRIGGER IF NOT EXISTS ", "CREATE TRIGGER ", 1)
+	return strings.ToLower(normalized)
 }
 
 // pgDuplicateColumnRe matches PostgreSQL's duplicate-column error message:

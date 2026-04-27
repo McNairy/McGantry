@@ -59,6 +59,40 @@ const KIND_META: Record<string, { icon: React.ReactNode; description: string; co
   },
 };
 
+function appendSearchValue(value: unknown, parts: string[], seen: WeakSet<object>) {
+  if (value == null) return;
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    parts.push(String(value));
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) appendSearchValue(item, parts, seen);
+    return;
+  }
+
+  if (typeof value === 'object') {
+    if (seen.has(value)) return;
+    seen.add(value);
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      parts.push(key);
+      appendSearchValue(nested, parts, seen);
+    }
+  }
+}
+
+function entitySearchText(entity: Entity) {
+  const parts: string[] = [];
+  appendSearchValue({
+    kind: entity.kind,
+    apiVersion: entity.apiVersion,
+    metadata: entity.metadata,
+    spec: entity.spec,
+  }, parts, new WeakSet<object>());
+  return parts.join(' ').toLowerCase();
+}
+
 export default function Catalog() {
   const { kind } = useParams<{ kind?: string }>();
   const navigate = useNavigate();
@@ -151,6 +185,14 @@ export default function Catalog() {
     return Array.from(tags).sort();
   }, [entities]);
 
+  const entitySearchTexts = useMemo(() => {
+    const searchTexts = new WeakMap<Entity, string>();
+    for (const e of entities) {
+      searchTexts.set(e, entitySearchText(e));
+    }
+    return searchTexts;
+  }, [entities]);
+
   const filtered = useMemo(() => {
     return entities.filter((e) => {
       if (!visibleKindNames.has(e.kind)) return false;
@@ -158,16 +200,11 @@ export default function Catalog() {
       if (tagFilter && !(e.metadata.tags || []).includes(tagFilter)) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        return (
-          e.metadata.name.toLowerCase().includes(q) ||
-          (e.metadata.title || '').toLowerCase().includes(q) ||
-          (e.metadata.owner || '').toLowerCase().includes(q) ||
-          (e.metadata.tags || []).some((t) => t.toLowerCase().includes(q))
-        );
+        return (entitySearchTexts.get(e) ?? entitySearchText(e)).includes(q);
       }
       return true;
     });
-  }, [entities, searchQuery, ownerFilter, tagFilter, visibleKindNames]);
+  }, [entities, entitySearchTexts, searchQuery, ownerFilter, tagFilter, visibleKindNames]);
 
   const hasFilters = searchQuery || ownerFilter || tagFilter;
 
