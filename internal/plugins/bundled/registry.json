@@ -29,7 +29,8 @@
         "personalAccessToken": {
           "type": "string",
           "title": "Personal Access Token",
-          "description": "GitHub PAT with repo and read:org scopes. Required when authMode=pat."
+          "description": "GitHub PAT with repo and read:org scopes. Required when authMode=pat.",
+          "secret": true
         },
         "appId": {
           "type": "string",
@@ -39,7 +40,8 @@
         "privateKey": {
           "type": "string",
           "title": "Private Key (PEM)",
-          "description": "PEM-encoded RSA private key for your GitHub App. Required when authMode=app."
+          "description": "PEM-encoded RSA private key for your GitHub App. Required when authMode=app.",
+          "secret": true
         },
         "installationId": {
           "type": "string",
@@ -54,12 +56,13 @@
         "oauthClientId": {
           "type": "string",
           "title": "OAuth App Client ID",
-          "description": "Client ID from your GitHub OAuth App. Required when ssoEnabled=true."
+          "description": "Client ID from your GitHub OAuth App. Required when ssoEnabled=true or dispatchAsUser=true."
         },
         "oauthClientSecret": {
           "type": "string",
           "title": "OAuth App Client Secret",
-          "description": "Client secret from your GitHub OAuth App. Required when ssoEnabled=true."
+          "description": "Client secret from your GitHub OAuth App. Required when ssoEnabled=true or dispatchAsUser=true.",
+          "secret": true
         },
         "autoProvision": {
           "type": "boolean",
@@ -78,6 +81,24 @@
           "type": "boolean",
           "title": "Sync GitHub Teams",
           "description": "Automatically create groups from GitHub org teams and assign users during SSO login."
+        },
+        "dispatchAsUser": {
+          "type": "boolean",
+          "title": "Run Actions as GitHub User",
+          "description": "Allow actions configured with credentialMode=user to request a one-time GitHub OAuth token from the triggering user at execution time.",
+          "default": false
+        },
+        "dispatchFallback": {
+          "type": "string",
+          "title": "User Credential Fallback",
+          "description": "What to do when a GitHub action requests user credentials but the triggering user has not connected GitHub.",
+          "enum": ["reject", "service_account"],
+          "default": "reject"
+        },
+        "userTokenScopes": {
+          "type": "string",
+          "title": "User OAuth Scopes",
+          "description": "Optional space- or comma-separated GitHub OAuth scopes for user-attributed action dispatch. Leave empty to request read:user user:email read:org repo workflow."
         },
         "orgName": {
           "type": "string",

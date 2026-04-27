@@ -17,6 +17,16 @@ import (
 
 const apiBase = "https://api.github.com"
 
+// OAuthTokenResponse is the token payload returned by GitHub's OAuth exchange.
+type OAuthTokenResponse struct {
+	AccessToken           string
+	RefreshToken          string
+	TokenType             string
+	Scope                 string
+	ExpiresIn             int
+	RefreshTokenExpiresIn int
+}
+
 // Client authenticates to the GitHub REST API via PAT or GitHub App installation token.
 type Client struct {
 	httpClient *http.Client
@@ -197,6 +207,15 @@ func ParseGitHubURL(rawURL string) (owner, repo string, err error) {
 
 // ExchangeOAuthCode exchanges a GitHub OAuth authorization code for an access token.
 func ExchangeOAuthCode(code, clientID, clientSecret string) (string, error) {
+	tokenResp, err := ExchangeOAuthCodeWithResponse(code, clientID, clientSecret)
+	if err != nil {
+		return "", err
+	}
+	return tokenResp.AccessToken, nil
+}
+
+// ExchangeOAuthCodeWithResponse exchanges a GitHub OAuth authorization code and returns token metadata.
+func ExchangeOAuthCodeWithResponse(code, clientID, clientSecret string) (*OAuthTokenResponse, error) {
 	params := url.Values{}
 	params.Set("code", code)
 	params.Set("client_id", clientID)
@@ -204,30 +223,43 @@ func ExchangeOAuthCode(code, clientID, clientSecret string) (string, error) {
 
 	req, err := http.NewRequest(http.MethodPost, "https://github.com/login/oauth/access_token", strings.NewReader(params.Encode()))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Gantry/1.0")
 
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	res, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("exchange oauth code: %w", err)
+		return nil, fmt.Errorf("exchange oauth code: %w", err)
 	}
 	defer res.Body.Close()
 
 	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-		Error       string `json:"error"`
-		ErrorDesc   string `json:"error_description"`
+		AccessToken           string `json:"access_token"`
+		RefreshToken          string `json:"refresh_token"`
+		TokenType             string `json:"token_type"`
+		Scope                 string `json:"scope"`
+		ExpiresIn             int    `json:"expires_in"`
+		RefreshTokenExpiresIn int    `json:"refresh_token_expires_in"`
+		Error                 string `json:"error"`
+		ErrorDesc             string `json:"error_description"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&tokenResp); err != nil {
-		return "", fmt.Errorf("decode token response: %w", err)
+		return nil, fmt.Errorf("decode token response: %w", err)
 	}
 	if tokenResp.Error != "" {
-		return "", fmt.Errorf("github oauth: %s: %s", tokenResp.Error, tokenResp.ErrorDesc)
+		return nil, fmt.Errorf("github oauth: %s: %s", tokenResp.Error, tokenResp.ErrorDesc)
 	}
-	return tokenResp.AccessToken, nil
+	return &OAuthTokenResponse{
+		AccessToken:           tokenResp.AccessToken,
+		RefreshToken:          tokenResp.RefreshToken,
+		TokenType:             tokenResp.TokenType,
+		Scope:                 tokenResp.Scope,
+		ExpiresIn:             tokenResp.ExpiresIn,
+		RefreshTokenExpiresIn: tokenResp.RefreshTokenExpiresIn,
+	}, nil
 }
 
 // FetchUserWithToken fetches the authenticated GitHub user using the given access token.
@@ -239,6 +271,7 @@ func FetchUserWithToken(accessToken string) (*GitHubUser, error) {
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "Gantry/1.0")
 
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	res, err := httpClient.Do(req)
@@ -246,6 +279,16 @@ func FetchUserWithToken(accessToken string) (*GitHubUser, error) {
 		return nil, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		var ghErr struct {
+			Message string `json:"message"`
+		}
+		_ = json.NewDecoder(res.Body).Decode(&ghErr)
+		if ghErr.Message == "" {
+			ghErr.Message = res.Status
+		}
+		return nil, fmt.Errorf("GitHub API returned HTTP %d: %s", res.StatusCode, ghErr.Message)
+	}
 
 	var user GitHubUser
 	if err := json.NewDecoder(res.Body).Decode(&user); err != nil {
