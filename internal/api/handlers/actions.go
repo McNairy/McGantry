@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -166,10 +167,35 @@ func (h *Handlers) validateExecuteActionSecrets(r *http.Request, secrets map[str
 	return fmt.Errorf("GitHub token belongs to %q, not Gantry user %q", ghUser.Login, currentUser.Username)
 }
 
-// ListAllActionRuns handles GET /actions/runs. It returns recent runs across
-// all actions, ordered by most recent first.
+// ListAllActionRuns handles GET /actions/runs. It returns runs across all
+// actions, ordered by most recent first. The optional limit and offset query
+// params support paginated reads.
 func (h *Handlers) ListAllActionRuns(w http.ResponseWriter, r *http.Request) {
-	runs, err := h.DB.ListActionRuns(r.Context(), "")
+	limit := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		limit = n
+	}
+
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "offset must be a non-negative integer")
+			return
+		}
+		if limit == 0 && n > 0 {
+			writeError(w, http.StatusBadRequest, "offset requires limit")
+			return
+		}
+		offset = n
+	}
+
+	runs, err := h.DB.ListActionRuns(r.Context(), "", limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list action runs")
 		return
@@ -185,7 +211,7 @@ func (h *Handlers) ListAllActionRuns(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListActionRuns(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
-	runs, err := h.DB.ListActionRuns(r.Context(), name)
+	runs, err := h.DB.ListActionRuns(r.Context(), name, 0, 0)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list action runs")
 		return
