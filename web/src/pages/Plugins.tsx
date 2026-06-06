@@ -723,6 +723,8 @@ function ConfigFormBody({
     );
   }
 
+  const isExternalAuthProvider = plugin.source === 'external' && plugin.category === 'auth-provider';
+
   return (
     <div className="space-y-6">
       {sections ? (
@@ -766,6 +768,49 @@ function ConfigFormBody({
       ) : (
         <div className="space-y-4">
           {ungroupedKeys.map((key) => renderField(key))}
+        </div>
+      )}
+
+      {isExternalAuthProvider && (
+        <div className="rounded-lg border border-[var(--gantry-border)] overflow-hidden">
+          <div className="px-5 py-3.5 bg-[var(--gantry-bg-tertiary)] border-b border-[var(--gantry-border)]">
+            <h3 className="text-sm font-semibold text-[var(--gantry-text-primary)]">Sign-in Integration</h3>
+            <p className="text-xs text-[var(--gantry-text-secondary)] mt-0.5">
+              Gantry uses these settings to show a login button and handle the OAuth/OIDC flow.
+            </p>
+          </div>
+          <div className="px-5 py-4 space-y-4 bg-[var(--gantry-bg-primary)]">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+                OIDC Issuer URL
+              </label>
+              <input
+                type="text"
+                value={values['oidcIssuerUrl'] ?? ''}
+                onChange={(e) => setValues((prev) => ({ ...prev, oidcIssuerUrl: e.target.value }))}
+                placeholder="https://auth.example.com/application/o/my-app/"
+                className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] placeholder:text-[var(--gantry-text-secondary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+              />
+              <p className="text-xs text-[var(--gantry-text-secondary)]">
+                The OIDC issuer URL for this provider. For Authentik, find it under your application's Provider settings.
+              </p>
+            </div>
+            {(values['gantryExternalUrl'] || values['oidcIssuerUrl']) && (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+                  Redirect URI
+                </label>
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-secondary)] px-3 py-2">
+                  <code className="text-xs text-[var(--gantry-text-primary)] break-all select-all flex-1">
+                    {(values['gantryExternalUrl'] ?? '').replace(/\/$/, '')}/api/v1/auth/plugin/{plugin.name}/callback
+                  </code>
+                </div>
+                <p className="text-xs text-[var(--gantry-text-secondary)]">
+                  Register this URI as an allowed redirect URI in your identity provider.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -841,7 +886,8 @@ function PluginDetailModal({
   const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
   const iconBg = CATEGORY_ICON_BG[plugin.category] ?? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]';
   const canSync = !comingSoon && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
-  const configHasFields = config && Object.keys(config.schema?.properties ?? {}).length > 0;
+  const isExternalAuthProvider = plugin.source === 'external' && plugin.category === 'auth-provider';
+  const configHasFields = config && (Object.keys(config.schema?.properties ?? {}).length > 0 || isExternalAuthProvider);
 
   // Parse longDescription paragraphs
   const paragraphs = (plugin.longDescription ?? plugin.description).split('\n\n').filter(Boolean);
