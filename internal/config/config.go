@@ -25,6 +25,7 @@ type FileConfig struct {
 	JWTSecret     string `yaml:"jwtSecret"`
 	DataDir       string `yaml:"dataDir"`
 	EncryptionKey string `yaml:"encryptionKey"`
+	PluginDir     string `yaml:"pluginDir"`
 }
 
 // loadFileConfig reads a YAML config file and returns a FileConfig.
@@ -78,6 +79,9 @@ func applyFileConfig(cfg *Config, fc *FileConfig) {
 	if fc.EncryptionKey != "" {
 		cfg.EncryptionKey = fc.EncryptionKey
 	}
+	if fc.PluginDir != "" {
+		cfg.PluginDir = fc.PluginDir
+	}
 }
 
 // Config holds all Gantry configuration.
@@ -90,6 +94,7 @@ type Config struct {
 	JWTSecret     string // secret for signing JWT tokens
 	DataDir       string // directory for SQLite database and other data
 	EncryptionKey string // key for AES-256-GCM encryption of DB secrets (GANTRY_ENCRYPTION_KEY)
+	PluginDir     string // directory to scan for external plugin binaries (GANTRY_PLUGIN_DIR)
 }
 
 // Default returns a Config with sensible defaults for local development.
@@ -165,6 +170,10 @@ func applyEnv(cfg *Config) {
 
 	if v := os.Getenv("GANTRY_ENCRYPTION_KEY"); v != "" {
 		cfg.EncryptionKey = v
+	}
+
+	if v := os.Getenv("GANTRY_PLUGIN_DIR"); v != "" {
+		cfg.PluginDir = v
 	}
 }
 

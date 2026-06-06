@@ -1,16 +1,19 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go2engle/gantry/internal/auth"
 	"github.com/go2engle/gantry/internal/gitops"
 	"github.com/go2engle/gantry/internal/plugins"
+	"github.com/go2engle/gantry/internal/plugins/external"
 	argocd "github.com/go2engle/gantry/internal/plugins/argocd"
 	ghplugin "github.com/go2engle/gantry/internal/plugins/github"
 	k8s "github.com/go2engle/gantry/internal/plugins/kubernetes"
@@ -40,23 +43,37 @@ func (h *Handlers) ListPlugins(w http.ResponseWriter, r *http.Request) {
 
 	type pluginListItem struct {
 		plugins.RegistryEntry
-		Enabled bool `json:"enabled"`
+		Enabled   bool  `json:"enabled"`
+		Available *bool `json:"available,omitempty"`
 	}
 
 	items := make([]pluginListItem, 0, len(dbPlugins))
 	for _, p := range dbPlugins {
 		item := pluginListItem{Enabled: p.Enabled}
-		// Prefer registry metadata (always up to date with the binary).
+		// Bundled plugins: prefer registry metadata (always up to date with the binary).
+		// External plugins: use the manifest stored in the DB (set by EnsureExternalPlugin).
 		if entry, ok := registryMap[p.Name]; ok {
 			item.RegistryEntry = *entry
+			item.RegistryEntry.Source = "bundled"
 		} else if p.Manifest != nil {
 			item.RegistryEntry = plugins.RegistryEntry{
-				Name:        p.Manifest.Name,
-				Title:       p.Manifest.Title,
-				Description: p.Manifest.Description,
-				Version:     p.Manifest.Version,
-				Author:      p.Manifest.Author,
-				Category:    p.Manifest.Category,
+				Name:         p.Manifest.Name,
+				Title:        p.Manifest.Title,
+				Description:  p.Manifest.Description,
+				Version:      p.Manifest.Version,
+				Author:       p.Manifest.Author,
+				Category:     p.Manifest.Category,
+				IconURL:      p.Manifest.IconURL,
+				Homepage:     p.Manifest.Homepage,
+				EntityPanels: p.Manifest.EntityPanels,
+				ActionTypes:  p.Manifest.ActionTypes,
+				Requirements: p.Manifest.Requirements,
+				Source:       p.Manifest.Source,
+			}
+			if h.ExternalManager != nil {
+				ep := h.ExternalManager.Get(p.Name)
+				avail := ep != nil && ep.Available()
+				item.Available = &avail
 			}
 		}
 		items = append(items, item)
@@ -78,7 +95,19 @@ func (h *Handlers) GetPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.Config = redactSecretValues(p.Config).(map[string]any)
-	writeJSON(w, http.StatusOK, p)
+
+	type pluginDetail struct {
+		*plugins.Plugin
+		Available *bool `json:"available,omitempty"`
+	}
+	resp := &pluginDetail{Plugin: p}
+	if h.ExternalManager != nil {
+		if ep := h.ExternalManager.Get(name); ep != nil {
+			avail := ep.Available()
+			resp.Available = &avail
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // EnablePlugin enables or disables a plugin.
@@ -139,6 +168,29 @@ func (h *Handlers) EnablePlugin(w http.ResponseWriter, r *http.Request) {
 	// Dynamically initialize or shut down the GitOps service.
 	if name == "gitops" {
 		go h.InitGitOps()
+	}
+
+	// Notify external plugin subprocess of the enabled-state change.
+	if h.ExternalManager != nil {
+		if ep := h.ExternalManager.Get(name); ep != nil {
+			cfgMap := make(map[string]string)
+			if p, _ := h.DB.GetPlugin(r.Context(), name); p != nil {
+				for k, v := range p.Config {
+					if s, ok := v.(string); ok {
+						cfgMap[k] = s
+					}
+				}
+			}
+			if h.InternalPluginToken != "" {
+				cfgMap["gantryInternalToken"] = h.InternalPluginToken
+			}
+			if h.GantryURL != "" {
+				cfgMap["gantryUrl"] = h.GantryURL
+			}
+			if err := ep.Configure(cfgMap); err != nil {
+				log.Printf("[external-plugin:%s] configure after enable toggle: %v", name, err)
+			}
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -211,6 +263,27 @@ func (h *Handlers) UpdatePluginConfig(w http.ResponseWriter, r *http.Request) {
 	// Reinitialize GitOps if its config changed while enabled.
 	if name == "gitops" {
 		go h.InitGitOps()
+	}
+
+	// Push updated config to external plugin subprocess.
+	if h.ExternalManager != nil {
+		if ep := h.ExternalManager.Get(name); ep != nil {
+			cfgMap := make(map[string]string, len(merged))
+			for k, v := range merged {
+				if s, ok := v.(string); ok {
+					cfgMap[k] = s
+				}
+			}
+			if h.InternalPluginToken != "" {
+				cfgMap["gantryInternalToken"] = h.InternalPluginToken
+			}
+			if h.GantryURL != "" {
+				cfgMap["gantryUrl"] = h.GantryURL
+			}
+			if err := ep.Configure(cfgMap); err != nil {
+				log.Printf("[external-plugin:%s] configure after config update: %v", name, err)
+			}
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -365,6 +438,18 @@ func (h *Handlers) SyncPlugin(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, result)
 	default:
+		// Dispatch to external plugin subprocess if available.
+		if h.ExternalManager != nil {
+			if ep := h.ExternalManager.Get(name); ep != nil && ep.Available() {
+				result, err := ep.Sync()
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "external plugin sync failed: "+err.Error())
+					return
+				}
+				writeJSON(w, http.StatusOK, result)
+				return
+			}
+		}
 		writeError(w, http.StatusNotImplemented, "sync not supported for plugin: "+name)
 	}
 }
@@ -693,4 +778,68 @@ func (h *Handlers) StreamKubernetesPodLogs(w http.ResponseWriter, r *http.Reques
 	}
 
 	client.StreamLogs(w, namespace, pod, container, 200)
+}
+
+// GetEntityPanelData calls GetPanelData on every enabled external plugin that
+// declares support for the requested entity kind. Results are keyed by plugin name.
+// Each plugin gets a 500 ms timeout.
+func (h *Handlers) GetEntityPanelData(w http.ResponseWriter, r *http.Request) {
+	kind := chi.URLParam(r, "kind")
+	name := chi.URLParam(r, "name")
+	namespace := r.URL.Query().Get("namespace")
+
+	if h.ExternalManager == nil {
+		writeJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+
+	results := make(map[string]json.RawMessage)
+	for _, ep := range h.ExternalManager.All() {
+		if !ep.Available() {
+			continue
+		}
+		m := ep.GetManifest()
+		if m == nil || !entityKindInPanels(kind, m.EntityPanels) {
+			continue
+		}
+		dbPlugin, err := h.DB.GetPlugin(r.Context(), ep.Name)
+		if err != nil || dbPlugin == nil || !dbPlugin.Enabled {
+			continue
+		}
+
+		type panelResult struct {
+			data json.RawMessage
+			err  error
+		}
+		ch := make(chan panelResult, 1)
+		epName := ep.Name
+		args := external.PanelArgs{Kind: kind, Name: name, Namespace: namespace}
+		go func() {
+			d, e := ep.GetPanelData(args)
+			ch <- panelResult{d, e}
+		}()
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		var pr panelResult
+		select {
+		case pr = <-ch:
+		case <-ctx.Done():
+			pr.err = ctx.Err()
+		}
+		cancel()
+		if pr.err != nil {
+			log.Printf("[external-plugin:%s] GetPanelData: %v", epName, pr.err)
+			continue
+		}
+		results[epName] = pr.data
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
+func entityKindInPanels(kind string, panels []string) bool {
+	for _, p := range panels {
+		if p == kind {
+			return true
+		}
+	}
+	return false
 }

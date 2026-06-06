@@ -1544,6 +1544,59 @@ func (d *DB) EnsureBundledPlugins(ctx context.Context, entries []plugins.Registr
 	return nil
 }
 
+// EnsureExternalPlugin creates a DB record for an external plugin on first
+// discovery, or updates the version and manifest on re-discovery while
+// preserving the user's enabled state and config.
+func (d *DB) EnsureExternalPlugin(ctx context.Context, manifest *plugins.Manifest) error {
+	// If a bundled plugin previously occupied this name, remove it so the
+	// external plugin starts with a clean enabled=false state and empty config.
+	existing, err := d.GetPlugin(ctx, manifest.Name)
+	if err != nil {
+		return fmt.Errorf("check existing plugin %s: %w", manifest.Name, err)
+	}
+	if existing != nil && (existing.Manifest == nil || existing.Manifest.Source != "external") {
+		if _, err := d.exec(ctx, `DELETE FROM plugins WHERE name = ?`, manifest.Name); err != nil {
+			return fmt.Errorf("remove stale bundled plugin %s: %w", manifest.Name, err)
+		}
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	manifest.Source = "external"
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		return fmt.Errorf("marshal manifest for %s: %w", manifest.Name, err)
+	}
+
+	idBytes := make([]byte, 8)
+	if _, err := rand.Read(idBytes); err != nil {
+		return fmt.Errorf("generate id for %s: %w", manifest.Name, err)
+	}
+	id := fmt.Sprintf("%x", idBytes)
+
+	emptyConfig, err := json.Marshal(map[string]any{})
+	if err != nil {
+		return err
+	}
+	encryptedConfig, err := gantrycrypto.Encrypt(d.encKey, emptyConfig)
+	if err != nil {
+		return fmt.Errorf("encrypting empty config for %s: %w", manifest.Name, err)
+	}
+
+	_, err = d.exec(ctx, `
+		INSERT INTO plugins (id, name, version, enabled, config, manifest, installed_at, updated_at)
+		VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			version    = excluded.version,
+			manifest   = excluded.manifest,
+			updated_at = excluded.updated_at`,
+		id, manifest.Name, manifest.Version,
+		encryptedConfig,
+		string(manifestJSON),
+		now, now,
+	)
+	return err
+}
+
 // UpdatePluginEnabled sets the enabled flag for a plugin.
 func (d *DB) UpdatePluginEnabled(ctx context.Context, name string, enabled bool) error {
 	_, err := d.exec(ctx,

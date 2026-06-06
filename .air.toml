@@ -2,7 +2,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./bin/gantry ./cmd/gantry"
+  cmd = "go build -buildvcs=false -o ./bin/gantry ./cmd/gantry"
   bin = "./bin/gantry"
   full_bin = "./bin/gantry serve --dev"
   include_ext = ["go"]
