@@ -237,6 +237,9 @@ export interface PluginRegistryEntry {
    */
   entityPanels?: string[];
   actionTypes?: string[];
+  requirements?: { name: string; description: string; optional?: boolean }[];
+  source?: string;
+  available?: boolean;
   enabled: boolean;
 }
 

@@ -180,16 +180,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			dbManifest := &plugins.Manifest{
-				Name:         m.Name,
-				Title:        m.Title,
-				Description:  m.Description,
-				Version:      m.Version,
-				Author:       m.Author,
-				Category:     m.Category,
-				IconURL:      m.IconURL,
-				Homepage:     m.Homepage,
-				EntityPanels: m.EntityPanels,
-				ActionTypes:  m.ActionTypes,
+				Name:          m.Name,
+				Title:         m.Title,
+				Description:   m.Description,
+				Version:       m.Version,
+				Author:        m.Author,
+				Category:      m.Category,
+				IconURL:       m.IconURL,
+				Homepage:      m.Homepage,
+				EntityPanels:  m.EntityPanels,
+				ActionTypes:   m.ActionTypes,
+				AuthBeginPath: m.AuthBeginPath,
 			}
 			if m.ConfigSchemaJSON != "" {
 				_ = json.Unmarshal([]byte(m.ConfigSchemaJSON), &dbManifest.ConfigSchema)

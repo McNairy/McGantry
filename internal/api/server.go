@@ -87,6 +87,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 	r.Get("/api/internal/entity", h.InternalGetEntity)
 	r.Post("/api/internal/entity-upsert", h.InternalUpsertEntity)
 	r.Post("/api/internal/entity-delete", h.InternalDeleteEntity)
+	r.Patch("/api/internal/plugins/{name}/config", h.InternalUpdatePluginConfig)
 
 	// Prometheus metrics (public -- scrape targets typically don't send auth).
 	r.Handle("/metrics", metrics.Handler(func() {
@@ -111,6 +112,11 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 		api.Get("/auth/azure/config", h.GetAzureSSOConfig)
 		api.Get("/auth/azure", h.AzureOAuthBegin)
 		api.Get("/auth/azure/callback", h.AzureOAuthCallback)
+		// Dynamic list of enabled auth providers — used by the login page.
+		api.Get("/auth/providers", h.GetAuthProviders)
+		// Generic OIDC flow for external auth-provider plugins.
+		api.Get("/auth/plugin/{name}", h.PluginOIDCBegin)
+		api.Get("/auth/plugin/{name}/callback", h.PluginOIDCCallback)
 
 		// Authenticated routes.
 		api.Group(func(protected chi.Router) {

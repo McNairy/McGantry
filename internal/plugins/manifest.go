@@ -20,6 +20,9 @@ type Manifest struct {
 	// ActionTypes lists action types this plugin contributes.
 	ActionTypes  []string             `json:"actionTypes,omitempty"`
 	Requirements []PluginRequirement  `json:"requirements,omitempty"`
+	// AuthBeginPath is the Gantry-relative URL path that starts the auth flow
+	// for auth-provider plugins (e.g. "/api/v1/auth/authentik").
+	AuthBeginPath string `json:"authBeginPath,omitempty"`
 }
 
 // PluginRequirement describes a prerequisite for a plugin.

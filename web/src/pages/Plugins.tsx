@@ -837,7 +837,7 @@ function PluginDetailModal({
     }
   }
 
-  const comingSoon = !IMPLEMENTED_PLUGINS.has(plugin.name);
+  const comingSoon = !IMPLEMENTED_PLUGINS.has(plugin.name) && plugin.source !== 'external';
   const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
   const iconBg = CATEGORY_ICON_BG[plugin.category] ?? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]';
   const canSync = !comingSoon && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
@@ -1111,13 +1111,15 @@ function PluginCard({
   onSync: () => void;
   onOpenDetail: (tab: 'overview' | 'config') => void;
 }) {
-  const comingSoon = !IMPLEMENTED_PLUGINS.has(plugin.name);
+  const comingSoon = !IMPLEMENTED_PLUGINS.has(plugin.name) && plugin.source !== 'external';
   const categoryColor = CATEGORY_COLORS[plugin.category] ?? 'bg-gray-100 text-gray-700';
   const iconBg = CATEGORY_ICON_BG[plugin.category] ?? 'bg-[var(--gantry-accent)]/10 text-[var(--gantry-accent)]';
   const canSync = !comingSoon && plugin.enabled && SYNCABLE_PLUGINS.has(plugin.name);
 
+  // TODO: residual hover flickering on the All tab — transition-shadow was removed as a partial
+  // fix but child elements may still have transitions causing a ripple when cursor moves between cards.
   return (
-    <div className={`group flex flex-col rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] transition-shadow ${comingSoon ? 'opacity-50' : 'hover:shadow-md'}`}>
+    <div className={`group flex flex-col rounded-xl border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] ${comingSoon ? 'opacity-50' : 'hover:shadow-md'}`}>
       {/* Card top accent strip */}
       <div className="h-1 w-full rounded-t-xl bg-[var(--gantry-accent)]/20" />
 

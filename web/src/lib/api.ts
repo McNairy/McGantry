@@ -166,6 +166,9 @@ export const api = {
     return fetch(url, { headers: h, signal });
   },
 
+  getAuthProviders: () =>
+    request<{ name: string; title: string; iconUrl?: string; loginUrl: string }[]>('GET', '/auth/providers'),
+
   getGitHubSSOConfig: () =>
     request<{ ssoEnabled: boolean; dispatchAsUser?: boolean }>('GET', '/auth/github/config'),
 
