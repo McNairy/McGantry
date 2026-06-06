@@ -16,6 +16,7 @@ import (
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
 	"github.com/go2engle/gantry/internal/gitops"
+	"github.com/go2engle/gantry/internal/plugins/external"
 	"github.com/go2engle/gantry/internal/search"
 )
 
@@ -26,10 +27,13 @@ type Handlers struct {
 	Events     *events.Bus
 	Validator  *entity.SchemaValidator
 	SearchSvc  *search.Service
-	Dispatcher *dispatcher.Manager
-	GitOps     *gitops.Service
-	DataDir    string // root data directory, used for GitOps repo storage
-	Version    string // build-time version string
+	Dispatcher          *dispatcher.Manager
+	GitOps              *gitops.Service
+	ExternalManager     *external.Manager
+	InternalPluginToken string // shared secret for plugin->Gantry internal API calls
+	GantryURL           string // local base URL (e.g. http://127.0.0.1:8080) injected into plugin config
+	DataDir             string // root data directory, used for GitOps repo storage
+	Version             string // build-time version string
 
 	teamsNotifierOnce sync.Once
 	teamsCfgMu        sync.RWMutex

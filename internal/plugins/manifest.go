@@ -9,6 +9,7 @@ type Manifest struct {
 	Version     string            `json:"version"`
 	Author      string            `json:"author"`
 	Category    string            `json:"category"` // integration | widget | entity-kind | action-type | auth-provider
+	Source      string            `json:"source,omitempty"`
 	BundleURL   string            `json:"bundleUrl,omitempty"`
 	IconURL     string            `json:"iconUrl,omitempty"`
 	Homepage    string            `json:"homepage,omitempty"`
@@ -17,7 +18,15 @@ type Manifest struct {
 	// EntityPanels lists the entity kinds this plugin contributes panels to.
 	EntityPanels []string `json:"entityPanels,omitempty"`
 	// ActionTypes lists action types this plugin contributes.
-	ActionTypes []string `json:"actionTypes,omitempty"`
+	ActionTypes  []string             `json:"actionTypes,omitempty"`
+	Requirements []PluginRequirement  `json:"requirements,omitempty"`
+}
+
+// PluginRequirement describes a prerequisite for a plugin.
+type PluginRequirement struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Optional    bool   `json:"optional,omitempty"`
 }
 
 // Plugin represents an installed plugin record combining a manifest with runtime state.
@@ -46,5 +55,7 @@ type RegistryEntry struct {
 	Homepage        string         `json:"homepage,omitempty"`
 	ConfigSchema    map[string]any `json:"configSchema,omitempty"`
 	EntityPanels    []string       `json:"entityPanels,omitempty"`
-	ActionTypes     []string       `json:"actionTypes,omitempty"`
+	ActionTypes     []string            `json:"actionTypes,omitempty"`
+	Requirements    []PluginRequirement `json:"requirements,omitempty"`
+	Source          string              `json:"source,omitempty"`
 }

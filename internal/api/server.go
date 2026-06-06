@@ -30,7 +30,7 @@ import (
 // Server is the Gantry HTTP server.
 type Server struct {
 	config   *config.Config
-	handler  http.Handler
+	router   chi.Router
 	port     int
 	Handlers *handlers.Handlers
 }
@@ -82,6 +82,11 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 	// Health check routes (public).
 	r.Get("/healthz", h.Healthz)
 	r.Get("/readyz", h.Readyz)
+
+	// Internal plugin API — authenticated via X-Gantry-Internal-Token header, not JWT.
+	r.Get("/api/internal/entity", h.InternalGetEntity)
+	r.Post("/api/internal/entity-upsert", h.InternalUpsertEntity)
+	r.Post("/api/internal/entity-delete", h.InternalDeleteEntity)
 
 	// Prometheus metrics (public -- scrape targets typically don't send auth).
 	r.Handle("/metrics", metrics.Handler(func() {
@@ -158,6 +163,7 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 			protected.Get("/entities", h.ListEntities)
 			protected.Get("/entities/{kind}", h.ListEntitiesByKind)
 			protected.Get("/entities/{kind}/{name}/documentation", h.ListEntityDocumentation)
+			protected.Get("/entities/{kind}/{name}/panels", h.GetEntityPanelData)
 			protected.Get("/entities/{kind}/{name}", h.GetEntity)
 			protected.With(middleware.RequireRole("developer")).Post("/entities", h.CreateEntity)
 			protected.With(middleware.RequireRole("developer")).Put("/entities/{kind}/{name}", h.UpdateEntity)
@@ -274,21 +280,30 @@ func NewServer(cfg *config.Config, database *db.DB, authSvc *auth.Service, event
 
 	return &Server{
 		config:   cfg,
-		handler:  r,
+		router:   r,
 		port:     cfg.Port,
 		Handlers: h,
 	}
 }
 
+// MountPluginProxy registers a reverse-proxy handler at the given path prefix,
+// forwarding requests to upstream (e.g. "http://127.0.0.1:54321").
+// Called after NewServer so external plugins can declare routes dynamically.
+func (s *Server) MountPluginProxy(pathPrefix, upstream string) {
+	proxy := newPluginReverseProxy(upstream, pathPrefix)
+	s.router.Handle(pathPrefix, proxy)
+	s.router.Handle(pathPrefix+"/*", proxy)
+}
+
 // Router returns the HTTP handler for use with a custom http.Server.
 func (s *Server) Router() http.Handler {
-	return s.handler
+	return s.router
 }
 
 // Start begins listening for HTTP requests on the configured port.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
-	return http.ListenAndServe(addr, s.handler)
+	return http.ListenAndServe(addr, s.router)
 }
 
 // spaFileServer returns an http.Handler that serves static files from root.

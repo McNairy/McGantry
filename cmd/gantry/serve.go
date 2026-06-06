@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +22,7 @@ import (
 	"github.com/go2engle/gantry/internal/entity"
 	"github.com/go2engle/gantry/internal/events"
 	"github.com/go2engle/gantry/internal/plugins"
+	"github.com/go2engle/gantry/internal/plugins/external"
 	"github.com/go2engle/gantry/internal/search"
 	"github.com/spf13/cobra"
 )
@@ -48,6 +54,7 @@ WebSocket endpoint for live updates.`,
 	cmd.Flags().String("config", "", "Path to config file (default: gantry.yaml)")
 	cmd.Flags().String("tls-cert", "", "Path to TLS certificate file (enables HTTPS)")
 	cmd.Flags().String("tls-key", "", "Path to TLS private key file (enables HTTPS)")
+	cmd.Flags().String("plugin-dir", "", "Directory to scan for external plugin binaries (gantry-plugin-*)")
 
 	return cmd
 }
@@ -81,11 +88,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cfg.AdminPassword = adminPw
 	}
 
+	if pluginDir, _ := cmd.Flags().GetString("plugin-dir"); pluginDir != "" {
+		cfg.PluginDir = pluginDir
+	}
+
 	tlsCert, _ := cmd.Flags().GetString("tls-cert")
 	tlsKey, _ := cmd.Flags().GetString("tls-key")
 
 	// Initialize database and run migrations.
 	authService := auth.NewService(cfg.JWTSecret)
+
+	// Derive a stable internal token for plugin->Gantry API calls.
+	// HMAC-SHA256(jwtSecret, "gantry-plugin-internal") — changes only if JWTSecret rotates.
+	mac := hmac.New(sha256.New, []byte(cfg.JWTSecret))
+	mac.Write([]byte("gantry-plugin-internal"))
+	internalPluginToken := hex.EncodeToString(mac.Sum(nil))
 
 	database, err := db.New(cfg)
 	if err != nil {
@@ -136,6 +153,60 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("registering bundled plugins: %w", err)
 	}
 
+	// Create and start the external plugin manager.
+	gantryURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Port)
+	extManager := external.NewManager(func(ctx context.Context, name string) (map[string]string, error) {
+		p, err := database.GetPlugin(ctx, name)
+		if err != nil || p == nil {
+			return nil, err
+		}
+		out := make(map[string]string, len(p.Config)+2)
+		for k, v := range p.Config {
+			if s, ok := v.(string); ok {
+				out[k] = s
+			}
+		}
+		out["gantryInternalToken"] = internalPluginToken
+		out["gantryUrl"] = gantryURL
+		return out, nil
+	})
+	if cfg.PluginDir != "" {
+		if err := extManager.StartAll(context.Background(), cfg.PluginDir); err != nil {
+			log.Printf("[external-plugins] warning: %v", err)
+		}
+		for _, ep := range extManager.All() {
+			m := ep.GetManifest()
+			if m == nil {
+				continue
+			}
+			dbManifest := &plugins.Manifest{
+				Name:         m.Name,
+				Title:        m.Title,
+				Description:  m.Description,
+				Version:      m.Version,
+				Author:       m.Author,
+				Category:     m.Category,
+				IconURL:      m.IconURL,
+				Homepage:     m.Homepage,
+				EntityPanels: m.EntityPanels,
+				ActionTypes:  m.ActionTypes,
+			}
+			if m.ConfigSchemaJSON != "" {
+				_ = json.Unmarshal([]byte(m.ConfigSchemaJSON), &dbManifest.ConfigSchema)
+			}
+			for _, r := range m.Requirements {
+				dbManifest.Requirements = append(dbManifest.Requirements, plugins.PluginRequirement{
+					Name:        r.Name,
+					Description: r.Description,
+					Optional:    r.Optional,
+				})
+			}
+			if err := database.EnsureExternalPlugin(context.Background(), dbManifest); err != nil {
+				log.Printf("[external-plugins] %s: failed to register in DB: %v", m.Name, err)
+			}
+		}
+	}
+
 	// Create core services.
 	eventBus := events.New()
 	searchService := search.New(database.DB)
@@ -157,6 +228,33 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Create the API server.
 	srv := api.NewServer(cfg, database, authService, eventBus, validator, searchService, wsHub, Version)
+
+	// Inject external plugin manager and internal token into handlers.
+	srv.Handlers.ExternalManager = extManager
+	srv.Handlers.InternalPluginToken = internalPluginToken
+	srv.Handlers.GantryURL = gantryURL
+
+	// Mount reverse-proxy routes for HTTP-capable external plugins.
+	if cfg.PluginDir != "" {
+		for _, ep := range extManager.All() {
+			m := ep.GetManifest()
+			if m == nil || !m.SupportsHTTP {
+				continue
+			}
+			addr := ep.GetListenAddr()
+			if addr == "" {
+				continue
+			}
+			var routes []external.Route
+			if m.HTTPRoutesJSON != "" {
+				_ = json.Unmarshal([]byte(m.HTTPRoutesJSON), &routes)
+			}
+			for _, route := range routes {
+				srv.MountPluginProxy(route.Path, "http://"+addr)
+				log.Printf("[external-plugins] %s: proxying %s -> http://%s", m.Name, route.Path, addr)
+			}
+		}
+	}
 
 	// Initialize GitOps service if the plugin is installed and enabled.
 	srv.Handlers.InitGitOps()
@@ -252,6 +350,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		if srv.Handlers.GitOps != nil {
 			srv.Handlers.GitOps.Stop()
 		}
+
+		extManager.StopAll()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
