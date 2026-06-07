@@ -25,15 +25,36 @@ cp gantry-plugin-my-thing /path/to/plugins/
 # enable in Gantry UI
 ```
 
-## Migrate an internal plugin to external
+## Migrate an old-style plugin to external
+
+Point the tool at any plugin source directory written for the old internal plugin system:
 
 ```bash
-gantry-migrate-plugin <name>      # generates external plugin, patches Gantry host
-cd gantry-plugin-<name>
+gantry-migrate-plugin --src ./my-plugin
+cd gantry-plugin-my-plugin
 go mod tidy && go mod vendor
-go build -o gantry-plugin-<name> .
-cp gantry-plugin-<name> /path/to/plugins/
-# delete internal/plugins/<name>/ from McGantry source
+go build -o gantry-plugin-my-plugin .
+cp gantry-plugin-my-plugin /path/to/plugins/
+# enable in Gantry UI
+```
+
+The tool auto-detects the plugin name, entity import path, and SyncResult field mappings from the source. Optional flags:
+
+```
+--name        override plugin name (default: detected from package declaration)
+--title       display title shown in UI
+--description plugin description
+--category    plugin category (default: integration)
+--module      Go module path (default: mcxample/gantry-plugin-<name>)
+--output      output directory (default: ./gantry-plugin-<name>)
+--entity-src  path to entity package if not using embedded snapshot
+```
+
+To migrate a plugin that is part of the McGantry source (e.g. `internal/plugins/argocd`):
+
+```bash
+gantry-migrate-plugin --src ./internal/plugins/argocd --title "ArgoCD"
+# then remove internal/plugins/argocd/ from McGantry source
 ```
 
 ## Changing the plugin interface
