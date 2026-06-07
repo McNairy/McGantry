@@ -7,7 +7,7 @@ import "github.com/hashicorp/go-plugin"
 // go-plugin to return an error immediately so accidentally-invoked binaries
 // fail fast rather than hanging.
 var Handshake = plugin.HandshakeConfig{
-	ProtocolVersion:  1,
+	ProtocolVersion:  2,
 	MagicCookieKey:   "GANTRY_PLUGIN",
 	MagicCookieValue: "gantry-plugin-v1",
 }

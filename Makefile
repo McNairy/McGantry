@@ -1,4 +1,4 @@
-.PHONY: build run test lint clean dev frontend backend
+.PHONY: build run test lint clean dev frontend backend proto
 
 # Build the entire project (frontend + backend)
 build: frontend backend
@@ -59,3 +59,11 @@ dev-frontend:
 # Format Go code
 fmt:
 	gofmt -w .
+
+# Generate protobuf/gRPC code for the external plugin system.
+# Requires: protoc, protoc-gen-go, protoc-gen-go-grpc
+proto:
+	protoc \
+		--go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		internal/plugins/external/proto/plugin.proto

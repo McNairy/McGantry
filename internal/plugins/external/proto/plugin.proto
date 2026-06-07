@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package gantry.plugin.v1;
+
+option go_package = "github.com/go2engle/gantry/internal/plugins/external/proto;pluginpb";
+
+// ─── Messages ────────────────────────────────────────────────────────────────
+
+message GetManifestRequest {}
+
+message Requirement {
+    string name        = 1;
+    string description = 2;
+    bool   optional    = 3;
+}
+
+message ManifestResponse {
+    string name               = 1;
+    string title              = 2;
+    string description        = 3;
+    string version            = 4;
+    string author             = 5;
+    string category           = 6;
+    string icon_url           = 7;
+    string homepage           = 8;
+    bool   supports_sync      = 9;
+    bool   supports_panels    = 10;
+    bool   supports_actions   = 11;
+    bool   supports_http      = 12;
+    repeated string      entity_panels  = 13;
+    repeated string      action_types   = 14;
+    repeated Requirement requirements   = 15;
+    string config_schema_json           = 16;
+    string http_routes_json             = 17;
+    string auth_begin_path              = 18;
+}
+
+message GetListenAddrRequest {}
+message GetListenAddrResponse { string addr = 1; }
+
+message ConfigureRequest  { map<string, string> config = 1; }
+message ConfigureResponse {}
+
+message SyncRequest {}
+message SyncResponse {
+    int32           created = 1;
+    int32           updated = 2;
+    repeated string errors  = 3;
+}
+
+message GetPanelDataRequest {
+    string kind      = 1;
+    string namespace = 2;
+    string name      = 3;
+}
+message GetPanelDataResponse {
+    // Opaque JSON blob; callers cast directly to json.RawMessage.
+    bytes panel_json = 1;
+}
+
+message ExecuteActionRequest {
+    string              action_name = 1;
+    map<string, string> inputs      = 2;
+}
+message ExecuteActionResponse { map<string, string> outputs = 1; }
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+service GantryPlugin {
+    rpc GetManifest   (GetManifestRequest)   returns (ManifestResponse);
+    rpc GetListenAddr (GetListenAddrRequest) returns (GetListenAddrResponse);
+    rpc Configure     (ConfigureRequest)     returns (ConfigureResponse);
+    rpc Sync          (SyncRequest)          returns (SyncResponse);
+    rpc GetPanelData  (GetPanelDataRequest)  returns (GetPanelDataResponse);
+    rpc ExecuteAction (ExecuteActionRequest) returns (ExecuteActionResponse);
+}

@@ -1,22 +1,21 @@
 // Package external implements the Gantry external plugin system.
 // External plugins are separate binaries discovered at runtime from a configured
-// directory. They communicate with Gantry via net/rpc using hashicorp/go-plugin
-// for subprocess lifecycle management.
+// directory. They communicate with Gantry via gRPC using hashicorp/go-plugin
+// for subprocess lifecycle management, allowing plugins to be written in any
+// language that supports gRPC.
 package external
 
 import (
-	"encoding/gob"
+	"context"
 	"encoding/json"
-	"net/rpc"
+	"fmt"
 
 	"github.com/hashicorp/go-plugin"
+	pluginpb "github.com/go2engle/gantry/internal/plugins/external/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
-
-func init() {
-	// map[string]any is not registered by default; without this, ConfigSchema
-	// values are silently dropped during gob encoding over net/rpc.
-	gob.Register(map[string]any{})
-}
 
 // Manifest is a plugin's self-description, returned by GetManifest.
 type Manifest struct {
@@ -34,11 +33,10 @@ type Manifest struct {
 	EntityPanels    []string      `json:"entityPanels,omitempty"`
 	ActionTypes     []string      `json:"actionTypes,omitempty"`
 	Requirements    []Requirement `json:"requirements,omitempty"`
-	// ConfigSchemaJSON carries the JSON-encoded configSchema over gob.
-	// map[string]any cannot cross the gob boundary safely; a JSON string can.
+	// ConfigSchemaJSON carries the JSON-encoded configSchema.
 	ConfigSchemaJSON string `json:"configSchemaJson,omitempty"`
 	SupportsHTTP     bool   `json:"supportsHttp,omitempty"`
-	// HTTPRoutesJSON carries the JSON-encoded []Route over gob.
+	// HTTPRoutesJSON carries the JSON-encoded []Route.
 	HTTPRoutesJSON string `json:"httpRoutesJson,omitempty"`
 	// AuthBeginPath is the Gantry-relative URL path that starts the auth flow
 	// for auth-provider plugins (e.g. "/api/v1/auth/authentik").
@@ -91,16 +89,9 @@ type Route struct {
 }
 
 // GantryPluginServer is the interface that plugin binaries implement.
+// Plugin authors implement this Go interface; the gRPC adapter layer translates
+// between it and the generated protobuf types.
 type GantryPluginServer interface {
-	GetManifest() (Manifest, error)
-	Configure(config map[string]string) error
-	Sync() (SyncResult, error)
-	GetPanelData(args PanelArgs) (json.RawMessage, error)
-	ExecuteAction(args ActionArgs) (ActionResult, error)
-}
-
-// GantryPluginRPC is the client-side interface used inside Gantry.
-type GantryPluginRPC interface {
 	GetManifest() (Manifest, error)
 	GetListenAddr() (string, error)
 	Configure(config map[string]string) error
@@ -109,112 +100,210 @@ type GantryPluginRPC interface {
 	ExecuteAction(args ActionArgs) (ActionResult, error)
 }
 
-type rpcClient struct {
-	client *rpc.Client
+// gantryPluginClient is the client-side interface used inside Gantry.
+// It mirrors GantryPluginServer and is implemented by grpcClientWrapper.
+type gantryPluginClient interface {
+	GetManifest() (Manifest, error)
+	GetListenAddr() (string, error)
+	Configure(config map[string]string) error
+	Sync() (SyncResult, error)
+	GetPanelData(args PanelArgs) (json.RawMessage, error)
+	ExecuteAction(args ActionArgs) (ActionResult, error)
 }
 
-func (c *rpcClient) GetManifest() (Manifest, error) {
-	var reply Manifest
-	return reply, c.client.Call("Plugin.GetManifest", new(struct{}), &reply)
-}
+// ── gRPC server adapter ───────────────────────────────────────────────────────
 
-func (c *rpcClient) GetListenAddr() (string, error) {
-	var addr string
-	return addr, c.client.Call("Plugin.GetListenAddr", struct{}{}, &addr)
-}
-
-func (c *rpcClient) Configure(config map[string]string) error {
-	return c.client.Call("Plugin.Configure", &config, new(struct{}))
-}
-
-func (c *rpcClient) Sync() (SyncResult, error) {
-	var reply SyncResult
-	return reply, c.client.Call("Plugin.Sync", new(struct{}), &reply)
-}
-
-func (c *rpcClient) GetPanelData(args PanelArgs) (json.RawMessage, error) {
-	var reply json.RawMessage
-	return reply, c.client.Call("Plugin.GetPanelData", &args, &reply)
-}
-
-func (c *rpcClient) ExecuteAction(args ActionArgs) (ActionResult, error) {
-	var reply ActionResult
-	return reply, c.client.Call("Plugin.ExecuteAction", &args, &reply)
-}
-
-type rpcServer struct {
+// grpcPluginServer wraps GantryPluginServer and implements the generated
+// pluginpb.GantryPluginServer proto interface for the server (plugin binary) side.
+type grpcPluginServer struct {
+	pluginpb.UnimplementedGantryPluginServer
 	impl GantryPluginServer
 }
 
-func (s *rpcServer) GetManifest(_ *struct{}, reply *Manifest) error {
+func (s *grpcPluginServer) GetManifest(_ context.Context, _ *pluginpb.GetManifestRequest) (*pluginpb.ManifestResponse, error) {
 	m, err := s.impl.GetManifest()
 	if err != nil {
-		return err
+		return nil, status.Errorf(codes.Internal, "%s", err.Error())
 	}
-	*reply = m
-	return nil
-}
-
-func (s *rpcServer) GetListenAddr(_ *struct{}, reply *string) error {
-	*reply = ""
-	return nil
-}
-
-func (s *rpcServer) Configure(config *map[string]string, _ *struct{}) error {
-	if config == nil {
-		return s.impl.Configure(nil)
+	reqs := make([]*pluginpb.Requirement, len(m.Requirements))
+	for i, r := range m.Requirements {
+		reqs[i] = &pluginpb.Requirement{Name: r.Name, Description: r.Description, Optional: r.Optional}
 	}
-	return s.impl.Configure(*config)
+	return &pluginpb.ManifestResponse{
+		Name:             m.Name,
+		Title:            m.Title,
+		Description:      m.Description,
+		Version:          m.Version,
+		Author:           m.Author,
+		Category:         m.Category,
+		IconUrl:          m.IconURL,
+		Homepage:         m.Homepage,
+		SupportsSync:     m.SupportsSync,
+		SupportsPanels:   m.SupportsPanels,
+		SupportsActions:  m.SupportsActions,
+		SupportsHttp:     m.SupportsHTTP,
+		EntityPanels:     m.EntityPanels,
+		ActionTypes:      m.ActionTypes,
+		Requirements:     reqs,
+		ConfigSchemaJson: m.ConfigSchemaJSON,
+		HttpRoutesJson:   m.HTTPRoutesJSON,
+		AuthBeginPath:    m.AuthBeginPath,
+	}, nil
 }
 
-func (s *rpcServer) Sync(_ *struct{}, reply *SyncResult) error {
+func (s *grpcPluginServer) GetListenAddr(_ context.Context, _ *pluginpb.GetListenAddrRequest) (*pluginpb.GetListenAddrResponse, error) {
+	addr, err := s.impl.GetListenAddr()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "%s", err.Error())
+	}
+	return &pluginpb.GetListenAddrResponse{Addr: addr}, nil
+}
+
+func (s *grpcPluginServer) Configure(_ context.Context, req *pluginpb.ConfigureRequest) (*pluginpb.ConfigureResponse, error) {
+	if err := s.impl.Configure(req.Config); err != nil {
+		return nil, status.Errorf(codes.Internal, "%s", err.Error())
+	}
+	return &pluginpb.ConfigureResponse{}, nil
+}
+
+func (s *grpcPluginServer) Sync(_ context.Context, _ *pluginpb.SyncRequest) (*pluginpb.SyncResponse, error) {
 	r, err := s.impl.Sync()
 	if err != nil {
-		return err
+		return nil, status.Errorf(codes.Internal, "%s", err.Error())
 	}
-	*reply = r
-	return nil
+	return &pluginpb.SyncResponse{
+		Created: int32(r.Created),
+		Updated: int32(r.Updated),
+		Errors:  r.Errors,
+	}, nil
 }
 
-func (s *rpcServer) GetPanelData(args *PanelArgs, reply *json.RawMessage) error {
-	if args == nil {
-		args = &PanelArgs{}
-	}
-	data, err := s.impl.GetPanelData(*args)
+func (s *grpcPluginServer) GetPanelData(_ context.Context, req *pluginpb.GetPanelDataRequest) (*pluginpb.GetPanelDataResponse, error) {
+	data, err := s.impl.GetPanelData(PanelArgs{Kind: req.Kind, Namespace: req.Namespace, Name: req.Name})
 	if err != nil {
-		return err
+		return nil, status.Errorf(codes.Internal, "%s", err.Error())
 	}
-	*reply = data
-	return nil
+	return &pluginpb.GetPanelDataResponse{PanelJson: []byte(data)}, nil
 }
 
-func (s *rpcServer) ExecuteAction(args *ActionArgs, reply *ActionResult) error {
-	if args == nil {
-		args = &ActionArgs{}
-	}
-	r, err := s.impl.ExecuteAction(*args)
+func (s *grpcPluginServer) ExecuteAction(_ context.Context, req *pluginpb.ExecuteActionRequest) (*pluginpb.ExecuteActionResponse, error) {
+	r, err := s.impl.ExecuteAction(ActionArgs{ActionName: req.ActionName, Inputs: req.Inputs})
 	if err != nil {
-		return err
+		return nil, status.Errorf(codes.Internal, "%s", err.Error())
 	}
-	*reply = r
+	return &pluginpb.ExecuteActionResponse{Outputs: r.Outputs}, nil
+}
+
+// ── gRPC client adapter ───────────────────────────────────────────────────────
+
+// grpcClientWrapper wraps the generated pluginpb.GantryPluginClient and implements
+// gantryPluginClient, converting proto types to the Go types used by ExternalPlugin.
+type grpcClientWrapper struct {
+	c pluginpb.GantryPluginClient
+}
+
+func (w *grpcClientWrapper) GetManifest() (Manifest, error) {
+	resp, err := w.c.GetManifest(context.Background(), &pluginpb.GetManifestRequest{})
+	if err != nil {
+		return Manifest{}, fmt.Errorf("%s", status.Convert(err).Message())
+	}
+	reqs := make([]Requirement, len(resp.Requirements))
+	for i, r := range resp.Requirements {
+		reqs[i] = Requirement{Name: r.Name, Description: r.Description, Optional: r.Optional}
+	}
+	return Manifest{
+		Name:             resp.Name,
+		Title:            resp.Title,
+		Description:      resp.Description,
+		Version:          resp.Version,
+		Author:           resp.Author,
+		Category:         resp.Category,
+		IconURL:          resp.IconUrl,
+		Homepage:         resp.Homepage,
+		SupportsSync:     resp.SupportsSync,
+		SupportsPanels:   resp.SupportsPanels,
+		SupportsActions:  resp.SupportsActions,
+		SupportsHTTP:     resp.SupportsHttp,
+		EntityPanels:     resp.EntityPanels,
+		ActionTypes:      resp.ActionTypes,
+		Requirements:     reqs,
+		ConfigSchemaJSON: resp.ConfigSchemaJson,
+		HTTPRoutesJSON:   resp.HttpRoutesJson,
+		AuthBeginPath:    resp.AuthBeginPath,
+	}, nil
+}
+
+func (w *grpcClientWrapper) GetListenAddr() (string, error) {
+	resp, err := w.c.GetListenAddr(context.Background(), &pluginpb.GetListenAddrRequest{})
+	if err != nil {
+		return "", fmt.Errorf("%s", status.Convert(err).Message())
+	}
+	return resp.Addr, nil
+}
+
+func (w *grpcClientWrapper) Configure(config map[string]string) error {
+	_, err := w.c.Configure(context.Background(), &pluginpb.ConfigureRequest{Config: config})
+	if err != nil {
+		return fmt.Errorf("%s", status.Convert(err).Message())
+	}
 	return nil
 }
 
-// GantryPlugin is the go-plugin Plugin interface implementation.
+func (w *grpcClientWrapper) Sync() (SyncResult, error) {
+	resp, err := w.c.Sync(context.Background(), &pluginpb.SyncRequest{})
+	if err != nil {
+		return SyncResult{}, fmt.Errorf("%s", status.Convert(err).Message())
+	}
+	return SyncResult{
+		Created: int(resp.Created),
+		Updated: int(resp.Updated),
+		Errors:  resp.Errors,
+	}, nil
+}
+
+func (w *grpcClientWrapper) GetPanelData(args PanelArgs) (json.RawMessage, error) {
+	resp, err := w.c.GetPanelData(context.Background(), &pluginpb.GetPanelDataRequest{
+		Kind:      args.Kind,
+		Namespace: args.Namespace,
+		Name:      args.Name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%s", status.Convert(err).Message())
+	}
+	return json.RawMessage(resp.PanelJson), nil
+}
+
+func (w *grpcClientWrapper) ExecuteAction(args ActionArgs) (ActionResult, error) {
+	resp, err := w.c.ExecuteAction(context.Background(), &pluginpb.ExecuteActionRequest{
+		ActionName: args.ActionName,
+		Inputs:     args.Inputs,
+	})
+	if err != nil {
+		return ActionResult{}, fmt.Errorf("%s", status.Convert(err).Message())
+	}
+	return ActionResult{Outputs: resp.Outputs}, nil
+}
+
+// ── Plugin registration ───────────────────────────────────────────────────────
+
+// GantryPlugin implements plugin.GRPCPlugin for the hashicorp/go-plugin framework.
+// Plugin binaries set Impl to their server implementation and pass this to plugin.Serve.
 type GantryPlugin struct {
+	plugin.NetRPCUnsupportedPlugin
 	Impl GantryPluginServer
 }
 
-func (p *GantryPlugin) Server(_ *plugin.MuxBroker) (interface{}, error) {
-	return &rpcServer{impl: p.Impl}, nil
+func (p *GantryPlugin) GRPCServer(_ *plugin.GRPCBroker, s *grpc.Server) error {
+	pluginpb.RegisterGantryPluginServer(s, &grpcPluginServer{impl: p.Impl})
+	return nil
 }
 
-func (p *GantryPlugin) Client(_ *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
-	return &rpcClient{client: c}, nil
+func (p *GantryPlugin) GRPCClient(_ context.Context, _ *plugin.GRPCBroker, conn *grpc.ClientConn) (interface{}, error) {
+	return &grpcClientWrapper{c: pluginpb.NewGantryPluginClient(conn)}, nil
 }
 
-// PluginMap must use "Plugin" as the key — net/rpc registers methods under
-// the struct type name (Plugin.GetManifest, Plugin.Configure, etc.).
+// PluginMap is passed to plugin.NewClient and plugin.Serve.
+// The key "Plugin" is the dispense name and must match on both sides.
 var PluginMap = map[string]plugin.Plugin{
 	"Plugin": &GantryPlugin{},
 }

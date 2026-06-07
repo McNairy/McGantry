@@ -20,7 +20,7 @@ type ExternalPlugin struct {
 
 	mu               sync.RWMutex
 	client           *plugin.Client
-	rpc              GantryPluginRPC
+	rpc              gantryPluginClient
 	manifest         *Manifest
 	available        bool
 	consecutiveFails int
@@ -54,11 +54,12 @@ func (ep *ExternalPlugin) startInternal(config map[string]string) error {
 	})
 
 	c := plugin.NewClient(&plugin.ClientConfig{
-		HandshakeConfig: Handshake,
-		Plugins:         PluginMap,
-		Cmd:             exec.Command(ep.BinPath),
-		Logger:          logger,
-		Managed:         true,
+		HandshakeConfig:  Handshake,
+		Plugins:          PluginMap,
+		Cmd:              exec.Command(ep.BinPath),
+		Logger:           logger,
+		Managed:          true,
+		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 	})
 
 	rpcClient, err := c.Client()
@@ -73,7 +74,7 @@ func (ep *ExternalPlugin) startInternal(config map[string]string) error {
 		return fmt.Errorf("plugin %s: dispense: %w", ep.Name, err)
 	}
 
-	rpc, ok := raw.(GantryPluginRPC)
+	rpc, ok := raw.(gantryPluginClient)
 	if !ok {
 		c.Kill()
 		return fmt.Errorf("plugin %s: unexpected RPC type %T", ep.Name, raw)
