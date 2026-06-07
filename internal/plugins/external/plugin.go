@@ -40,6 +40,16 @@ type Manifest struct {
 	SupportsHTTP     bool   `json:"supportsHttp,omitempty"`
 	// HTTPRoutesJSON carries the JSON-encoded []Route over gob.
 	HTTPRoutesJSON string `json:"httpRoutesJson,omitempty"`
+	// AuthBeginPath is the Gantry-relative URL path that starts the auth flow
+	// for auth-provider plugins (e.g. "/api/v1/auth/authentik").
+	// Currently unused: Gantry generates the login URL as /api/v1/auth/plugin/{name}
+	// and handles the OIDC flow itself using the plugin's config.
+	// TODO(option-b): when a plugin sets AuthBeginPath + SupportsHTTP + HTTPRoutesJSON,
+	// Gantry should proxy the auth flow to the plugin's embedded HTTP server and expose
+	// a POST /api/v1/internal/auth/session endpoint so the plugin can exchange user info
+	// for a Gantry JWT. This allows plugins to implement custom auth flows (SAML, LDAP, etc.)
+	// without Gantry needing to understand the protocol.
+	AuthBeginPath string `json:"authBeginPath,omitempty"`
 }
 
 // Requirement describes an infrastructure or configuration prerequisite.

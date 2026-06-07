@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, Github } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, Github, LogIn } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { api } from '../lib/api';
 import ThemeToggle from '../components/ThemeToggle';
+
+type AuthProvider = { name: string; title: string; iconUrl?: string; loginUrl: string };
 
 function MicrosoftLogo() {
   return (
@@ -16,6 +18,15 @@ function MicrosoftLogo() {
   );
 }
 
+function ProviderIcon({ provider }: { provider: AuthProvider }) {
+  if (provider.iconUrl) {
+    return <img src={provider.iconUrl} alt="" className="h-4 w-4 object-contain" />;
+  }
+  if (provider.name === 'github') return <Github className="h-4 w-4" />;
+  if (provider.name === 'microsoft-azure') return <MicrosoftLogo />;
+  return <LogIn className="h-4 w-4" />;
+}
+
 export default function Login() {
   const { login } = useAuth();
   const { theme } = useTheme();
@@ -23,17 +34,16 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [gitHubSSOEnabled, setGitHubSSOEnabled] = useState(false);
-  const [azureSSOEnabled, setAzureSSOEnabled] = useState(false);
+  const [authProviders, setAuthProviders] = useState<AuthProvider[]>([]);
   const [ssoConfigLoading, setSSOConfigLoading] = useState(true);
   const [showLocalLogin, setShowLocalLogin] = useState(false);
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
-    Promise.allSettled([
-      api.getGitHubSSOConfig().then((cfg) => setGitHubSSOEnabled(cfg.ssoEnabled)),
-      api.getAzureSSOConfig().then((cfg) => setAzureSSOEnabled(cfg.ssoEnabled)),
-    ]).finally(() => setSSOConfigLoading(false));
+    api.getAuthProviders()
+      .then((providers) => setAuthProviders(providers))
+      .catch(() => setAuthProviders([]))
+      .finally(() => setSSOConfigLoading(false));
 
     api.getVersion().then((v) => setAppVersion(v.version)).catch(() => {});
 
@@ -47,7 +57,7 @@ export default function Login() {
     }
   }, []);
 
-  const hasSSO = gitHubSSOEnabled || azureSSOEnabled;
+  const hasSSO = authProviders.length > 0;
   const localLoginVisible = !ssoConfigLoading && (!hasSSO || showLocalLogin);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -96,24 +106,16 @@ export default function Login() {
           {hasSSO && !ssoConfigLoading && (
             <>
               <div className="space-y-3">
-                {gitHubSSOEnabled && (
+                {authProviders.map((provider) => (
                   <a
-                    href={`/api/v1/auth/github?return_to=${encodeURIComponent(window.location.origin)}`}
+                    key={provider.name}
+                    href={`${provider.loginUrl}?return_to=${encodeURIComponent(window.location.origin)}`}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--gantry-border)] px-4 py-2.5 text-sm font-medium text-[var(--gantry-text-primary)] transition-colors hover:bg-[var(--gantry-bg-secondary)]"
                   >
-                    <Github className="h-4 w-4" />
-                    Sign in with GitHub
+                    <ProviderIcon provider={provider} />
+                    Sign in with {provider.title}
                   </a>
-                )}
-                {azureSSOEnabled && (
-                  <a
-                    href={`/api/v1/auth/azure?return_to=${encodeURIComponent(window.location.origin)}`}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--gantry-border)] px-4 py-2.5 text-sm font-medium text-[var(--gantry-text-primary)] transition-colors hover:bg-[var(--gantry-bg-secondary)]"
-                  >
-                    <MicrosoftLogo />
-                    Sign in with Microsoft Azure
-                  </a>
-                )}
+                ))}
               </div>
               {!showLocalLogin && (
                 <button

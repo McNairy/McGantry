@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -486,14 +484,6 @@ func requestHostname(r *http.Request) string {
 	return host
 }
 
-// randomHex16 generates 16 random bytes as a hex string.
-func randomHex16() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
 
 // syncGitHubTeams fetches the user's GitHub teams and syncs them as Gantry groups.
 func (h *Handlers) syncGitHubTeams(r *http.Request, accessToken, orgName string, pluginConfig map[string]any, user *db.User) {
