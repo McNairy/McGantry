@@ -28,6 +28,9 @@ func NewManager(configLoad ConfigLoader) *Manager {
 	}
 }
 
+const pluginStartTimeout = 30 * time.Second
+const maxConsecutiveFails = 5
+
 // StartAll scans pluginDir, launches each discovered binary, and registers it.
 func (m *Manager) StartAll(ctx context.Context, pluginDir string) error {
 	paths, err := ScanDir(pluginDir)
@@ -48,16 +51,18 @@ func (m *Manager) StartAll(ctx context.Context, pluginDir string) error {
 			config = nil
 		}
 
-		if err := ep.Start(config); err != nil {
+		startCtx, cancel := context.WithTimeout(ctx, pluginStartTimeout)
+		if err := ep.Start(startCtx, config); err != nil {
 			log.Printf("[external-plugin] %s: failed to start: %v", name, err)
 		}
+		cancel()
 
 		m.mu.Lock()
 		m.plugins[name] = ep
 		m.mu.Unlock()
 	}
 
-	hctx, cancel := context.WithCancel(context.Background())
+	hctx, cancel := context.WithCancel(ctx)
 	m.cancel = cancel
 	go m.healthLoop(hctx)
 
@@ -107,7 +112,7 @@ func (m *Manager) healthLoop(ctx context.Context) {
 	}
 }
 
-func (m *Manager) checkHealth(ctx context.Context) {
+func (m *Manager) checkHealth(hctx context.Context) {
 	m.mu.RLock()
 	eps := make([]*ExternalPlugin, 0, len(m.plugins))
 	for _, ep := range m.plugins {
@@ -119,22 +124,47 @@ func (m *Manager) checkHealth(ctx context.Context) {
 		if !ep.isDead() {
 			continue
 		}
-		log.Printf("[external-plugin] %s: subprocess exited, attempting restart", ep.Name)
-		ep.Kill()
 
-		config, err := m.loadConfig(ctx, ep.Name)
-		if err != nil {
-			log.Printf("[external-plugin] %s: restart aborted: %v", ep.Name, err)
-			ep.markUnavailable()
-			continue
+		ep.mu.RLock()
+		fails, lastFail := ep.consecutiveFails, ep.lastFailAt
+		ep.mu.RUnlock()
+
+		if fails >= maxConsecutiveFails {
+			// Exponential backoff capped at 10× the health check interval.
+			shift := fails - maxConsecutiveFails
+			if shift > 4 {
+				shift = 4
+			}
+			backoff := healthCheckInterval * (1 << uint(shift))
+			if time.Since(lastFail) < backoff {
+				continue
+			}
 		}
 
-		if err := ep.Start(config); err != nil {
-			log.Printf("[external-plugin] %s: restart failed: %v", ep.Name, err)
-			ep.markUnavailable()
-		} else {
-			log.Printf("[external-plugin] %s: restarted successfully", ep.Name)
-		}
+		ep := ep
+		go func() {
+			log.Printf("[external-plugin] %s: subprocess exited, attempting restart", ep.Name)
+			ep.Kill()
+
+			config, err := m.loadConfig(hctx, ep.Name)
+			if err != nil {
+				log.Printf("[external-plugin] %s: restart aborted: %v", ep.Name, err)
+				ep.markUnavailable()
+				ep.markFailed()
+				return
+			}
+
+			startCtx, cancel := context.WithTimeout(hctx, pluginStartTimeout)
+			defer cancel()
+			if err := ep.Start(startCtx, config); err != nil {
+				log.Printf("[external-plugin] %s: restart failed: %v", ep.Name, err)
+				ep.markUnavailable()
+				ep.markFailed()
+			} else {
+				log.Printf("[external-plugin] %s: restarted successfully", ep.Name)
+				ep.markRestartSucceeded()
+			}
+		}()
 	}
 }
 

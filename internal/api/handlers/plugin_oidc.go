@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go2engle/gantry/internal/auth"
 	"github.com/go2engle/gantry/internal/db"
 )
+
+const oidcHTTPTimeout = 10 * time.Second
 
 type oidcDiscovery struct {
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
@@ -50,13 +53,15 @@ func (h *Handlers) PluginOIDCBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	discovery, err := fetchOIDCDiscovery(issuerURL)
+	discovery, err := fetchOIDCDiscovery(r.Context(), issuerURL)
 	if err != nil {
 		log.Printf("[plugin-oidc] %s: discovery failed for %s: %v", name, issuerURL, err)
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("failed to reach OIDC provider at %s/.well-known/openid-configuration: %v", issuerURL, err))
 		return
 	}
 
+	// TODO: Add PKCE (RFC 7636) code_challenge/verifier for additional
+	// protection against authorization code interception attacks.
 	state, err := randomHex16()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate state")
@@ -88,11 +93,16 @@ func (h *Handlers) PluginOIDCBegin(w http.ResponseWriter, r *http.Request) {
 
 	callbackURL := redirectBase + "/api/v1/auth/plugin/" + name + "/callback"
 
+	scopes, _ := p.Config["oidcScopes"].(string)
+	if scopes == "" {
+		scopes = "openid email profile"
+	}
+
 	params := url.Values{}
 	params.Set("response_type", "code")
 	params.Set("client_id", clientID)
 	params.Set("redirect_uri", callbackURL)
-	params.Set("scope", "openid email profile groups")
+	params.Set("scope", scopes)
 	params.Set("state", state)
 	http.Redirect(w, r, discovery.AuthorizationEndpoint+"?"+params.Encode(), http.StatusTemporaryRedirect)
 }
@@ -130,7 +140,7 @@ func (h *Handlers) PluginOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	discovery, err := fetchOIDCDiscovery(issuerURL)
+	discovery, err := fetchOIDCDiscovery(r.Context(), issuerURL)
 	if err != nil {
 		log.Printf("[plugin-oidc] %s: discovery failed for %s: %v", name, issuerURL, err)
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("failed to reach OIDC provider at %s/.well-known/openid-configuration: %v", issuerURL, err))
@@ -138,14 +148,14 @@ func (h *Handlers) PluginOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	callbackURL := redirectBase + "/api/v1/auth/plugin/" + name + "/callback"
-	tokens, err := exchangeOIDCCode(discovery.TokenEndpoint, code, clientID, clientSecret, callbackURL)
+	tokens, err := exchangeOIDCCode(r.Context(), discovery.TokenEndpoint, code, clientID, clientSecret, callbackURL)
 	if err != nil {
 		log.Printf("[plugin-oidc] %s: token exchange failed: %v", name, err)
 		writeSSOProviderError(w, p.Manifest.Title, "exchange authorization code", err)
 		return
 	}
 
-	userInfo, err := fetchOIDCUserInfo(discovery.UserinfoEndpoint, tokens.AccessToken)
+	userInfo, err := fetchOIDCUserInfo(r.Context(), discovery.UserinfoEndpoint, tokens.AccessToken)
 	if err != nil {
 		log.Printf("[plugin-oidc] %s: userinfo failed: %v", name, err)
 		writeSSOProviderError(w, p.Manifest.Title, "fetch user info", err)
@@ -168,8 +178,12 @@ func (h *Handlers) PluginOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	if gantryUser == nil && userInfo.Email != "" {
 		usersByEmail, err := h.DB.GetUsersByEmail(ctx, userInfo.Email)
-		if err == nil && len(usersByEmail) == 1 {
+		switch {
+		case err == nil && len(usersByEmail) == 1:
 			gantryUser = usersByEmail[0]
+		case err == nil && len(usersByEmail) > 1:
+			log.Printf("[plugin-oidc] %s: email hash %s matched %d users; refusing ambiguous lookup",
+				name, hashEmailForLog(userInfo.Email), len(usersByEmail))
 		}
 	}
 
@@ -257,9 +271,16 @@ func oidcPluginConfig(config map[string]any, r *http.Request) (issuerURL, client
 	return
 }
 
-func fetchOIDCDiscovery(issuerURL string) (*oidcDiscovery, error) {
+// fetchOIDCDiscovery retrieves the OIDC provider's discovery document.
+func fetchOIDCDiscovery(ctx context.Context, issuerURL string) (*oidcDiscovery, error) {
 	issuerURL = strings.TrimRight(issuerURL, "/")
-	resp, err := http.Get(issuerURL + "/.well-known/openid-configuration")
+	tctx, cancel := context.WithTimeout(ctx, oidcHTTPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(tctx, http.MethodGet, issuerURL+"/.well-known/openid-configuration", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +298,8 @@ func fetchOIDCDiscovery(issuerURL string) (*oidcDiscovery, error) {
 	return &d, nil
 }
 
-func exchangeOIDCCode(tokenEndpoint, code, clientID, clientSecret, redirectURI string) (*oidcTokenResponse, error) {
+// exchangeOIDCCode exchanges an authorization code for tokens at the token endpoint.
+func exchangeOIDCCode(ctx context.Context, tokenEndpoint, code, clientID, clientSecret, redirectURI string) (*oidcTokenResponse, error) {
 	body := url.Values{}
 	body.Set("grant_type", "authorization_code")
 	body.Set("code", code)
@@ -285,7 +307,14 @@ func exchangeOIDCCode(tokenEndpoint, code, clientID, clientSecret, redirectURI s
 	body.Set("client_secret", clientSecret)
 	body.Set("redirect_uri", redirectURI)
 
-	resp, err := http.PostForm(tokenEndpoint, body)
+	tctx, cancel := context.WithTimeout(ctx, oidcHTTPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(tctx, http.MethodPost, tokenEndpoint, strings.NewReader(body.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -304,8 +333,11 @@ func exchangeOIDCCode(tokenEndpoint, code, clientID, clientSecret, redirectURI s
 	return &t, nil
 }
 
-func fetchOIDCUserInfo(userinfoEndpoint, accessToken string) (*oidcUserInfo, error) {
-	req, err := http.NewRequest("GET", userinfoEndpoint, nil)
+// fetchOIDCUserInfo retrieves user claims from the OIDC userinfo endpoint.
+func fetchOIDCUserInfo(ctx context.Context, userinfoEndpoint, accessToken string) (*oidcUserInfo, error) {
+	tctx, cancel := context.WithTimeout(ctx, oidcHTTPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(tctx, http.MethodGet, userinfoEndpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +360,13 @@ func fetchOIDCUserInfo(userinfoEndpoint, accessToken string) (*oidcUserInfo, err
 	return &u, nil
 }
 
+const maxOIDCGroups = 200
+
 func (h *Handlers) syncOIDCGroups(ctx context.Context, pluginName string, groups []string, user *db.User) {
+	if len(groups) > maxOIDCGroups {
+		log.Printf("[plugin-oidc] %s: %d groups in OIDC claims exceeds limit %d; truncating", pluginName, len(groups), maxOIDCGroups)
+		groups = groups[:maxOIDCGroups]
+	}
 	var groupIDs []string
 	for _, groupName := range groups {
 		sourceID := pluginName + "/" + groupName
@@ -342,6 +380,7 @@ func (h *Handlers) syncOIDCGroups(ctx context.Context, pluginName string, groups
 				Role:        "viewer",
 			}
 			if err := h.DB.CreateGroup(ctx, newGroup); err != nil {
+				log.Printf("[plugin-oidc] %s: failed to create group %q: %v", pluginName, sourceID, err)
 				continue
 			}
 			g = newGroup
@@ -350,5 +389,7 @@ func (h *Handlers) syncOIDCGroups(ctx context.Context, pluginName string, groups
 			groupIDs = append(groupIDs, g.ID)
 		}
 	}
-	_ = h.DB.SyncUserGroups(ctx, user.ID, groupIDs)
+	if err := h.DB.SyncUserGroups(ctx, user.ID, groupIDs); err != nil {
+		log.Printf("[plugin-oidc] %s: failed to sync groups for user %s: %v", pluginName, user.ID, err)
+	}
 }

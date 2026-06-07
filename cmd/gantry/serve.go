@@ -171,7 +171,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return out, nil
 	})
 	if cfg.PluginDir != "" {
-		if err := extManager.StartAll(context.Background(), cfg.PluginDir); err != nil {
+		if err := extManager.StartAll(cmd.Context(), cfg.PluginDir); err != nil {
 			log.Printf("[external-plugins] warning: %v", err)
 		}
 		for _, ep := range extManager.All() {
@@ -193,7 +193,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 				AuthBeginPath: m.AuthBeginPath,
 			}
 			if m.ConfigSchemaJSON != "" {
-				_ = json.Unmarshal([]byte(m.ConfigSchemaJSON), &dbManifest.ConfigSchema)
+				if err := json.Unmarshal([]byte(m.ConfigSchemaJSON), &dbManifest.ConfigSchema); err != nil {
+					log.Printf("[external-plugins] %s: invalid ConfigSchemaJSON: %v", m.Name, err)
+				}
 			}
 			for _, r := range m.Requirements {
 				dbManifest.Requirements = append(dbManifest.Requirements, plugins.PluginRequirement{
@@ -248,7 +250,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 			}
 			var routes []external.Route
 			if m.HTTPRoutesJSON != "" {
-				_ = json.Unmarshal([]byte(m.HTTPRoutesJSON), &routes)
+				if err := json.Unmarshal([]byte(m.HTTPRoutesJSON), &routes); err != nil {
+					log.Printf("[external-plugins] %s: invalid HTTPRoutesJSON: %v", m.Name, err)
+				}
 			}
 			for _, route := range routes {
 				srv.MountPluginProxy(route.Path, "http://"+addr)

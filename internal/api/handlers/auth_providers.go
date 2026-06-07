@@ -21,7 +21,7 @@ func (h *Handlers) GetAuthProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var providers []AuthProviderInfo
+	providers := make([]AuthProviderInfo, 0)
 	for _, p := range allPlugins {
 		if p.Manifest == nil || p.Manifest.Category != "auth-provider" || !p.Enabled {
 			continue
@@ -72,8 +72,5 @@ func (h *Handlers) GetAuthProviders(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	if providers == nil {
-		providers = []AuthProviderInfo{}
-	}
 	writeJSON(w, http.StatusOK, providers)
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 // Query params: kind, namespace, name.
 // When name is provided returns a single entity; when omitted returns an array.
 func (h *Handlers) InternalGetEntity(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("X-Gantry-Internal-Token") != h.InternalPluginToken {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Gantry-Internal-Token")), []byte(h.InternalPluginToken)) != 1 {
 		writeError(w, http.StatusUnauthorized, "invalid internal token")
 		return
 	}
@@ -51,7 +52,7 @@ func (h *Handlers) InternalGetEntity(w http.ResponseWriter, r *http.Request) {
 // InternalUpsertEntity handles POST /api/internal/entity-upsert.
 // Creates the entity if it does not exist; updates it if it does.
 func (h *Handlers) InternalUpsertEntity(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("X-Gantry-Internal-Token") != h.InternalPluginToken {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Gantry-Internal-Token")), []byte(h.InternalPluginToken)) != 1 {
 		writeError(w, http.StatusUnauthorized, "invalid internal token")
 		return
 	}
@@ -94,7 +95,7 @@ func (h *Handlers) InternalUpsertEntity(w http.ResponseWriter, r *http.Request) 
 // InternalDeleteEntity handles POST /api/internal/entity-delete.
 // Returns 204 on success, 404 if not found (idempotent).
 func (h *Handlers) InternalDeleteEntity(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("X-Gantry-Internal-Token") != h.InternalPluginToken {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Gantry-Internal-Token")), []byte(h.InternalPluginToken)) != 1 {
 		writeError(w, http.StatusUnauthorized, "invalid internal token")
 		return
 	}

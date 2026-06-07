@@ -1,11 +1,13 @@
 package external
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
@@ -16,15 +18,35 @@ type ExternalPlugin struct {
 	Name    string
 	BinPath string
 
-	mu        sync.RWMutex
-	client    *plugin.Client
-	rpc       GantryPluginRPC
-	manifest  *Manifest
-	available bool
+	mu               sync.RWMutex
+	client           *plugin.Client
+	rpc              GantryPluginRPC
+	manifest         *Manifest
+	available        bool
+	consecutiveFails int
+	lastFailAt       time.Time
 }
 
 // Start launches the plugin subprocess and calls GetManifest + Configure.
-func (ep *ExternalPlugin) Start(config map[string]string) error {
+// Returns an error if ctx is cancelled before startup completes.
+func (ep *ExternalPlugin) Start(ctx context.Context, config map[string]string) error {
+	ch := make(chan error, 1)
+	go func() { ch <- ep.startInternal(config) }()
+	select {
+	case err := <-ch:
+		return err
+	case <-ctx.Done():
+		ep.mu.Lock()
+		if ep.client != nil {
+			ep.client.Kill()
+			ep.client = nil
+		}
+		ep.mu.Unlock()
+		return fmt.Errorf("plugin %s: startup timed out: %w", ep.Name, ctx.Err())
+	}
+}
+
+func (ep *ExternalPlugin) startInternal(config map[string]string) error {
 	logger := hclog.New(&hclog.LoggerOptions{
 		Name:   fmt.Sprintf("plugin.%s", ep.Name),
 		Level:  hclog.Info,
@@ -79,6 +101,19 @@ func (ep *ExternalPlugin) Start(config map[string]string) error {
 	return nil
 }
 
+func (ep *ExternalPlugin) markFailed() {
+	ep.mu.Lock()
+	ep.consecutiveFails++
+	ep.lastFailAt = time.Now()
+	ep.mu.Unlock()
+}
+
+func (ep *ExternalPlugin) markRestartSucceeded() {
+	ep.mu.Lock()
+	ep.consecutiveFails = 0
+	ep.mu.Unlock()
+}
+
 // Kill terminates the plugin subprocess.
 func (ep *ExternalPlugin) Kill() {
 	ep.mu.Lock()
@@ -113,7 +148,10 @@ func (ep *ExternalPlugin) GetListenAddr() string {
 	if rpc == nil {
 		return ""
 	}
-	addr, _ := rpc.GetListenAddr()
+	addr, err := rpc.GetListenAddr()
+	if err != nil {
+		log.Printf("[external-plugin] %s: GetListenAddr failed: %v", ep.Name, err)
+	}
 	return addr
 }
 

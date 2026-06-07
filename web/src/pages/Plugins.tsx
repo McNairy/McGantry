@@ -795,6 +795,21 @@ function ConfigFormBody({
                 The OIDC issuer URL for this provider. For Authentik, find it under your application's Provider settings.
               </p>
             </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
+                OAuth Scopes
+              </label>
+              <input
+                type="text"
+                value={values['oidcScopes'] ?? ''}
+                onChange={(e) => setValues((prev) => ({ ...prev, oidcScopes: e.target.value }))}
+                placeholder="openid email profile groups"
+                className="w-full rounded-lg border border-[var(--gantry-border)] bg-[var(--gantry-bg-primary)] px-3 py-2 text-sm text-[var(--gantry-text-primary)] placeholder:text-[var(--gantry-text-secondary)] focus:border-[var(--gantry-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--gantry-accent)]"
+              />
+              <p className="text-xs text-[var(--gantry-text-secondary)]">
+                Space-separated OAuth scopes. Leave blank to use <code className="font-mono">openid email profile</code>. Add <code className="font-mono">groups</code> if your provider supports group syncing.
+              </p>
+            </div>
             {(values['gantryExternalUrl'] || values['oidcIssuerUrl']) && (
               <div className="space-y-1.5">
                 <label className="block text-sm font-medium text-[var(--gantry-text-primary)]">
