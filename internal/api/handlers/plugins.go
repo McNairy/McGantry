@@ -176,8 +176,13 @@ func (h *Handlers) EnablePlugin(w http.ResponseWriter, r *http.Request) {
 			cfgMap := make(map[string]string)
 			if p, _ := h.DB.GetPlugin(r.Context(), name); p != nil {
 				for k, v := range p.Config {
-					if s, ok := v.(string); ok {
-						cfgMap[k] = s
+					switch val := v.(type) {
+					case string:
+						cfgMap[k] = val
+					default:
+						if b, err := json.Marshal(v); err == nil {
+							cfgMap[k] = string(b)
+						}
 					}
 				}
 			}
@@ -270,8 +275,13 @@ func (h *Handlers) UpdatePluginConfig(w http.ResponseWriter, r *http.Request) {
 		if ep := h.ExternalManager.Get(name); ep != nil {
 			cfgMap := make(map[string]string, len(merged))
 			for k, v := range merged {
-				if s, ok := v.(string); ok {
-					cfgMap[k] = s
+				switch val := v.(type) {
+				case string:
+					cfgMap[k] = val
+				default:
+					if b, err := json.Marshal(v); err == nil {
+						cfgMap[k] = string(b)
+					}
 				}
 			}
 			if h.InternalPluginToken != "" {
