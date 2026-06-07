@@ -27,6 +27,9 @@ data/
 # Temp
 tmp/
 
+# Plugin binaries (runtime artifacts, not source)
+plugins/gantry-plugin-*
+
 # Local files (PRD, checklist, notes)
 local/
 
