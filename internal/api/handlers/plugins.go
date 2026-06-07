@@ -173,18 +173,11 @@ func (h *Handlers) EnablePlugin(w http.ResponseWriter, r *http.Request) {
 	// Notify external plugin subprocess of the enabled-state change.
 	if h.ExternalManager != nil {
 		if ep := h.ExternalManager.Get(name); ep != nil {
-			cfgMap := make(map[string]string)
+			var cfgMap map[string]string
 			if p, _ := h.DB.GetPlugin(r.Context(), name); p != nil {
-				for k, v := range p.Config {
-					switch val := v.(type) {
-					case string:
-						cfgMap[k] = val
-					default:
-						if b, err := json.Marshal(v); err == nil {
-							cfgMap[k] = string(b)
-						}
-					}
-				}
+				cfgMap = buildConfigMap(p.Config)
+			} else {
+				cfgMap = make(map[string]string)
 			}
 			if h.InternalPluginToken != "" {
 				cfgMap["gantryInternalToken"] = h.InternalPluginToken
@@ -273,17 +266,7 @@ func (h *Handlers) UpdatePluginConfig(w http.ResponseWriter, r *http.Request) {
 	// Push updated config to external plugin subprocess.
 	if h.ExternalManager != nil {
 		if ep := h.ExternalManager.Get(name); ep != nil {
-			cfgMap := make(map[string]string, len(merged))
-			for k, v := range merged {
-				switch val := v.(type) {
-				case string:
-					cfgMap[k] = val
-				default:
-					if b, err := json.Marshal(v); err == nil {
-						cfgMap[k] = string(b)
-					}
-				}
-			}
+			cfgMap := buildConfigMap(merged)
 			if h.InternalPluginToken != "" {
 				cfgMap["gantryInternalToken"] = h.InternalPluginToken
 			}
@@ -359,6 +342,27 @@ func preserveSecretValues(existing, updated any) any {
 	default:
 		return updated
 	}
+}
+
+// buildConfigMap converts a plugin's map[string]any config into the map[string]string
+// form required by the external plugin gRPC transport. String values pass through
+// unchanged; all other types are JSON-serialized. Nil values are omitted.
+func buildConfigMap(config map[string]any) map[string]string {
+	m := make(map[string]string, len(config))
+	for k, v := range config {
+		if v == nil {
+			continue
+		}
+		switch val := v.(type) {
+		case string:
+			m[k] = val
+		default:
+			if b, err := json.Marshal(v); err == nil {
+				m[k] = string(b)
+			}
+		}
+	}
+	return m
 }
 
 func isSecretKey(key string) bool {
