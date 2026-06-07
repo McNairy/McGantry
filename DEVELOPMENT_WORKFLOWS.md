@@ -59,12 +59,22 @@ gantry-migrate-plugin --src ./internal/plugins/argocd --title "ArgoCD"
 
 ## Changing the plugin interface
 
+This covers changes to the SDK contract between Gantry and plugins — adding a new method,
+changing a method signature, or modifying a shared data type. The SDK interface is stable and
+this is unlikely to be needed often, but when it is, the order of operations matters:
+
 ```bash
-# 1. Edit mcxample/gantry-plugin-sdk
-# 2. Edit McGantry host code (internal/api/handlers/plugins.go, etc.)
-# 3. Rebuild affected plugins — the replace directive picks up SDK changes automatically
+# 1. Edit mcxample/gantry-plugin-sdk (add/change the interface or types)
+# 2. Edit McGantry host code to call the new/changed interface
+#    (internal/api/handlers/plugins.go and related files)
+# 3. Update any plugins that implement the changed interface
+# 4. Rebuild affected plugins — the replace directive picks up SDK changes automatically
 go build -o gantry-plugin-<name> .
 ```
+
+Always update the SDK first. If you update the host before the SDK, the host will reference
+types or methods that don't exist yet. If you update plugins before the SDK, they'll reference
+the same.
 
 ## Iterating on an existing plugin
 
